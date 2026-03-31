@@ -1,0 +1,77 @@
+{
+  "publishConfig": {
+    "access": "public"
+  },
+  "name": "@opennextjs/aws",
+  "version": "3.9.16",
+  "bin": {
+    "open-next": "./dist/index.js"
+  },
+  "license": "MIT",
+  "type": "module",
+  "description": "Open source Next.js serverless adapter",
+  "homepage": "https://opennext.js.org/aws",
+  "main": "./dist/index.js",
+  "exports": {
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "*": [
+        "dist/*"
+      ]
+    }
+  },
+  "keywords": [],
+  "author": "",
+  "files": [
+    "dist",
+    "assets",
+    "README.md"
+  ],
+  "dependencies": {
+    "@ast-grep/napi": "^0.40.5",
+    "@aws-sdk/client-cloudfront": "3.984.0",
+    "@aws-sdk/client-dynamodb": "3.984.0",
+    "@aws-sdk/client-lambda": "3.984.0",
+    "@aws-sdk/client-s3": "3.984.0",
+    "@aws-sdk/client-sqs": "3.984.0",
+    "@node-minify/core": "^8.0.6",
+    "@node-minify/terser": "^8.0.6",
+    "@tsconfig/node18": "^1.0.3",
+    "aws4fetch": "^1.0.20",
+    "chalk": "^5.6.2",
+    "cookie": "^1.0.2",
+    "esbuild": "0.25.4",
+    "express": "^5.1.0",
+    "path-to-regexp": "^6.3.0",
+    "urlpattern-polyfill": "^10.1.0",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.158",
+    "@types/express": "5.0.0",
+    "@types/node": "20.17.6",
+    "concurrently": "^9.2.1",
+    "tsc-alias": "^1.8.16",
+    "typescript": "5.9.3"
+  },
+  "peerDependencies": {
+    "next": "~15.0.8 || ~15.1.12 || ~15.2.9 || ~15.3.9 || ~15.4.11 || ~15.5.10 || ~16.0.11 || ^16.1.5"
+  },
+  "bugs": {
+    "url": "https://github.com/opennextjs/opennextjs-aws/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opennextjs/opennextjs-aws",
+    "directory": "packages/open-next"
+  },
+  "scripts": {
+    "build": "tsc && tsc-alias",
+    "dev": "concurrently \"tsc -w\" \"tsc-alias -w\""
+  }
+}

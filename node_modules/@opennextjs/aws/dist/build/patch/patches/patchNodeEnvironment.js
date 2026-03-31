@@ -1,0 +1,27 @@
+import { getCrossPlatformPathRegex } from "../../../utils/regex.js";
+import { createPatchCode } from "../astCodePatcher.js";
+/**
+ * Drops `require("./node-environment-extensions/error-inspect");`
+ *
+ * This is to avoid pulling babel (~4MB)
+ */
+export const rule = `
+rule:
+  pattern: require("./node-environment-extensions/error-inspect");
+fix: |-
+  // Removed by OpenNext
+  // require("./node-environment-extensions/error-inspect");
+`;
+export const patchNodeEnvironment = {
+    name: "patch-node-environment-error-inspect",
+    patches: [
+        {
+            pathFilter: getCrossPlatformPathRegex(String.raw `/next/dist/server/node-environment\.js$`, {
+                escape: false,
+            }),
+            contentFilter: /error-inspect/,
+            patchCode: createPatchCode(rule),
+            versions: ">=15.0.0",
+        },
+    ],
+};

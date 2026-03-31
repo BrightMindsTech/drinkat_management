@@ -1,0 +1,58 @@
+import path from "node:path";
+import url from "node:url";
+import { buildNextjsApp, setStandaloneBuildMode, } from "./build/buildNextApp.js";
+import { compileCache } from "./build/compileCache.js";
+import { compileOpenNextConfig } from "./build/compileConfig.js";
+import { compileTagCacheProvider } from "./build/compileTagCacheProvider.js";
+import { createCacheAssets, createStaticAssets } from "./build/createAssets.js";
+import { createImageOptimizationBundle } from "./build/createImageOptimizationBundle.js";
+import { createMiddleware } from "./build/createMiddleware.js";
+import { createRevalidationBundle } from "./build/createRevalidationBundle.js";
+import { createServerBundle } from "./build/createServerBundle.js";
+import { createWarmerBundle } from "./build/createWarmerBundle.js";
+import { generateOutput } from "./build/generateOutput.js";
+import * as buildHelper from "./build/helper.js";
+import { patchOriginalNextConfig } from "./build/patch/patches/index.js";
+import { printHeader, showWarningOnWindows } from "./build/utils.js";
+import logger from "./logger.js";
+export async function build(openNextConfigPath, nodeExternals, allowUnsupportedNextVersion) {
+    showWarningOnWindows();
+    const baseDir = process.cwd();
+    const openNextDistDir = url.fileURLToPath(new URL(".", import.meta.url));
+    const { config, buildDir } = await compileOpenNextConfig(path.join(baseDir, openNextConfigPath ?? "open-next.config.ts"), { nodeExternals });
+    // Initialize options
+    const options = buildHelper.normalizeOptions(config, openNextDistDir, buildDir);
+    logger.setLevel(options.debug ? "debug" : "info");
+    // Pre-build validation
+    buildHelper.checkRunningInsideNextjsApp(options);
+    buildHelper.printNextjsVersion(options);
+    buildHelper.printOpenNextVersion(options);
+    // Check Next.js version support
+    buildHelper.checkNextVersionSupport(options.nextVersion, allowUnsupportedNextVersion ?? false);
+    // Build Next.js app
+    printHeader("Building Next.js app");
+    setStandaloneBuildMode(options);
+    buildHelper.initOutputDir(options);
+    buildNextjsApp(options);
+    // Generate deployable bundle
+    printHeader("Generating bundle");
+    // Patch the original Next.js config
+    await patchOriginalNextConfig(options);
+    // Compile cache.ts
+    compileCache(options);
+    // Compile middleware
+    await createMiddleware(options);
+    createStaticAssets(options);
+    if (config.dangerous?.disableIncrementalCache !== true) {
+        const { useTagCache } = createCacheAssets(options);
+        if (useTagCache) {
+            await compileTagCacheProvider(options);
+        }
+    }
+    await createServerBundle(options);
+    await createRevalidationBundle(options);
+    await createImageOptimizationBundle(options);
+    await createWarmerBundle(options);
+    await generateOutput(options);
+    logger.info("OpenNext build complete.");
+}

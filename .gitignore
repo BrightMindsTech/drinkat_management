@@ -1,0 +1,7 @@
+.dev.vars
+.wrangler
+tsconfig.tsbuildinfo
+*.db
+public/uploads
+
+# OpenNext

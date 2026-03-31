@@ -1,0 +1,14 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "drinkat-management",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2026-03-17",
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "drinkat-management",
+			"database_id": "d890068e-dccb-422d-b19d-2e40928b30df",
+			"remote": true
+		}
+	]
+}
