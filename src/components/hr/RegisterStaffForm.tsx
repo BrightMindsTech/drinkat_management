@@ -25,7 +25,7 @@ export function RegisterStaffForm({
   const [residentialArea, setResidentialArea] = useState('');
   const [shiftTimeFrom, setShiftTimeFrom] = useState('09:00');
   const [shiftTimeUntil, setShiftTimeUntil] = useState('17:00');
-  const [role, setRole] = useState<'staff' | 'qc'>('staff');
+  const [role, setRole] = useState<'staff' | 'qc' | 'marketing'>('staff');
   const [branchId, setBranchId] = useState(branches[0]?.id ?? '');
   const [departmentId, setDepartmentId] = useState('');
   const [advanceLimit, setAdvanceLimit] = useState('');
@@ -197,11 +197,12 @@ export function RegisterStaffForm({
           <label className="block text-sm text-app-label mb-1">{t.registerStaff.role}</label>
           <select
             value={role}
-            onChange={(e) => setRole(e.target.value as 'staff' | 'qc')}
+            onChange={(e) => setRole(e.target.value as 'staff' | 'qc' | 'marketing')}
             className="w-full rounded-lg border border-gray-300 px-3 py-2"
           >
             <option value="staff">{t.registerStaff.staff}</option>
             <option value="qc">{t.registerStaff.qc}</option>
+            <option value="marketing">{t.registerStaff.marketing}</option>
           </select>
         </div>
         <div>

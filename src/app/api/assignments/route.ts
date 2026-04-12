@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession, requireQc } from '@/lib/session';
+import { normalizeUserRole } from '@/lib/formVisibility';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -12,11 +13,12 @@ const createSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await requireSession();
+  const role = normalizeUserRole(session.user.role);
   const { searchParams } = new URL(req.url);
   const employeeId = searchParams.get('employeeId');
   const checklistId = searchParams.get('checklistId');
 
-  if (session.user.role === 'staff' || session.user.role === 'qc') {
+  if (role === 'staff' || role === 'qc') {
     const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
     if (!user?.employee) return Response.json([]);
     const myId = user.employee.id;
@@ -25,6 +27,26 @@ export async function GET(req: NextRequest) {
       include: {
         checklist: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
         employee: true,
+        branch: true,
+      },
+    });
+    return Response.json(assignments);
+  }
+
+  if (role === 'manager') {
+    const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
+    if (!user?.employee) return Response.json([]);
+    const managerEmployee = user.employee;
+    const assignments = await prisma.checklistAssignment.findMany({
+      where: {
+        ...(employeeId ? { employeeId } : {}),
+        ...(checklistId ? { checklistId } : {}),
+        branchId: managerEmployee.branchId,
+        employee: { reportsToEmployeeId: managerEmployee.id, branchId: managerEmployee.branchId },
+      },
+      include: {
+        checklist: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        employee: { include: { branch: true } },
         branch: true,
       },
     });
@@ -47,6 +69,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await requireQc();
+  const role = normalizeUserRole(session.user.role);
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
@@ -60,6 +83,19 @@ export async function POST(req: NextRequest) {
   const employee = await prisma.employee.findUnique({ where: { id: parsed.data.employeeId } });
   if (!employee) return Response.json({ error: 'Employee not found' }, { status: 404 });
   if (employee.status === 'terminated') return Response.json({ error: 'Cannot assign to terminated employee' }, { status: 400 });
+
+  // Manager can assign only within own branch and only to direct reports.
+  if (role === 'manager') {
+    const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
+    if (!user?.employee) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    const managerEmployee = user.employee;
+    const okReport = employee.reportsToEmployeeId === managerEmployee.id;
+    const okBranch = employee.branchId === managerEmployee.branchId && parsed.data.branchId === managerEmployee.branchId;
+    const okChecklistBranch = !checklist.branchId || checklist.branchId === managerEmployee.branchId;
+    if (!okReport || !okBranch || !okChecklistBranch) {
+      return Response.json({ error: 'Managers can only assign branch checklists to direct reports in the same branch' }, { status: 403 });
+    }
+  }
 
   const assignment = await prisma.checklistAssignment.create({
     data: {

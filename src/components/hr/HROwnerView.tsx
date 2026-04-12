@@ -10,7 +10,7 @@ import { AdvancesList } from './AdvancesList';
 import { SalarySection } from './SalarySection';
 import { DepartmentSection } from './DepartmentSection';
 import { LeaveRequestsSection } from './LeaveRequestsSection';
-import { SectionJumpNav } from '@/components/SectionJumpNav';
+import { ManagerAssignmentsSection } from './ManagerAssignmentsSection';
 
 type EmployeeWithRelations = Employee & { branch: Branch; department?: Department | null; user: { email: string } | null };
 type AdvanceWithEmployee = Advance & { employee: Employee & { branch: { name: string } } };
@@ -95,27 +95,17 @@ export function HROwnerView({
     setAdvances((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
   }
 
-  const sectionClass =
-    'rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-6 scroll-mt-28 app-animate-in app-surface';
-
-  const ownerNavItems = [
-    { id: 'hr-owner-staff', label: t.hr.staff },
-    { id: 'hr-owner-departments', label: t.hr.departments },
-    { id: 'hr-owner-leave', label: t.hr.leaveRequests },
-    { id: 'hr-owner-advances', label: t.hr.advances },
-    { id: 'hr-owner-salary', label: t.hr.salarySection },
-  ];
+  const sectionClass = 'app-section scroll-mt-28';
 
   return (
-    <div className="space-y-6 min-w-0 app-stagger">
-      <SectionJumpNav items={ownerNavItems} />
+    <div className="app-page">
       <section id="hr-owner-staff" className={sectionClass}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-app-primary">{t.hr.staff}</h2>
           <button
             type="button"
             onClick={() => setShowRegister(true)}
-            className="rounded-ios bg-ios-blue text-white px-4 py-2.5 text-sm font-medium active:opacity-90"
+            className="app-btn-primary"
           >
             {t.hr.registerStaff}
           </button>
@@ -129,12 +119,12 @@ export function HROwnerView({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t.hr.searchStaff}
-            className="flex-1 min-w-0 rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2 text-sm focus:border-ios-blue focus:ring-2 focus:ring-ios-blue/20"
+            className="app-input flex-1 min-w-0"
           />
           <select
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
-            className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2 text-sm min-w-[140px]"
+            className="app-select min-w-[140px]"
           >
             <option value="">{t.qc.allBranches}</option>
             {branches.map((b) => (
@@ -223,6 +213,11 @@ export function HROwnerView({
       <section id="hr-owner-departments" className={sectionClass}>
         <h2 className="text-lg font-semibold text-app-primary mb-4">{t.hr.departments}</h2>
         <DepartmentSection initialDepartments={departments} onDepartmentsChange={setDepartmentsList} />
+      </section>
+
+      <section id="hr-owner-manager-assignments" className={sectionClass}>
+        <h2 className="text-lg font-semibold text-app-primary mb-4">{t.hr.assignToManager}</h2>
+        <ManagerAssignmentsSection employees={employees} onEmployeeUpdated={onEmployeeUpdated} />
       </section>
 
       <section id="hr-owner-leave" className={sectionClass}>

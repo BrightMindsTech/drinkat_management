@@ -1,6 +1,11 @@
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
-initOpenNextCloudflareForDev();
+// Only wire Wrangler/miniflare/workerd for `next dev`. `next build` runs with NODE_ENV=production
+// and should not load platform-specific workerd binaries (avoids mismatches when node_modules
+// was copied across OS/arch or CI environments).
+if (process.env.NODE_ENV === "development") {
+  initOpenNextCloudflareForDev();
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

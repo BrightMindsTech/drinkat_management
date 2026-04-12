@@ -1,6 +1,8 @@
-// WASM client: OpenNext bundles the server with Node resolution; `@prisma/client` pulls index.js + native
-// .so.node, which is not shipped correctly to Workers. `@prisma/client/wasm` matches Cloudflare + D1.
-import { PrismaClient } from '@prisma/client/wasm';
+// Local Node dev must use `@prisma/client` (native query engine). `@prisma/client/wasm` fails to
+// initialize in Node (401 on login). Cloudflare Workers + D1 still use WASM + adapter — load wasm
+// only when `env.DB` is present so the wasm bundle is never executed locally.
+import { PrismaClient as PrismaClientNode } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import { PrismaD1 } from '@prisma/adapter-d1';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
@@ -12,38 +14,48 @@ function isCloudflareWorkerRuntime(): boolean {
   return typeof g.navigator !== 'undefined' && typeof g.document === 'undefined';
 }
 
+/** OpenNext dev may polyfill `navigator` — use Node’s version string to pick the native Prisma engine. */
+function isNodeJsRuntime(): boolean {
+  return typeof process !== 'undefined' && typeof process.versions?.node === 'string';
+}
+
 function createPrismaClient(): PrismaClient {
-  // On Cloudflare Workers, always prefer the D1 binding over DATABASE_URL.
+  const url = process.env.DATABASE_URL ?? '';
+
+  // Local `next dev` uses SQLite `file:` — native engine only. Do not use `!isCloudflareWorkerRuntime()`
+  // here: OpenNext can polyfill `navigator` and wrongly look like a Worker while still running Node.
+  if (url.startsWith('file:') && isNodeJsRuntime()) {
+    return new PrismaClientNode();
+  }
+
+  // Deployed Worker: D1 + WASM (bundled `file:` DATABASE_URL is not real D1 data — ignore it).
   try {
     const { env } = getCloudflareContext({ async: false });
     const d1 = env.DB;
-    if (d1) {
-      return new PrismaClient({ adapter: new PrismaD1(d1) });
+    if (d1 && isCloudflareWorkerRuntime()) {
+      const { PrismaClient: PrismaWasm } =
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('@prisma/client/wasm') as typeof import('@prisma/client');
+      return new PrismaWasm({ adapter: new PrismaD1(d1) }) as PrismaClient;
     }
-    // In a Worker but D1 is not bound — do not fall back to file/SQLite (would break auth and everything else).
-    throw new Error(
-      'D1 binding "DB" is missing. Add d1_databases in wrangler.jsonc and attach the database to this Worker.'
-    );
+    if (!d1 && isCloudflareWorkerRuntime()) {
+      throw new Error(
+        'D1 binding "DB" is missing. Add d1_databases in wrangler.jsonc and attach the database to this Worker.'
+      );
+    }
   } catch (e) {
     if (e instanceof Error && e.message.startsWith('D1 binding')) {
       throw e;
     }
-    // Not in a Worker request (e.g. next build, local Node without proxy)
   }
 
-  const url = process.env.DATABASE_URL ?? '';
-  // OpenNext bundles DATABASE_URL=file:./dev.db for production (see .open-next/cloudflare/next-env.mjs).
-  // That path is not your D1 data on Workers — using it yields an empty DB and 401 on login.
   if (url.startsWith('file:')) {
-    if (isCloudflareWorkerRuntime()) {
-      throw new Error(
-        'Prisma would use bundled file DATABASE_URL on Cloudflare instead of D1. env.DB was not available from getCloudflareContext({ async: false }).'
-      );
-    }
-    return new PrismaClient();
+    throw new Error(
+      'Prisma would use bundled file DATABASE_URL on Cloudflare instead of D1. env.DB was not available from getCloudflareContext({ async: false }).'
+    );
   }
   if (url) {
-    return new PrismaClient();
+    return new PrismaClientNode();
   }
   throw new Error(
     'Database not configured: set DATABASE_URL to a file: URL for local dev, or deploy with D1 binding "DB".'

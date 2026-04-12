@@ -28,6 +28,7 @@ const SIDEBAR_SECTIONS = [
   { id: 'advances', labelKey: 'advancesSection' as const },
   { id: 'qc', labelKey: 'qcSection' as const },
   { id: 'forms', labelKey: 'formsSection' as const },
+  { id: 'manager-reports', labelKey: 'managerReportsSection' as const },
   { id: 'activity', labelKey: 'activitySection' as const },
   { id: 'salary', labelKey: 'salarySection' as const },
   { id: 'export', labelKey: 'exportCsv' as const },
@@ -57,6 +58,8 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   const [salaryMonth, setSalaryMonth] = useState(currentMonth);
   const [activeSection, setActiveSection] = useState('branch-overview');
   const [qcLogsMinimized, setQcLogsMinimized] = useState(false);
+  const [qcArchiveFrom, setQcArchiveFrom] = useState('');
+  const [qcArchiveTo, setQcArchiveTo] = useState('');
 
 
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +115,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         checklistName: string;
         employee: { name: string };
         branch: { name: string };
+        photos: { id: string; filePath: string }[];
       }[];
       ratingDistribution: Record<number, number>;
       trend: { date: string; total: number; approved: number }[];
@@ -125,16 +129,28 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     };
     forms: {
       total: number;
+      filed: number;
       approved: number;
       denied: number;
-      pending: number;
       averageRating: number | null;
-      byTemplate: { templateId: string; title: string; category: string; total: number; approved: number; denied: number; pending: number }[];
+      byTemplate: { templateId: string; title: string; category: string; total: number; filed: number; approved: number; denied: number }[];
       byBranch: Record<string, number>;
       byCategory: Record<string, number>;
-      trend: { date: string; total: number; approved: number }[];
+      trend: { date: string; total: number; approved: number; filed: number }[];
       recent: { id: string; status: string; submittedAt: string; employee: { name: string }; branch: { name: string }; template: { title: string; category: string } }[];
     };
+    managerReports: {
+      managerId: string;
+      managerName: string;
+      branchId: string;
+      branchName: string;
+      teamSize: number;
+      qc: { total: number; approved: number; denied: number; pending: number };
+      forms: { total: number; filed: number; approved: number; denied: number; pending: number };
+      advances: { total: number; approved: number; denied: number; pending: number };
+      leave: { total: number; approved: number; denied: number; pending: number };
+      overall: { total: number; approved: number; denied: number; pending: number };
+    }[];
     activity: {
       transfers: { total: number; recent: { id: string; transferredAt: string; employee: { name: string }; fromBranch: { name: string }; toBranch: { name: string } }[] };
       reviews: { total: number; averageRating: number | null; recent: { id: string; reviewedAt: string; rating: number; employee: { name: string; branch: { name: string } } }[] };
@@ -183,6 +199,37 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   useEffect(() => {
     if (!salaryMonth && monthOptions.length) setSalaryMonth(monthOptions[0].value);
   }, [monthOptions]);
+
+  // Must run every render (before any early return) — hooks cannot follow conditional returns.
+  const qcArchiveRows = useMemo(() => {
+    const logs = data?.qc?.logs ?? [];
+    const from = qcArchiveFrom ? new Date(`${qcArchiveFrom}T00:00:00`) : null;
+    const to = qcArchiveTo ? new Date(`${qcArchiveTo}T23:59:59.999`) : null;
+    return logs
+      .filter((row) => {
+        const d = new Date(row.submittedAt);
+        if (Number.isNaN(d.getTime())) return false;
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  }, [data, qcArchiveFrom, qcArchiveTo]);
+
+  const qcArchiveByMonth = useMemo(
+    () =>
+      qcArchiveRows.reduce(
+        (acc, row) => {
+          const d = new Date(row.submittedAt);
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(row);
+          return acc;
+        },
+        {} as Record<string, typeof qcArchiveRows>
+      ),
+    [qcArchiveRows]
+  );
 
   if (loading && !data && !error) return <p className="text-app-muted py-8">{t.common.loading}</p>;
   if (error) return <p className="text-red-600 dark:text-red-400 py-8">{error}</p>;
@@ -282,8 +329,24 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   }
 
+  function downloadCsvFile(filename: string, csv: string) {
+    // UTF-8 BOM improves Excel/Numbers Arabic+English CSV rendering.
+    const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Safari/WKWebView can fail if revoked synchronously.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
   function exportSalaryCsv() {
     const rows = data!.salary.rows;
+    if (!rows.length) return;
     const header = [t.reports.month, t.common.employee, t.common.branch, t.salary.salary, t.salary.deduction, t.salary.net]
       .map(toCsvCell)
       .join(',');
@@ -305,17 +368,12 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       )
     );
     const csv = [header, ...bodyLines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `salary-${data!.salary.periodMonth}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvFile(`salary-${data!.salary.periodMonth}.csv`, csv);
   }
 
   function exportAdvancesCsv() {
     const list = data!.hr.advancesList ?? [];
+    if (!list.length) return;
     const header = [t.reports.month, t.common.employee, t.common.branch, t.advances.amountJod, t.common.status, t.common.date]
       .map(toCsvCell)
       .join(',');
@@ -347,32 +405,27 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       )
     );
     const csv = [header, ...bodyLines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `advances-${data!.salary.periodMonth}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvFile(`advances-${data!.salary.periodMonth}.csv`, csv);
   }
 
   function exportFormsCsv() {
     const list = data!.forms.recent ?? [];
-    const header = [t.common.employee, t.common.branch, t.forms.createFormName, t.common.status, t.common.date].join(',');
+    if (!list.length) return;
+    const header = [t.common.employee, t.common.branch, t.forms.createFormName, t.common.status, t.common.date]
+      .map(toCsvCell)
+      .join(',');
     const body = list
-      .map((s) => [s.employee.name, s.branch?.name ?? '—', s.template.title, s.status, new Date(s.submittedAt).toLocaleDateString()].join(','))
+      .map((s) =>
+        [s.employee.name, s.branch?.name ?? '—', s.template.title, s.status, new Date(s.submittedAt).toLocaleDateString()]
+          .map(toCsvCell)
+          .join(',')
+      )
       .join('\n');
     const csv = header + '\n' + body;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `forms-${data!.salary.periodMonth}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvFile(`forms-${data!.salary.periodMonth}.csv`, csv);
   }
 
-  const reportCardClass = 'rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-6 shadow-sm app-animate-in app-surface';
+  const reportCardClass = 'app-section';
   const sectionTitleClass = 'text-xl font-semibold text-app-primary mb-2';
   const labelClass = 'text-sm font-medium text-app-secondary';
 
@@ -895,6 +948,76 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               )}
             </div>
           ) : null}
+
+          <div className="mt-4 rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <p className="text-sm font-medium text-app-secondary">{t.reports.qcArchiveTitle}</p>
+              <span className="text-xs rounded-full px-2 py-0.5 bg-ios-blue/10 text-ios-blue font-semibold">
+                {qcArchiveRows.length}
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 mb-4">
+              <label className="text-sm text-app-label">
+                {t.reports.fromDate}
+                <input
+                  type="date"
+                  value={qcArchiveFrom}
+                  onChange={(e) => setQcArchiveFrom(e.target.value)}
+                  className="app-input mt-1.5"
+                />
+              </label>
+              <label className="text-sm text-app-label">
+                {t.reports.toDate}
+                <input
+                  type="date"
+                  value={qcArchiveTo}
+                  onChange={(e) => setQcArchiveTo(e.target.value)}
+                  className="app-input mt-1.5"
+                />
+              </label>
+            </div>
+
+            {qcArchiveRows.length === 0 ? (
+              <p className="text-sm text-app-muted">{t.common.noData}</p>
+            ) : (
+              <div className="space-y-5">
+                {Object.entries(qcArchiveByMonth)
+                  .sort(([a], [b]) => b.localeCompare(a))
+                  .map(([monthKey, rows]) => (
+                    <div key={monthKey}>
+                      <h4 className="text-sm font-semibold text-app-primary mb-2">
+                        {new Date(`${monthKey}-01`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                      </h4>
+                      <ul className="space-y-2">
+                        {rows.map((row) => (
+                          <li key={row.id} className="rounded-ios border border-gray-200 dark:border-ios-dark-separator p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-app-primary">
+                                {row.employee.name} - {row.checklistName}
+                              </p>
+                              <span className="text-xs text-app-muted">{new Date(row.submittedAt).toLocaleString()}</span>
+                            </div>
+                            <p className="text-xs text-app-secondary mt-1">
+                              {row.branch.name} - {row.status}
+                              {row.rating != null ? ` - ${t.qc.rating}: ${row.rating}/5` : ''}
+                            </p>
+                            {row.photos?.length ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {row.photos.map((photo) => (
+                                  <a key={photo.id} href={photo.filePath} target="_blank" rel="noopener noreferrer">
+                                    <img src={photo.filePath} alt="QC archive" className="h-16 w-16 rounded border border-gray-200 dark:border-ios-dark-separator object-cover" />
+                                  </a>
+                                ))}
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Forms Section */}
@@ -906,13 +1029,13 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               <p className="text-xs text-ios-blue">{t.common.total}</p>
               <p className="text-2xl font-semibold text-app-primary">{data.forms.total}</p>
             </div>
+            <div className="rounded-lg border border-amber-300/60 dark:border-amber-700/40 bg-amber-50/60 dark:bg-amber-900/20 p-4">
+              <p className="text-xs text-amber-700 dark:text-amber-300">{t.reports.formsFiled}</p>
+              <p className="text-2xl font-semibold text-app-primary">{data.forms.filed}</p>
+            </div>
             <div className="rounded-lg border border-emerald-300/60 dark:border-emerald-700/40 bg-emerald-50/60 dark:bg-emerald-900/20 p-4">
               <p className="text-xs text-emerald-700 dark:text-emerald-300">{t.status.approved}</p>
               <p className="text-2xl font-semibold text-app-primary">{data.forms.approved}</p>
-            </div>
-            <div className="rounded-lg border border-amber-300/60 dark:border-amber-700/40 bg-amber-50/60 dark:bg-amber-900/20 p-4">
-              <p className="text-xs text-amber-700 dark:text-amber-300">{t.status.pending}</p>
-              <p className="text-2xl font-semibold text-app-primary">{data.forms.pending}</p>
             </div>
             <div className="rounded-lg border border-red-300/60 dark:border-red-700/40 bg-red-50/60 dark:bg-red-900/20 p-4">
               <p className="text-xs text-red-700 dark:text-red-300">{t.status.denied}</p>
@@ -923,7 +1046,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
             <div className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4">
               <p className="text-sm font-medium text-app-secondary mb-2">{t.reports.formsStatus}</p>
               <p className="text-sm text-app-primary font-semibold">
-                {t.common.total}: {data.forms.total} | {t.status.approved}: {data.forms.approved} | {t.status.denied}: {data.forms.denied} | {t.status.pending}: {data.forms.pending}
+                {t.common.total}: {data.forms.total} | {t.reports.formsFiled}: {data.forms.filed} | {t.status.approved}: {data.forms.approved} | {t.status.denied}: {data.forms.denied}
               </p>
               {data.forms.averageRating != null && (
                 <p className="text-sm text-app-secondary mt-1">{t.reports.avgRating} {data.forms.averageRating.toFixed(1)}</p>
@@ -972,6 +1095,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                   <YAxis allowDecimals={false} tick={chartTick} axisLine={chartAxisLine} tickLine={false} />
                   <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartTooltipLabelStyle} labelFormatter={formatDateTick} />
                   <Line type="monotone" dataKey="total" stroke="#5856D6" strokeWidth={2.5} dot={{ r: 2 }} activeDot={{ r: 5 }} name={t.common.total} />
+                  <Line type="monotone" dataKey="filed" stroke="#FF9500" strokeWidth={2.5} dot={{ r: 2 }} activeDot={{ r: 5 }} name={t.reports.formsFiled} />
                   <Line type="monotone" dataKey="approved" stroke="#34C759" strokeWidth={2.5} dot={{ r: 2 }} activeDot={{ r: 5 }} name={t.status.approved} />
                 </LineChart>
               </ResponsiveContainer>
@@ -986,9 +1110,9 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                     <th className="text-left p-2">{t.forms.createFormName}</th>
                     <th className="text-left p-2">{t.forms.createFormCategory}</th>
                     <th className="text-right p-2">{t.common.total}</th>
+                    <th className="text-right p-2">{t.reports.formsFiled}</th>
                     <th className="text-right p-2">{t.status.approved}</th>
                     <th className="text-right p-2">{t.status.denied}</th>
-                    <th className="text-right p-2">{t.status.pending}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -997,9 +1121,9 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                       <td className="p-2">{row.title}</td>
                       <td className="p-2">{row.category}</td>
                       <td className="p-2 text-right">{row.total}</td>
+                      <td className="p-2 text-right">{row.filed}</td>
                       <td className="p-2 text-right">{row.approved}</td>
                       <td className="p-2 text-right">{row.denied}</td>
-                      <td className="p-2 text-right">{row.pending}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1035,6 +1159,81 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               </table>
             </div>
           ) : null}
+        </section>
+
+        {/* Manager Reports Section */}
+        <section id="manager-reports" className={`scroll-mt-6 ${reportCardClass}`}>
+          <h2 className={sectionTitleClass}>{t.reports.managerReportsSection}</h2>
+          <p className="text-sm text-app-muted mb-6">{t.reports.managerReportsOverview}</p>
+          {!data.managerReports?.length ? (
+            <p className="text-app-muted text-sm">{t.common.noData}</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {data.managerReports.map((m) => {
+                const approvalRate = m.overall.total > 0 ? Math.round((m.overall.approved / m.overall.total) * 100) : 0;
+                return (
+                  <article
+                    key={m.managerId}
+                    className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 sm:p-5 shadow-sm dark:shadow-none"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-semibold text-app-primary">{m.managerName}</h3>
+                        <p className="text-sm text-app-secondary">{m.branchName}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-app-muted">{t.reports.teamSize}</p>
+                        <p className="text-xl font-semibold text-app-primary">{m.teamSize}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
+                        <p className="text-xs text-app-muted">{t.reports.qcSection}</p>
+                        <p className="text-sm font-semibold text-app-primary">{m.qc.approved}/{m.qc.total}</p>
+                      </div>
+                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
+                        <p className="text-xs text-app-muted">{t.reports.formsSection}</p>
+                        <p className="text-sm font-semibold text-app-primary">{m.forms.total}</p>
+                        <p className="text-xs text-app-muted">
+                          {t.reports.formsFiled}: {m.forms.filed}
+                        </p>
+                      </div>
+                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
+                        <p className="text-xs text-app-muted">{t.reports.advancesSection}</p>
+                        <p className="text-sm font-semibold text-app-primary">{m.advances.approved}/{m.advances.total}</p>
+                      </div>
+                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
+                        <p className="text-xs text-app-muted">{t.reports.leaveSection}</p>
+                        <p className="text-sm font-semibold text-app-primary">{m.leave.approved}/{m.leave.total}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-ios border border-gray-200 dark:border-ios-dark-separator p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-app-secondary">{t.common.total}</p>
+                        <p className="text-sm font-semibold text-app-primary">{m.overall.approved}/{m.overall.total}</p>
+                      </div>
+                      <div className="mt-2 h-2 rounded-full bg-gray-200 dark:bg-ios-dark-elevated-2 overflow-hidden">
+                        <div className="h-full bg-ios-blue" style={{ width: `${approvalRate}%` }} />
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-100 px-2 py-0.5">
+                          {t.status.approved}: {m.overall.approved}
+                        </span>
+                        <span className="rounded-full bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-100 px-2 py-0.5">
+                          {t.status.denied}: {m.overall.denied}
+                        </span>
+                        <span className="rounded-full bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100 px-2 py-0.5">
+                          {t.status.pending}: {m.overall.pending}
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {/* Activity Section */}

@@ -4,14 +4,18 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { HROwnerView } from '@/components/hr/HROwnerView';
 import { HRStaffView } from '@/components/hr/HRStaffView';
+import { HRManagerView } from '@/components/hr/HRManagerView';
 import { HRPageTitle } from '@/components/HRPageTitle';
 import { NoEmployeeMessage } from '@/components/NoEmployeeMessage';
+import { normalizeUserRole } from '@/lib/formVisibility';
 
 export default async function HRPage() {
   const session = await getServerSession(authOptions);
   if (!session) redirect('/login');
 
-  if (session.user.role === 'owner') {
+  const role = normalizeUserRole(session.user.role);
+
+  if (role === 'owner') {
     const [employees, advances, branches, departments, leaveRequests] = await Promise.all([
       prisma.employee.findMany({
         where: { status: { not: 'terminated' } },
@@ -39,6 +43,84 @@ export default async function HRPage() {
       <div>
         <HRPageTitle variant="owner" />
         <HROwnerView initialEmployees={employees} initialAdvances={advances} initialLeaveRequests={leaveRequests} branches={branches} departments={departments} />
+      </div>
+    );
+  }
+
+  if (role === 'manager') {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      include: { employee: { include: { branch: true } } },
+    });
+    if (!user?.employee) {
+      return (
+        <div>
+          <HRPageTitle variant="owner" />
+          <NoEmployeeMessage type="hr" />
+        </div>
+      );
+    }
+
+    const managerEmployee = user.employee;
+    const [teamAdvances, myAdvances, leaveRequests, teamEmployees, branches] = await Promise.all([
+      prisma.advance.findMany({
+        where: {
+          employee: { reportsToEmployeeId: managerEmployee.id, branchId: managerEmployee.branchId },
+        },
+        include: { employee: { include: { branch: true } } },
+        orderBy: { requestedAt: 'desc' },
+      }),
+      prisma.advance.findMany({
+        where: { employeeId: managerEmployee.id },
+        include: { employee: { include: { branch: true } } },
+        orderBy: { requestedAt: 'desc' },
+      }),
+      prisma.leaveRequest.findMany({
+        where: {
+          employee: { reportsToEmployeeId: managerEmployee.id, branchId: managerEmployee.branchId },
+        },
+        include: { employee: { include: { branch: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.employee.findMany({
+        where: {
+          reportsToEmployeeId: managerEmployee.id,
+          branchId: managerEmployee.branchId,
+          status: { in: ['active', 'on_leave'] },
+        },
+        include: { branch: true },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.branch.findMany({ where: { id: managerEmployee.branchId } }),
+    ]);
+
+    const teamIds = teamEmployees.map((e) => e.id);
+    const teamReviews =
+      teamIds.length === 0
+        ? []
+        : await prisma.performanceReview.findMany({
+            where: { employeeId: { in: teamIds } },
+            orderBy: { reviewedAt: 'desc' },
+          });
+
+    const reviewsByEmployeeId = teamReviews.reduce<Record<string, typeof teamReviews>>((acc, r) => {
+      if (!acc[r.employeeId]) acc[r.employeeId] = [];
+      acc[r.employeeId].push(r);
+      return acc;
+    }, {});
+
+    return (
+      <div>
+        <HRPageTitle variant="owner" />
+        <HRManagerView
+          manager={managerEmployee}
+          teamEmployees={teamEmployees}
+          reviewsByEmployeeId={reviewsByEmployeeId}
+          initialTeamAdvances={teamAdvances}
+          initialMyAdvances={myAdvances}
+          initialLeaveRequests={leaveRequests}
+          branches={branches}
+        />
       </div>
     );
   }

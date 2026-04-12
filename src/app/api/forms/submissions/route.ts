@@ -10,8 +10,6 @@ const createSchema = z.object({
   answers: z.record(z.unknown()),
 });
 
-const REVIEW_CATEGORIES = ['qc', 'marketing', 'kitchen', 'cash'] as const;
-
 export async function GET(req: NextRequest) {
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
@@ -42,15 +40,41 @@ export async function GET(req: NextRequest) {
   }
 
   if (role === 'qc') {
-    const where: { template: { category: { in: string[] } }; branchId?: string } = {
-      template: { category: { in: [...REVIEW_CATEGORIES] } },
-    };
+    const where: { branchId?: string } = {};
     if (branchId) where.branchId = branchId;
     const list = await prisma.managementFormSubmission.findMany({
       where,
       include: {
         template: true,
         employee: { include: { branch: true, department: true } },
+        branch: true,
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+    return Response.json(
+      list.map((s) => ({
+        ...s,
+        answers: JSON.parse(s.answersJson) as Record<string, string>,
+        template: { ...s.template, fields: JSON.parse(s.template.fieldsJson) },
+      }))
+    );
+  }
+
+  if (role === 'manager') {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      include: { employee: true },
+    });
+    if (!user?.employee) return Response.json([]);
+    const mgr = user.employee;
+    const list = await prisma.managementFormSubmission.findMany({
+      where: {
+        branchId: mgr.branchId,
+        employee: { reportsToEmployeeId: mgr.id, branchId: mgr.branchId },
+      },
+      include: {
+        template: true,
+        employee: { include: { branch: true, department: true, reportsToEmployee: { select: { id: true, name: true } } } },
         branch: true,
       },
       orderBy: { submittedAt: 'desc' },
@@ -97,6 +121,7 @@ export async function POST(req: NextRequest) {
   if (!user?.employee) {
     return Response.json({ error: 'No employee record' }, { status: 403 });
   }
+  const emp = user.employee;
 
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
@@ -104,7 +129,7 @@ export async function POST(req: NextRequest) {
 
   const template = await prisma.managementFormTemplate.findUnique({
     where: { id: parsed.data.templateId },
-    include: { departmentAssignments: true },
+    include: { departmentAssignments: true, employeeAssignments: true },
   });
   if (!template || !template.active) {
     return Response.json({ error: 'Template not found' }, { status: 404 });
@@ -112,11 +137,12 @@ export async function POST(req: NextRequest) {
 
   const ctx: FormViewContext = {
     userRole: normalizeUserRole(session.user.role),
-    employeeDepartmentId: user.employee.departmentId,
-    employeeDepartmentName: user.employee.department?.name ?? null,
+    employeeDepartmentId: emp.departmentId,
+    employeeDepartmentName: emp.department?.name ?? null,
   };
 
-  if (!canFillManagementForm(ctx, template)) {
+  const explicitlyAssigned = template.employeeAssignments.some((a) => a.employeeId === emp.id);
+  if (!explicitlyAssigned && !canFillManagementForm(ctx, template)) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -138,9 +164,10 @@ export async function POST(req: NextRequest) {
   const submission = await prisma.managementFormSubmission.create({
     data: {
       templateId: template.id,
-      employeeId: user.employee.id,
-      branchId: user.employee.branchId,
+      employeeId: emp.id,
+      branchId: emp.branchId,
       answersJson: JSON.stringify(answersNorm),
+      status: 'submitted',
     },
     include: {
       template: true,

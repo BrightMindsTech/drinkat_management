@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Checklist, ChecklistItem, ChecklistAssignment, Employee, Branch, Department, QcSubmission, SubmissionPhoto } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
-import { SectionJumpNav } from '@/components/SectionJumpNav';
 
 type ChecklistWithItems = Checklist & { branch: Branch | null; items: ChecklistItem[] };
 type AssignmentWithRelations = ChecklistAssignment & {
@@ -37,6 +36,8 @@ export function QCReviewView({
   const [showNewChecklist, setShowNewChecklist] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const [editingChecklistId, setEditingChecklistId] = useState<string | null>(null);
+  const [historyFrom, setHistoryFrom] = useState('');
+  const [historyTo, setHistoryTo] = useState('');
 
   async function createChecklist(name: string, branchId: string | null, repeatsDaily: boolean, deadlineTime: string, items: { title: string }[]) {
     const res = await fetch('/api/checklists', {
@@ -132,26 +133,45 @@ export function QCReviewView({
   }
 
   const pending = submissions.filter((s) => s.status === 'pending');
+  const historyRows = useMemo(() => {
+    const from = historyFrom ? new Date(`${historyFrom}T00:00:00`) : null;
+    const to = historyTo ? new Date(`${historyTo}T23:59:59.999`) : null;
+    return submissions
+      .filter((s) => s.status !== 'pending')
+      .filter((s) => {
+        const d = new Date(s.submittedAt);
+        if (Number.isNaN(d.getTime())) return false;
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  }, [submissions, historyFrom, historyTo]);
 
-  const sectionClass =
-    'rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-6 scroll-mt-28 app-animate-in app-surface';
+  const historyByMonth = useMemo(() => {
+    return historyRows.reduce(
+      (acc, row) => {
+        const d = new Date(row.submittedAt);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(row);
+        return acc;
+      },
+      {} as Record<string, SubmissionWithRelations[]>
+    );
+  }, [historyRows]);
 
-  const qcReviewNavItems = [
-    { id: 'qc-review-checklists', label: t.qc.checklists },
-    { id: 'qc-review-assignments', label: t.qc.assignments },
-    { id: 'qc-review-submissions', label: t.qc.submissionsToReview },
-  ];
+  const sectionClass = 'app-section scroll-mt-28';
 
   return (
-    <div className="space-y-6 app-stagger">
-      <SectionJumpNav items={qcReviewNavItems} />
+    <div className="app-page">
       <section id="qc-review-checklists" className={sectionClass}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-app-primary">{t.qc.checklists}</h2>
           <button
             type="button"
             onClick={() => setShowNewChecklist(true)}
-            className="rounded-ios bg-ios-blue text-white px-4 py-2.5 text-sm font-medium active:opacity-90"
+            className="app-btn-primary"
           >
             {t.qc.newChecklist}
           </button>
@@ -221,7 +241,7 @@ export function QCReviewView({
           <button
             type="button"
             onClick={() => setShowAssign(true)}
-            className="rounded-lg border border-gray-200 dark:border-ios-dark-separator px-4 py-2 text-sm font-medium text-app-primary"
+            className="app-btn-secondary"
           >
             {t.qc.assignChecklist}
           </button>
@@ -237,10 +257,10 @@ export function QCReviewView({
         {assignments.length === 0 ? (
           <p className="text-sm text-app-muted">{t.common.noData}</p>
         ) : (
-          <div className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="app-table-wrap">
+            <table className="app-table">
               <thead>
-                <tr className="bg-gray-100 dark:bg-ios-dark-elevated-2/50">
+                <tr className="app-table-head">
                   <th className="text-left p-2">{t.common.checklist}</th>
                   <th className="text-left p-2">{t.common.employee}</th>
                   <th className="text-left p-2">{t.common.branch}</th>
@@ -315,6 +335,76 @@ export function QCReviewView({
             </li>
           ))}
         </ul>
+      </section>
+
+      <section id="qc-review-archive" className={sectionClass}>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="text-lg font-semibold text-app-primary">{t.qc.archiveTitle}</h2>
+          <span className="text-xs rounded-full px-2.5 py-1 bg-ios-blue/10 text-ios-blue font-semibold">
+            {interpolate(t.qc.archiveSubmissionsCount, { count: String(historyRows.length) })}
+          </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 mb-4">
+          <label className="text-sm text-app-label">
+            {t.qc.fromDate}
+            <input
+              type="date"
+              value={historyFrom}
+              onChange={(e) => setHistoryFrom(e.target.value)}
+              className="app-input mt-1.5"
+            />
+          </label>
+          <label className="text-sm text-app-label">
+            {t.qc.toDate}
+            <input
+              type="date"
+              value={historyTo}
+              onChange={(e) => setHistoryTo(e.target.value)}
+              className="app-input mt-1.5"
+            />
+          </label>
+        </div>
+
+        {historyRows.length === 0 ? (
+          <p className="text-sm text-app-muted">{t.common.noData}</p>
+        ) : (
+          <div className="space-y-5">
+            {Object.entries(historyByMonth)
+              .sort(([a], [b]) => b.localeCompare(a))
+              .map(([monthKey, rows]) => (
+                <div key={monthKey}>
+                  <h3 className="text-sm font-semibold text-app-secondary mb-2">
+                    {new Date(`${monthKey}-01`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                  </h3>
+                  <ul className="space-y-3">
+                    {rows.map((s) => (
+                      <li key={s.id} className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-app-primary">
+                            {s.employee.name} - {s.assignment.checklist.name}
+                          </p>
+                          <span className="text-xs text-app-muted">{new Date(s.submittedAt).toLocaleString()}</span>
+                        </div>
+                        <p className="text-xs text-app-secondary mt-1">
+                          {s.assignment.branch.name} - {s.status}
+                          {s.rating != null ? ` - ${t.qc.rating}: ${s.rating}/5` : ''}
+                        </p>
+                        {s.photos.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {s.photos.map((p) => (
+                              <a key={p.id} href={p.filePath} target="_blank" rel="noopener noreferrer">
+                                <img src={p.filePath} alt="QC archive" className="h-20 w-20 object-cover rounded border border-gray-200 dark:border-ios-dark-separator" />
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+          </div>
+        )}
       </section>
     </div>
   );
@@ -590,40 +680,54 @@ function ReviewForm({
   const [comments, setComments] = useState('');
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-3">
-      <label className="text-sm">
-        {t.qc.rating}
-        <select
-          value={rating}
-          onChange={(e) => setRating(Number(e.target.value))}
-          className="ml-1 rounded border px-1.5 py-0.5"
-        >
+    <div className="mt-4 rounded-xl border-2 border-ios-blue/25 bg-ios-blue/5 dark:bg-ios-blue/10 dark:border-ios-blue/40 p-4 space-y-4">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ios-blue mb-2">{t.qc.rating}</p>
+        <div className="flex flex-wrap gap-2">
           {[1, 2, 3, 4, 5].map((n) => (
-            <option key={n} value={n}>{n}</option>
+            <button
+              key={n}
+              type="button"
+              onClick={() => setRating(n)}
+              className={`min-w-[2.75rem] rounded-lg px-3 py-2 text-base font-bold tabular-nums transition-colors ${
+                rating === n
+                  ? 'bg-ios-blue text-white shadow-md ring-2 ring-ios-blue/40 ring-offset-2 ring-offset-white dark:ring-offset-ios-dark-elevated'
+                  : 'bg-white dark:bg-ios-dark-elevated border border-gray-200 dark:border-ios-dark-separator text-app-primary hover:border-ios-blue/50'
+              }`}
+            >
+              {n}
+            </button>
           ))}
-        </select>
+        </div>
+        <p className="mt-2 text-sm font-semibold text-app-primary">
+          {rating}/5
+        </p>
+      </div>
+      <label className="block text-sm text-app-label">
+        <span className="font-medium text-app-primary">{t.qc.commentsOptional}</span>
+        <input
+          type="text"
+          value={comments}
+          onChange={(e) => setComments(e.target.value)}
+          className="mt-1.5 w-full rounded-ios border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated px-3 py-2.5 text-sm text-app-primary"
+        />
       </label>
-      <input
-        type="text"
-        placeholder={t.qc.commentsOptional}
-        value={comments}
-        onChange={(e) => setComments(e.target.value)}
-        className="rounded border px-2 py-1 text-sm flex-1 min-w-[120px]"
-      />
-      <button
-        type="button"
-        onClick={() => onReview(submissionId, 'approved', rating, comments)}
-        className="rounded bg-green-600 text-white px-3 py-1 text-sm"
-      >
-        {t.common.approve}
-      </button>
-      <button
-        type="button"
-        onClick={() => onReview(submissionId, 'denied', rating, comments)}
-        className="rounded bg-red-600 text-white px-3 py-1 text-sm"
-      >
-        {t.common.deny}
-      </button>
+      <div className="flex flex-wrap gap-3 pt-1">
+        <button
+          type="button"
+          onClick={() => onReview(submissionId, 'approved', rating, comments)}
+          className="flex-1 min-w-[140px] rounded-ios bg-green-600 text-white px-4 py-3 text-sm font-semibold shadow-sm hover:bg-green-700 sm:flex-none"
+        >
+          {t.common.approve}
+        </button>
+        <button
+          type="button"
+          onClick={() => onReview(submissionId, 'denied', rating, comments)}
+          className="flex-1 min-w-[140px] rounded-ios bg-red-600 text-white px-4 py-3 text-sm font-semibold shadow-sm hover:bg-red-700 sm:flex-none"
+        >
+          {t.common.deny}
+        </button>
+      </div>
     </div>
   );
 }

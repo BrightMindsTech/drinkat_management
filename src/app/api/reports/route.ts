@@ -1,10 +1,12 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
+import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, format } from 'date-fns';
 
 export async function GET(req: NextRequest) {
   await requireOwner();
+  await runSalaryDistributionIfDue();
   const { searchParams } = new URL(req.url);
   const period = searchParams.get('period') ?? 'month';
   const branchId = searchParams.get('branchId') ?? '';
@@ -33,7 +35,22 @@ export async function GET(req: NextRequest) {
   const branchFilter = branchId ? { branchId } : {};
 
   const statusFilter = { status: { not: 'terminated' as const } };
-  const [employees, advances, submissions, salaryRows, newHires, headcountOverTime, branchOverview, leaveData, formSubmissions, transfers, reviews, documents] = await Promise.all([
+  const [
+    employees,
+    advances,
+    submissions,
+    salaryRows,
+    newHires,
+    headcountOverTime,
+    branchOverview,
+    leaveData,
+    leaveRequestsRaw,
+    formSubmissions,
+    transfers,
+    reviews,
+    documents,
+    managers,
+  ] = await Promise.all([
     prisma.employee.findMany({
       where: { ...branchFilter, ...statusFilter },
       select: { id: true, branchId: true, name: true, joinDate: true },
@@ -53,6 +70,7 @@ export async function GET(req: NextRequest) {
       include: {
         employee: { include: { branch: true } },
         assignment: { include: { checklist: true } },
+        photos: { select: { id: true, filePath: true } },
       },
     }),
     getSalaryDeductionRows(salaryMonthParam || undefined, branchId),
@@ -60,6 +78,14 @@ export async function GET(req: NextRequest) {
     getHeadcountOverTime(branchId),
     getBranchOverview(branchId, start, end),
     getLeaveReport(start, end, branchId),
+    prisma.leaveRequest.findMany({
+      where: {
+        startDate: { lte: end },
+        endDate: { gte: start },
+        ...(branchId ? { employee: { branchId } } : {}),
+      },
+      select: { id: true, employeeId: true, status: true },
+    }),
     prisma.managementFormSubmission.findMany({
       where: {
         submittedAt: { gte: start, lte: end },
@@ -99,6 +125,18 @@ export async function GET(req: NextRequest) {
       include: { employee: { select: { name: true, branch: { select: { name: true } } } } },
       orderBy: { createdAt: 'desc' },
       take: 100,
+    }),
+    prisma.employee.findMany({
+      where: {
+        role: 'manager',
+        status: { not: 'terminated' },
+        ...(branchId ? { branchId } : {}),
+      },
+      include: {
+        branch: { select: { name: true } },
+        directReports: { select: { id: true }, where: { status: { not: 'terminated' } } },
+      },
+      orderBy: { name: 'asc' },
     }),
   ]);
 
@@ -141,9 +179,9 @@ export async function GET(req: NextRequest) {
   const qcTrend = getQcTrend(submissions, start, end, period);
   const qcByChecklist = getQcByChecklist(submissions);
   const formsTotal = formSubmissions.length;
+  const formsFiled = formSubmissions.filter((s) => s.status === 'submitted' || s.status === 'pending').length;
   const formsApproved = formSubmissions.filter((s) => s.status === 'approved').length;
   const formsDenied = formSubmissions.filter((s) => s.status === 'denied').length;
-  const formsPending = formSubmissions.filter((s) => s.status === 'pending').length;
   const formsAverageRating =
     formSubmissions.filter((s) => s.rating != null).length > 0
       ? formSubmissions.filter((s) => s.rating != null).reduce((sum, s) => sum + (s.rating ?? 0), 0) /
@@ -158,17 +196,17 @@ export async function GET(req: NextRequest) {
           title: s.template.title,
           category: s.template.category,
           total: 0,
+          filed: 0,
           approved: 0,
           denied: 0,
-          pending: 0,
         };
       }
       acc[key].total += 1;
       if (s.status === 'approved') acc[key].approved += 1;
       else if (s.status === 'denied') acc[key].denied += 1;
-      else acc[key].pending += 1;
+      else acc[key].filed += 1;
       return acc;
-    }, {} as Record<string, { templateId: string; title: string; category: string; total: number; approved: number; denied: number; pending: number }>)
+    }, {} as Record<string, { templateId: string; title: string; category: string; total: number; filed: number; approved: number; denied: number }>)
   ).sort((a, b) => b.total - a.total);
   const formsByBranch = formSubmissions.reduce((acc, s) => {
     acc[s.branchId] = (acc[s.branchId] ?? 0) + 1;
@@ -193,7 +231,53 @@ export async function GET(req: NextRequest) {
       checklistName: s.assignment?.checklist?.name ?? '—',
       employee: { name: s.employee?.name ?? '—' },
       branch: { name: s.employee?.branch?.name ?? '—' },
+      photos: s.photos.map((p) => ({ id: p.id, filePath: p.filePath })),
     }));
+
+  const managerReports = managers.map((m) => {
+    const reportIds = new Set(m.directReports.map((r) => r.id));
+    const qcRows = submissions.filter((s) => reportIds.has(s.employeeId));
+    const formRows = formSubmissions.filter((s) => reportIds.has(s.employeeId));
+    const advanceRows = advances.filter((a) => reportIds.has(a.employeeId));
+    const leaveRows = leaveRequestsRaw.filter((l) => reportIds.has(l.employeeId));
+
+    const countStatuses = <T extends { status: string }>(rows: T[]) => ({
+      total: rows.length,
+      approved: rows.filter((r) => r.status === 'approved').length,
+      denied: rows.filter((r) => r.status === 'denied').length,
+      pending: rows.filter((r) => r.status === 'pending').length,
+    });
+
+    const qc = countStatuses(qcRows);
+    const forms = {
+      total: formRows.length,
+      filed: formRows.filter((s) => s.status === 'submitted' || s.status === 'pending').length,
+      approved: formRows.filter((s) => s.status === 'approved').length,
+      denied: formRows.filter((s) => s.status === 'denied').length,
+      pending: 0,
+    };
+    const advancesByManager = countStatuses(advanceRows);
+    const leave = countStatuses(leaveRows);
+    const overall = {
+      total: qc.total + forms.total + advancesByManager.total + leave.total,
+      approved: qc.approved + forms.approved + advancesByManager.approved + leave.approved,
+      denied: qc.denied + forms.denied + advancesByManager.denied + leave.denied,
+      pending: qc.pending + advancesByManager.pending + leave.pending,
+    };
+
+    return {
+      managerId: m.id,
+      managerName: m.name,
+      branchId: m.branchId,
+      branchName: m.branch.name,
+      teamSize: m.directReports.length,
+      qc,
+      forms,
+      advances: advancesByManager,
+      leave,
+      overall,
+    };
+  });
 
   return Response.json({
     period,
@@ -246,9 +330,9 @@ export async function GET(req: NextRequest) {
     branchOverview,
     forms: {
       total: formsTotal,
+      filed: formsFiled,
       approved: formsApproved,
       denied: formsDenied,
-      pending: formsPending,
       averageRating: formsAverageRating,
       byTemplate: formsByTemplate,
       byBranch: formsByBranch,
@@ -256,6 +340,7 @@ export async function GET(req: NextRequest) {
       trend: formsTrend,
       recent: formSubmissions.slice(0, 20),
     },
+    managerReports,
     activity: {
       transfers: {
         total: transfers.length,
@@ -280,10 +365,10 @@ function getFormsTrend(
   start: Date,
   end: Date
 ) {
-  const byDay = new Map<string, { total: number; approved: number }>();
+  const byDay = new Map<string, { total: number; approved: number; filed: number }>();
   let d = new Date(start);
   while (d <= end) {
-    byDay.set(format(d, 'yyyy-MM-dd'), { total: 0, approved: 0 });
+    byDay.set(format(d, 'yyyy-MM-dd'), { total: 0, approved: 0, filed: 0 });
     d.setDate(d.getDate() + 1);
   }
   for (const s of submissions) {
@@ -292,6 +377,7 @@ function getFormsTrend(
     if (cur) {
       cur.total++;
       if (s.status === 'approved') cur.approved++;
+      if (s.status === 'submitted' || s.status === 'pending') cur.filed++;
     }
   }
   return Array.from(byDay.entries())

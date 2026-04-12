@@ -22,7 +22,7 @@ export function PendingReviewNotice({ role }: { role: string }) {
   const [minimized, setMinimized] = useState(false);
 
   useEffect(() => {
-    if (role !== 'owner' && role !== 'qc' && role !== 'staff') return;
+    if (role !== 'owner' && role !== 'qc' && role !== 'staff' && role !== 'manager' && role !== 'marketing') return;
 
     let mounted = true;
     async function load() {
@@ -49,7 +49,7 @@ export function PendingReviewNotice({ role }: { role: string }) {
 
   if (!data || data.total === 0) return null;
 
-  const isStaff = role === 'staff';
+  const isStaff = role === 'staff' || role === 'marketing';
   const visibleItems = data.items.filter((item) => !removedIds.includes(item.id));
   if (visibleItems.length === 0) return null;
 
@@ -58,7 +58,7 @@ export function PendingReviewNotice({ role }: { role: string }) {
       <button
         type="button"
         onClick={() => setMinimized(false)}
-        className="fixed top-28 end-2 z-[90] rounded-ios border border-amber-300 dark:border-amber-500/40 bg-amber-100 dark:bg-amber-900/30 px-3 py-2 text-xs font-semibold text-amber-900 dark:text-amber-200 shadow-md app-animate-in"
+        className="fixed top-[calc(7rem+env(safe-area-inset-top))] end-2 z-[90] rounded-ios border border-amber-300 dark:border-amber-500/40 bg-amber-100 dark:bg-amber-900/30 px-3 py-2 text-xs font-semibold text-amber-900 dark:text-amber-200 shadow-md app-animate-in"
       >
         {visibleItems.length} {isStaff ? t.common.pendingSubmitTitle : t.common.pendingReviewTitle}
       </button>
@@ -75,7 +75,7 @@ export function PendingReviewNotice({ role }: { role: string }) {
   }
 
   return (
-    <div className="fixed top-24 end-4 z-[90] w-[min(92vw,420px)] rounded-ios-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-900/25 p-4 shadow-lg app-animate-in">
+    <div className="fixed top-[calc(6rem+env(safe-area-inset-top))] end-4 z-[90] w-[min(92vw,420px)] rounded-ios-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-900/25 p-4 shadow-lg app-animate-in">
       <div className="flex items-start justify-between gap-2">
         <div>
         <p className="font-semibold text-amber-900 dark:text-amber-200">

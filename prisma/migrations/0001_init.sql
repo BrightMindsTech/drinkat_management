@@ -45,9 +45,11 @@ CREATE TABLE "Employee" (
     "joinDate" DATETIME DEFAULT CURRENT_TIMESTAMP,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
+    "reportsToEmployeeId" TEXT,
     CONSTRAINT "Employee_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "Employee_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "Branch" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "Employee_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    CONSTRAINT "Employee_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "Employee_reportsToEmployeeId_fkey" FOREIGN KEY ("reportsToEmployeeId") REFERENCES "Employee" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -204,6 +206,16 @@ CREATE TABLE "ManagementFormTemplate" (
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "FormTemplateEmployee" (
+    "templateId" TEXT NOT NULL,
+    "employeeId" TEXT NOT NULL,
+
+    PRIMARY KEY ("templateId", "employeeId"),
+    CONSTRAINT "FormTemplateEmployee_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "ManagementFormTemplate" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "FormTemplateEmployee_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable

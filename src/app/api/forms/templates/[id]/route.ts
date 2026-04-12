@@ -13,6 +13,7 @@ const patchSchema = z.object({
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
   departmentIds: z.array(z.string()).optional(),
+  employeeIds: z.array(z.string()).optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -59,7 +60,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireOwner();
+  const session = await requireSession();
+  const role = normalizeUserRole(session.user.role);
+  if (role !== 'owner' && role !== 'manager') {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const { id } = await params;
   const existing = await prisma.managementFormTemplate.findUnique({ where: { id } });
   if (!existing) return Response.json({ error: 'Not found' }, { status: 404 });
@@ -67,6 +72,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
+
+  // Managers can only update employee assignments (not template structure/departments).
+  if (role === 'manager') {
+    const hasNonEmployeeChanges =
+      parsed.data.category !== undefined ||
+      parsed.data.title !== undefined ||
+      parsed.data.description !== undefined ||
+      parsed.data.fields !== undefined ||
+      parsed.data.active !== undefined ||
+      parsed.data.sortOrder !== undefined ||
+      parsed.data.departmentIds !== undefined;
+    if (hasNonEmployeeChanges) {
+      return Response.json({ error: 'Managers can only assign templates to employees' }, { status: 403 });
+    }
+  }
 
   let fieldsJson: string | undefined;
   if (parsed.data.fields !== undefined) {
@@ -92,10 +112,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(parsed.data.active !== undefined && { active: parsed.data.active }),
       ...(parsed.data.sortOrder !== undefined && { sortOrder: parsed.data.sortOrder }),
     },
-    include: { departmentAssignments: true },
+    include: { departmentAssignments: true, employeeAssignments: true },
   });
 
   if (parsed.data.departmentIds !== undefined) {
+    if (role !== 'owner') return Response.json({ error: 'Forbidden' }, { status: 403 });
     await prisma.formTemplateDepartment.deleteMany({ where: { templateId: id } });
     if (parsed.data.departmentIds.length > 0) {
       await prisma.formTemplateDepartment.createMany({
@@ -104,9 +125,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
+  if (parsed.data.employeeIds !== undefined) {
+    let allowedEmployeeIds = parsed.data.employeeIds;
+    if (role === 'manager') {
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        include: { employee: true },
+      });
+      if (!user?.employee) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      const managerEmployee = user.employee;
+      const validEmployees = await prisma.employee.findMany({
+        where: {
+          id: { in: parsed.data.employeeIds },
+          reportsToEmployeeId: managerEmployee.id,
+          branchId: managerEmployee.branchId,
+          status: { not: 'terminated' },
+        },
+        select: { id: true },
+      });
+      const validSet = new Set(validEmployees.map((e) => e.id));
+      if (validSet.size !== parsed.data.employeeIds.length) {
+        return Response.json({ error: 'Managers can only assign forms to direct reports in their branch' }, { status: 403 });
+      }
+      allowedEmployeeIds = parsed.data.employeeIds.filter((eid) => validSet.has(eid));
+    }
+
+    await prisma.formTemplateEmployee.deleteMany({ where: { templateId: id } });
+    if (allowedEmployeeIds.length > 0) {
+      await prisma.formTemplateEmployee.createMany({
+        data: allowedEmployeeIds.map((employeeId) => ({ templateId: id, employeeId })),
+      });
+    }
+  }
+
   const updated = await prisma.managementFormTemplate.findUniqueOrThrow({
     where: { id },
-    include: { departmentAssignments: true },
+    include: { departmentAssignments: true, employeeAssignments: true },
   });
 
   let fields: unknown;
@@ -119,6 +173,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     ...updated,
     fields,
     departmentIds: updated.departmentAssignments.map((a) => a.departmentId),
+    employeeIds: updated.employeeAssignments.map((a) => a.employeeId),
   });
 }
 

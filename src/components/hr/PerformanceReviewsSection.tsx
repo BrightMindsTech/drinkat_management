@@ -5,13 +5,67 @@ import { useLanguage } from '@/contexts/LanguageContext';
 
 type Review = { id: string; reviewedAt: string | Date; rating: number; notes: string | null };
 
+function StarPicker({
+  value,
+  onChange,
+  size = 'md',
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  size?: 'sm' | 'md';
+}) {
+  const { t } = useLanguage();
+  const dim = size === 'sm' ? 'h-4 w-4' : 'h-8 w-8';
+  return (
+    <div
+      className="flex flex-row items-center gap-0.5"
+      role="group"
+      aria-label={t.reviews.rating}
+    >
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => onChange(n)}
+          className="p-0.5 rounded-md touch-manipulation min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ios-blue"
+          aria-label={`${n} / 5`}
+          aria-pressed={n <= value}
+        >
+          <svg viewBox="0 0 24 24" className={dim} aria-hidden>
+            <path
+              d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+              className={n <= value ? 'fill-amber-400' : 'fill-gray-200 dark:fill-gray-600'}
+            />
+          </svg>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function StarsReadOnly({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md' }) {
+  const dim = size === 'sm' ? 'h-4 w-4' : 'h-5 w-5';
+  return (
+    <span className="inline-flex flex-row items-center gap-0.5 align-middle" aria-hidden>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <svg key={n} viewBox="0 0 24 24" className={dim}>
+          <path
+            d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+            className={n <= rating ? 'fill-amber-400' : 'fill-gray-200 dark:fill-gray-600'}
+          />
+        </svg>
+      ))}
+    </span>
+  );
+}
+
 export function PerformanceReviewsSection({
   employeeId,
-  ownerView,
+  canAddReviews,
   initialData,
 }: {
   employeeId: string;
-  ownerView: boolean;
+  canAddReviews: boolean;
   initialData?: Review[];
 }) {
   const { t } = useLanguage();
@@ -56,19 +110,22 @@ export function PerformanceReviewsSection({
 
   return (
     <div className="space-y-3">
-      {ownerView && (
-        <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-2 p-3 rounded-lg bg-gray-100 dark:bg-ios-dark-elevated">
-          <label className="block">
-            <span className="text-xs text-app-secondary">{t.reviews.rating}</span>
-            <select value={rating} onChange={(e) => setRating(Number(e.target.value))} className="ml-1 rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill px-2 py-1 text-sm">
-              {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </label>
-          <label className="block flex-1 min-w-[120px]">
+      {canAddReviews && (
+        <form onSubmit={handleAdd} className="flex flex-col gap-3 p-3 rounded-lg bg-gray-100 dark:bg-ios-dark-elevated">
+          <div>
+            <span className="text-xs text-app-secondary block mb-2">{t.reviews.rating}</span>
+            <StarPicker value={rating} onChange={setRating} size="md" />
+          </div>
+          <label className="block w-full">
             <span className="text-xs text-app-secondary">{t.reviews.notes}</span>
-            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="ml-1 w-full rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill px-2 py-1 text-sm" />
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="mt-1 w-full rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill px-2 py-1.5 text-sm"
+            />
           </label>
-          <button type="submit" disabled={adding} className="rounded-ios bg-ios-blue text-white px-3 py-1.5 text-sm font-medium disabled:opacity-50">
+          <button type="submit" disabled={adding} className="self-start rounded-ios bg-ios-blue text-white px-3 py-1.5 text-sm font-medium disabled:opacity-50">
             {adding ? t.common.loading : t.reviews.addReview}
           </button>
         </form>
@@ -77,7 +134,12 @@ export function PerformanceReviewsSection({
       <ul className="divide-y divide-gray-200 dark:divide-ios-dark-separator">
         {reviews.map((r) => (
           <li key={r.id} className="py-2">
-            <p className="text-sm font-medium text-app-primary">{new Date(r.reviewedAt).toLocaleDateString()} — {r.rating}/5</p>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-sm text-app-secondary tabular-nums">
+                {new Date(r.reviewedAt).toLocaleDateString()}
+              </span>
+              <StarsReadOnly rating={r.rating} size="sm" />
+            </div>
             {r.notes && <p className="text-sm text-app-secondary mt-0.5">{r.notes}</p>}
           </li>
         ))}

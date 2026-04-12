@@ -37,6 +37,46 @@
 }
 
 @layer components {
+  .app-page {
+    @apply space-y-6 min-w-0 app-stagger;
+  }
+
+  .app-section {
+    @apply rounded-2xl border border-gray-200/90 dark:border-ios-dark-separator bg-white/95 dark:bg-ios-dark-elevated/95 p-5 sm:p-6 shadow-sm app-animate-in app-surface;
+  }
+
+  .app-section-title {
+    @apply text-lg font-semibold text-app-primary mb-4;
+  }
+
+  .app-input {
+    @apply min-h-[2.6rem] w-full rounded-ios border border-gray-300/90 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-fill px-3 py-2 text-sm text-app-primary shadow-sm focus:border-ios-blue focus:ring-2 focus:ring-ios-blue/20 outline-none;
+  }
+
+  .app-select {
+    @apply min-h-[2.6rem] w-full rounded-ios border border-gray-300/90 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-fill px-3 py-2 text-sm text-app-primary shadow-sm focus:border-ios-blue focus:ring-2 focus:ring-ios-blue/20 outline-none;
+  }
+
+  .app-btn-primary {
+    @apply inline-flex items-center justify-center min-h-[2.5rem] rounded-ios bg-ios-blue text-white px-4 py-2 text-sm font-semibold shadow-sm hover:bg-[#0071eb] active:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .app-btn-secondary {
+    @apply inline-flex items-center justify-center min-h-[2.5rem] rounded-ios border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated px-4 py-2 text-sm font-medium text-app-primary hover:bg-gray-50 dark:hover:bg-ios-dark-elevated-2;
+  }
+
+  .app-table-wrap {
+    @apply rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated overflow-x-auto;
+  }
+
+  .app-table {
+    @apply w-full text-sm;
+  }
+
+  .app-table-head {
+    @apply bg-gray-100/80 dark:bg-ios-dark-elevated-2/50;
+  }
+
   .ios-card {
     @apply bg-white dark:bg-ios-dark-elevated rounded-ios-lg shadow-sm dark:shadow-none;
   }

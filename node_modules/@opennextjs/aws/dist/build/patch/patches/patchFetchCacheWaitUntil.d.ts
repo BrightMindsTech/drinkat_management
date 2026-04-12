@@ -1,3 +1,0 @@
-import type { CodePatcher } from "../codePatcher.js";
-export declare const rule = "\nrule:\n  kind: call_expression\n  pattern: $PROMISE\n  all:\n    - has: { pattern: $_.arrayBuffer().then, stopBy: end }\n    - has: { pattern: \"Buffer.from\", stopBy: end }\n    - any:\n        - inside:\n            kind: sequence_expression\n            inside:\n                kind: return_statement\n        - inside:\n            kind: expression_statement\n            precedes:\n                kind: return_statement\n    - has: { pattern: $_.FETCH, stopBy: end }\n\nfix: |\n  globalThis.__openNextAls?.getStore()?.pendingPromiseRunner.add($PROMISE)\n";
-export declare const patchFetchCacheSetMissingWaitUntil: CodePatcher;

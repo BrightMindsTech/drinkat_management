@@ -37,7 +37,7 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   passwordHash  String
-  role          String    // owner | qc | staff
+  role          String    // owner | qc | staff | manager
   branchId      String?
   branch        Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   employee      Employee?
@@ -61,13 +61,18 @@ model Employee {
   idCardPhotoPath String?
   idCardFrontPhotoPath String?
   idCardBackPhotoPath String?
-  role        String    // staff | qc
+  role        String    // staff | qc | manager
   status      String    @default("active") // active | on_leave | terminated
   advanceLimit Float?   // max JOD advance allowed, null = no limit
   leaveBalanceDays Int? // annual entitlement remaining
   joinDate    DateTime?  @default(now())
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  
+  // Direct reporting line (manager -> staff/qc). V1 supports direct reports only.
+  reportsToEmployeeId String?
+  reportsToEmployee   Employee? @relation("EmployeeReports", fields: [reportsToEmployeeId], references: [id], onDelete: SetNull)
+  directReports       Employee[] @relation("EmployeeReports")
   advances    Advance[]
   assignments ChecklistAssignment[]
   qcSubmissions QcSubmission[]
@@ -77,6 +82,7 @@ model Employee {
   performanceReviews PerformanceReview[]
   transfers   EmployeeTransfer[]
   managementFormSubmissions ManagementFormSubmission[]
+  formTemplateAssignments FormTemplateEmployee[]
 }
 
 model LeaveRequest {
@@ -231,6 +237,16 @@ model ManagementFormTemplate {
   updatedAt    DateTime @updatedAt
   submissions  ManagementFormSubmission[]
   departmentAssignments FormTemplateDepartment[]
+  employeeAssignments FormTemplateEmployee[]
+}
+
+model FormTemplateEmployee {
+  templateId String
+  employeeId String
+  template   ManagementFormTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  employee   Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, employeeId])
 }
 
 model FormTemplateDepartment {
@@ -251,7 +267,7 @@ model ManagementFormSubmission {
   branchId     String
   branch       Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
   answersJson  String
-  status       String   @default("pending") // pending | approved | denied
+  status       String   @default("submitted") // submitted | pending (legacy) | approved | denied (legacy)
   rating       Int?
   comments     String?
   reviewedAt   DateTime?

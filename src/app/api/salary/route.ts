@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
+import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 import { z } from 'zod';
 
 const upsertSchema = z.object({
@@ -14,6 +15,7 @@ const upsertSchema = z.object({
 
 export async function GET(req: NextRequest) {
   await requireOwner();
+  await runSalaryDistributionIfDue();
   const { searchParams } = new URL(req.url);
   const periodMonth = searchParams.get('periodMonth');
   const branchId = searchParams.get('branchId');
@@ -32,6 +34,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   await requireOwner();
+  await runSalaryDistributionIfDue();
   const body = await req.json();
   const parsed = upsertSchema.safeParse(body);
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });

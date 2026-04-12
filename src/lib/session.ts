@@ -18,6 +18,21 @@ export async function requireOwner() {
 export async function requireQc() {
   const session = await requireSession();
   const r = normalizeUserRole(session.user.role);
-  if (r !== 'qc' && r !== 'owner') throw new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+  if (r !== 'qc' && r !== 'owner' && r !== 'manager')
+    throw new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+  return session;
+}
+
+export async function requireManager() {
+  const session = await requireSession();
+  const r = normalizeUserRole(session.user.role);
+  if (r !== 'manager') throw new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+  return session;
+}
+
+export async function requireOwnerOrManager() {
+  const session = await requireSession();
+  const r = normalizeUserRole(session.user.role);
+  if (r !== 'owner' && r !== 'manager') throw new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
   return session;
 }

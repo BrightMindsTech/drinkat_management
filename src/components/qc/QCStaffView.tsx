@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChecklistAssignment, Checklist, ChecklistItem, QcSubmission, SubmissionPhoto } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { SectionJumpNav } from '@/components/SectionJumpNav';
 
 type AssignmentWithChecklist = ChecklistAssignment & {
   checklist: Checklist & { items: ChecklistItem[] };
@@ -116,14 +115,8 @@ export function QCStaffView({
   const sectionClass =
     'rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-6 scroll-mt-28 app-animate-in app-surface';
 
-  const qcStaffNavItems = [
-    { id: 'qc-staff-checklists', label: t.qc.myAssignedChecklists },
-    { id: 'qc-staff-submissions', label: t.qc.mySubmissions },
-  ];
-
   return (
     <div className="space-y-6 app-stagger">
-      <SectionJumpNav items={qcStaffNavItems} />
       <section id="qc-staff-checklists" className={sectionClass}>
         <h2 className="text-lg font-semibold text-app-primary mb-4">{t.qc.myAssignedChecklists}</h2>
         <p className="text-xs text-app-muted mb-4">{t.qc.cameraOnlyHint}</p>

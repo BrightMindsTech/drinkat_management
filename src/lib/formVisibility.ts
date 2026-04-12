@@ -1,6 +1,6 @@
 /** Who can open (fill) a management form template */
 
-export type AppUserRole = 'owner' | 'qc' | 'staff';
+export type AppUserRole = 'owner' | 'qc' | 'staff' | 'manager' | 'marketing';
 
 /** Normalize DB/session role strings so visibility checks are reliable (case, whitespace). */
 export function normalizeUserRole(role: string | undefined | null): AppUserRole {
@@ -9,6 +9,8 @@ export function normalizeUserRole(role: string | undefined | null): AppUserRole 
     .toLowerCase();
   if (r === 'owner') return 'owner';
   if (r === 'qc') return 'qc';
+  if (r === 'manager') return 'manager';
+  if (r === 'marketing') return 'marketing';
   return 'staff';
 }
 
@@ -26,32 +28,18 @@ export type TemplateForVisibility = {
 export function canFillManagementForm(ctx: FormViewContext, template: TemplateForVisibility): boolean {
   const role = normalizeUserRole(ctx.userRole);
   if (role === 'owner') return false;
-  if (role === 'qc') return true;
+  if (role === 'manager') return false;
 
-  if (role !== 'staff') return false;
-
+  // Form visibility is assignment-based only (department assignment).
   if (template.departmentAssignments.length > 0) {
     return !!(ctx.employeeDepartmentId && template.departmentAssignments.some((a) => a.departmentId === ctx.employeeDepartmentId));
   }
 
-  const dept = (ctx.employeeDepartmentName ?? '').toLowerCase();
-  switch (template.category) {
-    case 'qc':
-      return dept.includes('qc');
-    case 'marketing':
-      return dept.includes('market');
-    case 'kitchen':
-    case 'cash':
-      return true;
-    default:
-      return false;
-  }
+  // No assignment means not visible to fill (unless explicitly employee-assigned in calling code).
+  return false;
 }
 
-/** Who can approve/deny a submission (review) */
-export function canReviewManagementSubmission(userRole: string | undefined | null, templateCategory: string): boolean {
-  const role = normalizeUserRole(userRole);
-  if (role === 'owner') return true;
-  if (role !== 'qc') return false;
-  return ['qc', 'marketing', 'kitchen', 'cash'].includes(templateCategory);
+/** Legacy: management forms no longer use approve/deny; kept for any old call sites. */
+export function canReviewManagementSubmission(_userRole: string | undefined | null, _templateCategory: string): boolean {
+  return false;
 }

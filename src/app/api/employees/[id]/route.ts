@@ -31,6 +31,8 @@ const patchSchema = z.object({
   residentialArea: z.string().nullable().optional(),
   shiftTime: z.string().nullable().optional(),
   departmentId: z.string().nullable().optional(),
+  // Assign this employee under a manager (direct reports only).
+  reportsToEmployeeId: z.string().nullable().optional(),
   status: z.enum(['active', 'on_leave', 'terminated']).optional(),
   advanceLimit: z.number().nullable().optional(),
   idCardPhotoPath: z.string().nullable().optional(),
@@ -52,7 +54,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!existing) return new Response(null, { status: 404 });
 
-  const { name, contact, salaryAmount, residentialArea, shiftTime, departmentId, status, advanceLimit, idCardPhotoPath, idCardFrontPhotoPath, idCardBackPhotoPath } = parsed.data;
+  const {
+    name,
+    contact,
+    salaryAmount,
+    residentialArea,
+    shiftTime,
+    departmentId,
+    reportsToEmployeeId,
+    status,
+    advanceLimit,
+    idCardPhotoPath,
+    idCardFrontPhotoPath,
+    idCardBackPhotoPath,
+  } = parsed.data;
+
+  // Validate manager assignment + branch scoping.
+  if (reportsToEmployeeId !== undefined) {
+    if (reportsToEmployeeId === null) {
+      // Unassign is always allowed.
+    } else {
+      const managerEmployee = await prisma.employee.findUnique({
+        where: { id: reportsToEmployeeId },
+        include: { user: true, branch: true },
+      });
+      if (!managerEmployee) return Response.json({ error: 'Manager not found' }, { status: 404 });
+      if (managerEmployee.status === 'terminated')
+        return Response.json({ error: 'Cannot assign under terminated manager' }, { status: 400 });
+
+      // Managers are stored as their own role string on Employee + User.
+      const managerIsManagerRole = managerEmployee.role === 'manager' || managerEmployee.user?.role === 'manager';
+      if (!managerIsManagerRole) return Response.json({ error: 'Target employee is not a manager' }, { status: 403 });
+
+      // Enforce same-branch constraint.
+      if (managerEmployee.branchId !== existing.branchId) {
+        return Response.json({ error: 'Manager and employee must be in the same branch' }, { status: 403 });
+      }
+    }
+  }
 
   const updated = await prisma.employee.update({
     where: { id },
@@ -63,6 +102,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(residentialArea !== undefined ? { residentialArea } : {}),
       ...(shiftTime !== undefined ? { shiftTime } : {}),
       ...(departmentId !== undefined ? { departmentId } : {}),
+      ...(reportsToEmployeeId !== undefined ? { reportsToEmployeeId } : {}),
       ...(status !== undefined ? { status } : {}),
       ...(advanceLimit !== undefined ? { advanceLimit } : {}),
       ...(idCardPhotoPath !== undefined ? { idCardPhotoPath } : {}),

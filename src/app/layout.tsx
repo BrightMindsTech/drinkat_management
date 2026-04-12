@@ -6,8 +6,8 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Drinkat Management',
-  description: 'HR, QC & Reports for Drinkat',
+  title: 'DrinkatHR',
+  description: 'HR, QC & reports for DrinkatHR',
 };
 
 export const viewport: Viewport = {

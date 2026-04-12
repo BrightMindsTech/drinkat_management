@@ -37,12 +37,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="min-h-screen flex flex-col min-w-0 w-full bg-ios-gray dark:bg-ios-gray-dark">
+    <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden min-w-0 w-full bg-ios-gray dark:bg-ios-gray-dark">
       <PendingReviewNotice role={navRole} />
-      <header className="bg-white/80 dark:bg-ios-dark-elevated/90 backdrop-blur-xl border-b border-gray-200/80 dark:border-ios-dark-separator/50 min-w-0 w-full">
-        <div className="max-w-3xl w-full min-w-0 mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <Link href="/dashboard" className="flex items-center gap-2 shrink-0">
-            <Logo size={18} showPoweredBy={false} />
+      <header className="shrink-0 bg-white/80 dark:bg-ios-dark-elevated/90 backdrop-blur-xl border-b border-gray-200/80 dark:border-ios-dark-separator/50 min-w-0 w-full pt-[env(safe-area-inset-top)]">
+        <div className="max-w-6xl w-full min-w-0 mx-auto px-4 py-2.5 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+          <Link href="/dashboard" className="flex items-center gap-2 shrink-0 min-w-0">
+            <Logo size={18} showPoweredBy={false} compact />
           </Link>
           <div className="flex flex-wrap items-center gap-3 sm:gap-4 min-w-0">
             <LanguageToggle />
@@ -57,9 +57,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <SignOutButton />
           </div>
         </div>
-        <DashboardNav role={navRole} />
       </header>
-      <main className="flex-1 max-w-3xl w-full min-w-0 mx-auto px-4 py-6 pb-8 app-animate-in">{children}</main>
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden max-w-6xl w-full min-w-0 mx-auto px-4 py-6 app-animate-in">
+        {children}
+      </main>
+      <div className="shrink-0 z-40 border-t border-gray-200/90 dark:border-ios-dark-separator/80 bg-white/95 dark:bg-ios-dark-elevated/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] min-w-0 w-full shadow-[0_-4px_24px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_24px_rgba(0,0,0,0.25)]">
+        <DashboardNav role={navRole} variant="bottom" />
+      </div>
     </div>
   );
 }

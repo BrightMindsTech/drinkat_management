@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession, requireOwner } from '@/lib/session';
+import { requireSession } from '@/lib/session';
+import { normalizeUserRole } from '@/lib/formVisibility';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -9,17 +10,35 @@ const createSchema = z.object({
   reviewedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function assertCanReadEmployeeReviews(session: { user: { id: string; role: string } }, employeeId: string) {
+  const role = normalizeUserRole(session.user.role);
+  if (role === 'owner') {
+    const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!employee) return new Response(null, { status: 404 });
+    return null;
+  }
+  const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
+  if (!user?.employee) return new Response(null, { status: 403 });
+  if (user.employee.id === employeeId) return null;
+  if (role === 'manager') {
+    const target = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!target) return new Response(null, { status: 404 });
+    if (
+      target.reportsToEmployeeId === user.employee.id &&
+      target.branchId === user.employee.branchId
+    ) {
+      return null;
+    }
+  }
+  return new Response(null, { status: 403 });
+}
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const { id } = await params;
 
-  if (session.user.role === 'owner') {
-    const employee = await prisma.employee.findUnique({ where: { id } });
-    if (!employee) return new Response(null, { status: 404 });
-  } else {
-    const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
-    if (!user?.employee || user.employee.id !== id) return new Response(null, { status: 403 });
-  }
+  const denied = await assertCanReadEmployeeReviews(session, id);
+  if (denied) return denied;
 
   const reviews = await prisma.performanceReview.findMany({
     where: { employeeId: id },
@@ -29,11 +48,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireOwner();
+  const session = await requireSession();
+  const role = normalizeUserRole(session.user.role);
   const { id } = await params;
 
+  if (role !== 'owner' && role !== 'manager') {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const employee = await prisma.employee.findUnique({ where: { id } });
-  if (!employee) return new Response(null, { status: 404 });
+  if (!employee) return Response.json({ error: 'Not found' }, { status: 404 });
+
+  if (role === 'manager') {
+    const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
+    if (!user?.employee) return Response.json({ error: 'Forbidden' }, { status: 403 });
+    const mgr = user.employee;
+    if (
+      employee.reportsToEmployeeId !== mgr.id ||
+      employee.branchId !== mgr.branchId
+    ) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
 
   const body = await req.json();
   const parsed = createSchema.safeParse(body);

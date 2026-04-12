@@ -1,0 +1,6 @@
+# Copy to `.dev.vars` (gitignored). Wrangler loads this for `npm run preview` / `wrangler dev`.
+# Do not commit real secrets.
+
+NEXTAUTH_SECRET=change-me-to-a-long-random-string
+# After `npm run preview` starts, set this to the URL shown (often http://127.0.0.1:8788 or http://localhost:8788)
+NEXTAUTH_URL=http://127.0.0.1:8788

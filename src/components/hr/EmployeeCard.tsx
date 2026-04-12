@@ -436,7 +436,7 @@ export function EmployeeCard({
       <fieldset className="mt-3 rounded-lg border border-gray-200 dark:border-ios-dark-separator px-3 pb-3 pt-2">
         <legend className="px-1 text-xs font-semibold text-app-primary">{t.employeeCard.performanceReviews}</legend>
         <p className="text-sm font-medium text-app-primary mb-1">{t.employeeCard.performanceReviews}</p>
-        <PerformanceReviewsSection employeeId={employee.id} ownerView />
+        <PerformanceReviewsSection employeeId={employee.id} canAddReviews />
       </fieldset>
       <fieldset className="mt-3 rounded-lg border border-gray-200 dark:border-ios-dark-separator px-3 pb-3 pt-2">
         <legend className="px-1 text-xs font-semibold text-app-primary">{t.employeeCard.documents}</legend>

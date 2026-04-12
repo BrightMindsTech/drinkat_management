@@ -1,7 +1,24 @@
+.DS_Store
+**/.DS_Store
+
 .dev.vars
 .wrangler
 tsconfig.tsbuildinfo
 *.db
 public/uploads
 
+# Dependencies & build (do not commit)
+node_modules/
+.next/
+.open-next/
+out/
+dist/
+
 # OpenNext
+
+# Capacitor iOS (after `npx cap add ios`)
+ios/App/Pods/
+ios/App/build/
+**/xcuserdata/
+*.xcworkspace/xcuserdata/
+

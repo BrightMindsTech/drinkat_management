@@ -1,9 +1,11 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
+import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 
 export async function GET(req: NextRequest) {
   await requireOwner();
+  await runSalaryDistributionIfDue();
   const { searchParams } = new URL(req.url);
   const periodMonth = searchParams.get('periodMonth');
   const branchId = searchParams.get('branchId');

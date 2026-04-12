@@ -10,7 +10,6 @@ import { LeaveList } from './LeaveList';
 import { EmployeeDocumentsSection } from './EmployeeDocumentsSection';
 import { SalaryHistorySection } from './SalaryHistorySection';
 import { PerformanceReviewsSection } from './PerformanceReviewsSection';
-import { SectionJumpNav } from '@/components/SectionJumpNav';
 
 type EmployeeWithBranch = Employee & { branch: { name: string } };
 type AdvanceWithEmployee = Advance & { employee: Employee & { branch: { name: string } } };
@@ -32,21 +31,10 @@ export function HRStaffView({ employee, advances, leaveRequests, documents, sala
   }
 
   const { t } = useLanguage();
-  const sectionClass =
-    'rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-6 scroll-mt-28 app-animate-in app-surface';
-
-  const staffNavItems = [
-    { id: 'hr-staff-info', label: t.hr.myInformation },
-    { id: 'hr-staff-leave', label: t.hr.myLeave },
-    { id: 'hr-staff-documents', label: t.employeeCard.myDocuments },
-    { id: 'hr-staff-salary', label: t.employeeCard.mySalaryHistory },
-    { id: 'hr-staff-reviews', label: t.employeeCard.myReviews },
-    { id: 'hr-staff-advances', label: t.hr.myAdvanceRequests },
-  ];
+  const sectionClass = 'app-section scroll-mt-28';
 
   return (
-    <div className="space-y-6 app-stagger">
-      <SectionJumpNav items={staffNavItems} />
+    <div className="app-page">
       <section id="hr-staff-info" className={sectionClass}>
         <h2 className="text-lg font-semibold text-app-primary mb-4">{t.hr.myInformation}</h2>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -104,7 +92,7 @@ export function HRStaffView({ employee, advances, leaveRequests, documents, sala
 
       <section id="hr-staff-reviews" className={sectionClass}>
         <h2 className="text-lg font-semibold text-app-primary mb-4">{t.employeeCard.myReviews}</h2>
-        <PerformanceReviewsSection employeeId={employee.id} ownerView={false} initialData={reviews} />
+        <PerformanceReviewsSection employeeId={employee.id} canAddReviews={false} initialData={reviews} />
       </section>
 
       <section id="hr-staff-advances" className={sectionClass}>

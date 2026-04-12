@@ -11,8 +11,6 @@ import {
   type FormsTemplateRow,
 } from '@/components/forms/ManagementFormsView';
 
-const REVIEW_CATEGORIES = ['qc', 'marketing', 'kitchen', 'cash'] as const;
-
 export const dynamic = 'force-dynamic';
 
 export default async function FormsPage() {
@@ -22,7 +20,7 @@ export default async function FormsPage() {
 
   const allTemplates = await prisma.managementFormTemplate.findMany({
     where: role === 'owner' ? {} : { active: true },
-    include: { departmentAssignments: true },
+    include: { departmentAssignments: true, employeeAssignments: true },
     orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
   });
 
@@ -50,15 +48,17 @@ export default async function FormsPage() {
       title: t.title,
       description: t.description,
       departmentIds: t.departmentAssignments.map((a) => a.departmentId),
+      employeeIds: t.employeeAssignments.map((a) => a.employeeId),
       fields,
     };
   };
 
   const templatesForFill: FormsTemplateRow[] =
-    role === 'owner'
+    role === 'owner' || role === 'manager'
       ? []
       : allTemplates
           .filter((t) =>
+            t.employeeAssignments.some((a) => a.employeeId === user?.employee?.id) ||
             canFillManagementForm(ctx, {
               category: t.category,
               departmentAssignments: t.departmentAssignments,
@@ -67,55 +67,148 @@ export default async function FormsPage() {
           .map(mapToRow);
 
   const allTemplatesForOwner: FormsTemplateRow[] | undefined =
-    role === 'owner' ? allTemplates.map(mapToRow) : undefined;
+    role === 'owner' || role === 'manager' ? allTemplates.map(mapToRow) : undefined;
 
   const departments =
     role === 'owner'
       ? await prisma.department.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } })
       : undefined;
 
+  const managerEmployees =
+    role === 'manager' && user?.employee
+      ? await prisma.employee.findMany({
+          where: {
+            reportsToEmployeeId: user.employee.id,
+            branchId: user.employee.branchId,
+            status: { in: ['active', 'on_leave'] },
+          },
+          select: { id: true, name: true, role: true },
+          orderBy: { name: 'asc' },
+        })
+      : undefined;
+
   let reviewSubmissions: FormsReviewSubmission[] = [];
-  if (role === 'owner' || role === 'qc') {
-    const whereSub =
-      role === 'qc' ? { template: { category: { in: [...REVIEW_CATEGORIES] } } } : {};
-    const list = await prisma.managementFormSubmission.findMany({
-      where: whereSub,
-      include: {
-        template: { include: { departmentAssignments: true } },
-        employee: { include: { branch: true, department: true } },
-        branch: true,
-      },
-      orderBy: { submittedAt: 'desc' },
-      take: 300,
-    });
-    reviewSubmissions = list.map((s) => ({
-      id: s.id,
-      status: s.status,
-      submittedAt: s.submittedAt,
-      rating: s.rating,
-      comments: s.comments,
-      answers: JSON.parse(s.answersJson) as Record<string, string>,
-      template: {
-        id: s.template.id,
-        category: s.template.category,
-        title: s.template.title,
-        description: s.template.description,
-        departmentIds: s.template.departmentAssignments.map((a) => a.departmentId),
-        fields: (() => {
-          try {
-            return parseTemplateFields(s.template.fieldsJson);
-          } catch {
-            return [];
-          }
-        })(),
-      },
-      employee: { name: s.employee.name },
-      branch: { name: s.branch.name },
-    }));
+  if (role === 'owner' || role === 'manager') {
+    if (role === 'manager') {
+      const userWithEmployee = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        include: { employee: { include: { branch: true } } },
+      });
+      if (!userWithEmployee?.employee) {
+        return (
+          <div>
+            <ManagementFormsView
+              role={role}
+              templatesForFill={[]}
+              initialReviewSubmissions={[]}
+              initialMySubmissions={[]}
+              allTemplatesForOwner={[]}
+              departments={undefined}
+              managerEmployees={undefined}
+              staffEmptyHint={null}
+            />
+          </div>
+        );
+      }
+
+      const managerEmployee = userWithEmployee.employee;
+      const list = await prisma.managementFormSubmission.findMany({
+        where: {
+          branchId: managerEmployee.branchId,
+          employee: { reportsToEmployeeId: managerEmployee.id, branchId: managerEmployee.branchId },
+        },
+        include: {
+          template: { include: { departmentAssignments: true } },
+          employee: {
+            include: {
+              branch: true,
+              department: true,
+              reportsToEmployee: { select: { id: true, name: true } },
+            },
+          },
+          branch: true,
+        },
+        orderBy: { submittedAt: 'desc' },
+        take: 300,
+      });
+
+      reviewSubmissions = list.map((s) => ({
+        id: s.id,
+        status: s.status,
+        submittedAt: s.submittedAt,
+        rating: s.rating,
+        comments: s.comments,
+        answers: JSON.parse(s.answersJson) as Record<string, string>,
+        template: {
+          id: s.template.id,
+          category: s.template.category,
+          title: s.template.title,
+          description: s.template.description,
+          departmentIds: s.template.departmentAssignments.map((a) => a.departmentId),
+          fields: (() => {
+            try {
+              return parseTemplateFields(s.template.fieldsJson);
+            } catch {
+              return [];
+            }
+          })(),
+        },
+        employee: { name: s.employee.name },
+        branch: { name: s.branch.name },
+        reportsToManager: s.employee.reportsToEmployee
+          ? { name: s.employee.reportsToEmployee.name }
+          : null,
+      }));
+    } else {
+      const whereSub = {};
+      const list = await prisma.managementFormSubmission.findMany({
+        where: whereSub,
+        include: {
+          template: { include: { departmentAssignments: true } },
+          employee: {
+            include: {
+              branch: true,
+              department: true,
+              reportsToEmployee: { select: { id: true, name: true } },
+            },
+          },
+          branch: true,
+        },
+        orderBy: { submittedAt: 'desc' },
+        take: 300,
+      });
+      reviewSubmissions = list.map((s) => ({
+        id: s.id,
+        status: s.status,
+        submittedAt: s.submittedAt,
+        rating: s.rating,
+        comments: s.comments,
+        answers: JSON.parse(s.answersJson) as Record<string, string>,
+        template: {
+          id: s.template.id,
+          category: s.template.category,
+          title: s.template.title,
+          description: s.template.description,
+          departmentIds: s.template.departmentAssignments.map((a) => a.departmentId),
+          fields: (() => {
+            try {
+              return parseTemplateFields(s.template.fieldsJson);
+            } catch {
+              return [];
+            }
+          })(),
+        },
+        employee: { name: s.employee.name },
+        branch: { name: s.branch.name },
+        reportsToManager: s.employee.reportsToEmployee
+          ? { name: s.employee.reportsToEmployee.name }
+          : null,
+      }));
+    }
   }
 
   let mySubmissions: FormsMySubmission[] = [];
-  if (role === 'staff' || role === 'qc') {
+  if (role === 'staff' || role === 'qc' || role === 'marketing') {
     if (user?.employee) {
       const list = await prisma.managementFormSubmission.findMany({
         where: { employeeId: user.employee.id },
@@ -139,7 +232,7 @@ export default async function FormsPage() {
   }
 
   let staffEmptyHint: 'noEmployee' | 'noDepartment' | 'noneForDept' | null = null;
-  if (role === 'staff' && templatesForFill.length === 0) {
+  if ((role === 'staff' || role === 'marketing') && templatesForFill.length === 0) {
     if (!user?.employee) staffEmptyHint = 'noEmployee';
     else if (!user.employee.departmentId) staffEmptyHint = 'noDepartment';
     else staffEmptyHint = 'noneForDept';
@@ -151,6 +244,7 @@ export default async function FormsPage() {
       templatesForFill={templatesForFill}
       allTemplatesForOwner={allTemplatesForOwner}
       departments={departments}
+      managerEmployees={managerEmployees}
       initialReviewSubmissions={reviewSubmissions}
       initialMySubmissions={mySubmissions}
       staffEmptyHint={staffEmptyHint}

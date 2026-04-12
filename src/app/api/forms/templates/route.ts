@@ -17,7 +17,7 @@ const createSchema = z.object({
 
 type TemplateWithDepts = Awaited<
   ReturnType<
-    typeof prisma.managementFormTemplate.findMany<{ include: { departmentAssignments: true } }>
+    typeof prisma.managementFormTemplate.findMany<{ include: { departmentAssignments: true; employeeAssignments: true } }>
   >
 >[number];
 
@@ -26,6 +26,7 @@ function mapTemplatesForResponse(templates: TemplateWithDepts[]) {
     ...t,
     fields: JSON.parse(t.fieldsJson) as unknown[],
     departmentIds: t.departmentAssignments.map((a) => a.departmentId),
+    employeeIds: t.employeeAssignments.map((a) => a.employeeId),
   }));
 }
 
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
 
   const templates = await prisma.managementFormTemplate.findMany({
     where,
-    include: { departmentAssignments: true },
+    include: { departmentAssignments: true, employeeAssignments: true },
     orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
   });
   if (role === 'owner') {
@@ -62,12 +63,15 @@ export async function GET(req: NextRequest) {
     employeeDepartmentName: user?.employee?.department?.name ?? null,
   };
 
-  const visible = templates.filter((t) =>
-    canFillManagementForm(ctx, {
+  const employeeId = user?.employee?.id ?? null;
+  const visible = templates.filter((t) => {
+    const explicitlyAssigned = !!(employeeId && t.employeeAssignments.some((a) => a.employeeId === employeeId));
+    if (explicitlyAssigned) return true;
+    return canFillManagementForm(ctx, {
       category: t.category,
       departmentAssignments: t.departmentAssignments,
-    })
-  );
+    });
+  });
 
   return Response.json(mapTemplatesForResponse(visible));
 }

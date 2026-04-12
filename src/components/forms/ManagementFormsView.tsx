@@ -1,12 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { SectionJumpNav, type SectionNavItem } from '@/components/SectionJumpNav';
+import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
-import type { LocaleMessages } from '@/locales/en';
 import type { FormFieldDef } from '@/lib/formTemplate';
 import { FormAssignmentsPanel } from './FormAssignmentsPanel';
 import { CreateFormPanel } from './CreateFormPanel';
+import { FormEmployeeAssignmentsPanel } from './FormEmployeeAssignmentsPanel';
 
 export type FormsTemplateRow = {
   id: string;
@@ -14,6 +14,7 @@ export type FormsTemplateRow = {
   title: string;
   description: string | null;
   departmentIds: string[];
+  employeeIds?: string[];
   fields: FormFieldDef[];
 };
 
@@ -27,6 +28,7 @@ export type FormsReviewSubmission = {
   template: FormsTemplateRow;
   employee: { name: string };
   branch: { name: string };
+  reportsToManager?: { name: string } | null;
 };
 
 export type FormsMySubmission = {
@@ -43,6 +45,7 @@ export function ManagementFormsView({
   templatesForFill,
   allTemplatesForOwner,
   departments,
+  managerEmployees,
   initialReviewSubmissions,
   initialMySubmissions,
   staffEmptyHint,
@@ -51,17 +54,22 @@ export function ManagementFormsView({
   templatesForFill: FormsTemplateRow[];
   allTemplatesForOwner?: FormsTemplateRow[];
   departments?: { id: string; name: string }[];
+  managerEmployees?: { id: string; name: string; role: string }[];
   initialReviewSubmissions: FormsReviewSubmission[];
   initialMySubmissions: FormsMySubmission[];
   staffEmptyHint?: 'noEmployee' | 'noDepartment' | 'noneForDept' | null;
 }) {
   const { t } = useLanguage();
+  const router = useRouter();
   const [reviewList, setReviewList] = useState(initialReviewSubmissions);
   const [myList, setMyList] = useState(initialMySubmissions);
   const [openId, setOpenId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [ownerTemplates, setOwnerTemplates] = useState<FormsTemplateRow[]>(allTemplatesForOwner ?? []);
+  const [ownerEditId, setOwnerEditId] = useState<string | null>(null);
+  const [ownerSaving, setOwnerSaving] = useState(false);
+  const [importingDefaults, setImportingDefaults] = useState(false);
 
   const grouped = useMemo(() => {
     const m = new Map<string, FormsTemplateRow[]>();
@@ -72,6 +80,16 @@ export function ManagementFormsView({
     }
     return m;
   }, [templatesForFill]);
+  const editingTemplate = useMemo(
+    () => ownerTemplates.find((tpl) => tpl.id === ownerEditId) ?? null,
+    [ownerTemplates, ownerEditId]
+  );
+  const [ownerTitle, setOwnerTitle] = useState('');
+  const [ownerDescription, setOwnerDescription] = useState('');
+  const [ownerCategory, setOwnerCategory] = useState('qc');
+  const [ownerFields, setOwnerFields] = useState<
+    { key: string; label: string; type: FormFieldDef['type']; required: boolean; optionsText: string }[]
+  >([]);
 
   function categoryTitle(cat: string): string {
     const c = t.forms.categories as Record<string, string>;
@@ -112,58 +130,108 @@ export function ManagementFormsView({
         },
         ...prev,
       ]);
-      if (role === 'qc') {
-        setReviewList((prev) => [
-          {
-            id: data.id,
-            status: data.status,
-            submittedAt: new Date(data.submittedAt),
-            rating: data.rating,
-            comments: data.comments,
-            answers: data.answers,
-            template: { ...template, fields: template.fields },
-            employee: { name: data.employee?.name ?? '—' },
-            branch: { name: data.branch?.name ?? '—' },
-          },
-          ...prev,
-        ]);
-      }
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handleReview(id: string, status: 'approved' | 'denied', rating: number | '', comments: string) {
-    setReviewingId(id);
+  function startOwnerEdit(tpl: FormsTemplateRow) {
+    setOwnerEditId(tpl.id);
+    setOwnerTitle(tpl.title);
+    setOwnerDescription(tpl.description ?? '');
+    setOwnerCategory(tpl.category);
+    setOwnerFields(
+      tpl.fields.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        required: !!f.required,
+        optionsText: f.type === 'select' ? (f.options ?? []).join('\n') : '',
+      }))
+    );
+  }
+
+  async function saveOwnerEdit() {
+    if (!editingTemplate) return;
+    const title = ownerTitle.trim();
+    if (!title) return;
+    if (ownerFields.length === 0) return;
+    const used = new Set<string>();
+    const fields: FormFieldDef[] = ownerFields.map((f, idx) => {
+      const baseKey =
+        (f.key || f.label)
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '') || `field_${idx + 1}`;
+      let key = baseKey;
+      let i = 1;
+      while (used.has(key)) {
+        key = `${baseKey}_${i++}`;
+      }
+      used.add(key);
+      const options =
+        f.type === 'select'
+          ? f.optionsText
+              .split('\n')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : undefined;
+      return {
+        key,
+        label: f.label.trim() || `Question ${idx + 1}`,
+        type: f.type,
+        required: f.required,
+        ...(options ? { options } : {}),
+      };
+    });
+    setOwnerSaving(true);
     try {
-      const res = await fetch(`/api/forms/submissions/${id}`, {
+      const res = await fetch(`/api/forms/templates/${editingTemplate.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          status,
-          rating: rating === '' ? null : rating,
-          comments: comments || null,
+          title,
+          description: ownerDescription.trim() || null,
+          category: ownerCategory,
+          fields,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error ?? 'Failed');
+        alert(data.error ?? 'Failed to update');
         return;
       }
-      setReviewList((prev) =>
-        prev.map((s) =>
-          s.id === id
-            ? {
-                ...s,
-                status: data.status,
-                rating: data.rating,
-                comments: data.comments,
-              }
-            : s
-        )
-      );
+      const updated: FormsTemplateRow = {
+        id: data.id,
+        category: data.category,
+        title: data.title,
+        description: data.description,
+        departmentIds: data.departmentIds ?? [],
+        employeeIds: data.employeeIds ?? [],
+        fields: data.fields ?? [],
+      };
+      setOwnerTemplates((prev) => prev.map((tpl) => (tpl.id === updated.id ? updated : tpl)));
+      setOwnerEditId(null);
     } finally {
-      setReviewingId(null);
+      setOwnerSaving(false);
+    }
+  }
+
+  async function importDefaultTemplates() {
+    setImportingDefaults(true);
+    try {
+      const res = await fetch('/api/forms/templates/import-defaults', {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data?.error ?? 'Failed to import templates');
+        return;
+      }
+      router.refresh();
+    } finally {
+      setImportingDefaults(false);
     }
   }
 
@@ -306,52 +374,174 @@ export function ManagementFormsView({
     }
   }
 
-  const sectionClass =
-    'rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-6 scroll-mt-28 app-animate-in app-surface';
+  const sectionClass = 'app-section scroll-mt-28';
 
-  const showReview = role === 'owner' || role === 'qc';
-  const staffOrQc = role === 'staff' || role === 'qc';
-
-  const formsNavItems = useMemo((): SectionNavItem[] => {
-    const items: SectionNavItem[] = [];
-    if (role === 'owner' && departments) {
-      items.push({ id: 'section-forms-owner', label: t.forms.manageFormsTitle });
-    }
-    if (staffOrQc) {
-      items.push({ id: 'section-forms-available', label: t.forms.availableForms });
-    }
-    if ((role === 'staff' || role === 'qc') && myList.length > 0) {
-      items.push({ id: 'section-forms-my-submissions', label: t.forms.mySubmissions });
-    }
-    if (showReview && reviewList.length > 0) {
-      items.push({ id: 'section-forms-review', label: t.forms.reviewQueue });
-    }
-    return items;
-  }, [role, departments, staffOrQc, myList.length, showReview, reviewList.length, t]);
+  const showReview = role === 'owner' || role === 'manager';
+  const canFill = role === 'staff' || role === 'qc' || role === 'marketing';
 
   return (
-    <div className="space-y-6 app-stagger">
+    <div className="app-page">
       <h1 className="text-2xl font-bold text-app-primary mb-1">{t.forms.title}</h1>
       <p className="text-sm text-app-muted mb-4">{t.forms.intro}</p>
-
-      <SectionJumpNav items={formsNavItems} />
 
       {role === 'owner' && departments && (
         <section id="section-forms-owner" className={sectionClass}>
           <h2 className="text-lg font-semibold text-app-primary mb-4">{t.forms.manageFormsTitle}</h2>
           <div className="space-y-6">
             <CreateFormPanel />
-            {allTemplatesForOwner && allTemplatesForOwner.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={importDefaultTemplates}
+                disabled={importingDefaults}
+                className="app-btn-secondary"
+              >
+                {importingDefaults ? 'Importing templates…' : 'Import default templates'}
+              </button>
+            </div>
+            {ownerTemplates.length > 0 && (
+              <div>
+                <h3 className="text-base font-semibold text-app-primary mb-3">Edit form content</h3>
+                <ul className="space-y-2">
+                  {ownerTemplates.map((tpl) => (
+                    <li key={tpl.id} className="rounded-ios border border-gray-200 dark:border-ios-dark-separator p-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-app-primary truncate">{tpl.title}</p>
+                        <p className="text-xs text-app-muted">{categoryTitle(tpl.category)} - {tpl.fields.length} fields</p>
+                      </div>
+                      <button type="button" onClick={() => startOwnerEdit(tpl)} className="app-btn-secondary">
+                        {t.common.edit}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {editingTemplate && (
+                  <div className="mt-4 rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 sm:p-5 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h4 className="text-base font-semibold text-app-primary">{t.common.edit}: {editingTemplate.title}</h4>
+                      <button type="button" onClick={() => setOwnerEditId(null)} className="app-btn-secondary !min-h-[2rem] !px-3">
+                        {t.common.cancel}
+                      </button>
+                    </div>
+                    <label className="block text-sm text-app-label">
+                      {t.forms.createFormName}
+                      <input value={ownerTitle} onChange={(e) => setOwnerTitle(e.target.value)} className="app-input mt-1.5" />
+                    </label>
+                    <label className="block text-sm text-app-label">
+                      {t.forms.createFormDescription}
+                      <textarea value={ownerDescription} onChange={(e) => setOwnerDescription(e.target.value)} rows={2} className="app-input mt-1.5" />
+                    </label>
+                    <label className="block text-sm text-app-label">
+                      {t.forms.createFormCategory}
+                      <select value={ownerCategory} onChange={(e) => setOwnerCategory(e.target.value)} className="app-select mt-1.5">
+                        <option value="qc">{(t.forms.categories as Record<string, string>).qc}</option>
+                        <option value="marketing">{(t.forms.categories as Record<string, string>).marketing}</option>
+                        <option value="kitchen">{(t.forms.categories as Record<string, string>).kitchen}</option>
+                        <option value="cash">{(t.forms.categories as Record<string, string>).cash}</option>
+                      </select>
+                    </label>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-app-primary">{t.forms.createFormQuestions}</p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOwnerFields((prev) => [
+                            ...prev,
+                            { key: '', label: '', type: 'text', required: false, optionsText: '' },
+                          ])
+                        }
+                        className="app-btn-secondary"
+                      >
+                        {t.forms.addQuestion}
+                      </button>
+                    </div>
+                    <ul className="space-y-3">
+                      {ownerFields.map((f, idx) => (
+                        <li key={`${f.key}-${idx}`} className="rounded-ios border border-gray-200 dark:border-ios-dark-separator p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-app-muted">#{idx + 1}</span>
+                            <button
+                              type="button"
+                              onClick={() => setOwnerFields((prev) => prev.filter((_, i) => i !== idx))}
+                              className="text-xs text-red-600 dark:text-red-400"
+                            >
+                              {t.forms.removeQuestion}
+                            </button>
+                          </div>
+                          <input
+                            value={f.label}
+                            onChange={(e) => setOwnerFields((prev) => prev.map((row, i) => (i === idx ? { ...row, label: e.target.value } : row)))}
+                            placeholder={t.forms.questionLabel}
+                            className="app-input"
+                          />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              value={f.type}
+                              onChange={(e) => setOwnerFields((prev) => prev.map((row, i) => (i === idx ? { ...row, type: e.target.value as FormFieldDef['type'] } : row)))}
+                              className="app-select w-auto"
+                            >
+                              <option value="text">{t.forms.fieldTypes.text}</option>
+                              <option value="textarea">{t.forms.fieldTypes.textarea}</option>
+                              <option value="number">{t.forms.fieldTypes.number}</option>
+                              <option value="date">{t.forms.fieldTypes.date}</option>
+                              <option value="checkbox">{t.forms.fieldTypes.checkbox}</option>
+                              <option value="select">{t.forms.fieldTypes.select}</option>
+                              <option value="photo">{t.forms.fieldTypes.photo}</option>
+                            </select>
+                            <label className="text-sm text-app-label flex items-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                checked={f.required}
+                                onChange={(e) => setOwnerFields((prev) => prev.map((row, i) => (i === idx ? { ...row, required: e.target.checked } : row)))}
+                              />
+                              {t.forms.questionRequired}
+                            </label>
+                          </div>
+                          {f.type === 'select' && (
+                            <textarea
+                              value={f.optionsText}
+                              onChange={(e) => setOwnerFields((prev) => prev.map((row, i) => (i === idx ? { ...row, optionsText: e.target.value } : row)))}
+                              rows={3}
+                              placeholder={t.forms.selectOptionsPlaceholder}
+                              className="app-input"
+                            />
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" onClick={() => setOwnerEditId(null)} className="app-btn-secondary">
+                        {t.common.cancel}
+                      </button>
+                      <button type="button" onClick={saveOwnerEdit} disabled={ownerSaving} className="app-btn-primary">
+                        {ownerSaving ? t.common.loading : t.common.save}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {ownerTemplates.length > 0 && (
               <div>
                 <h3 className="text-base font-semibold text-app-primary mb-3">{t.forms.assignTitle}</h3>
-                <FormAssignmentsPanel templates={allTemplatesForOwner} departments={departments} />
+                <FormAssignmentsPanel templates={ownerTemplates} departments={departments} />
               </div>
             )}
           </div>
         </section>
       )}
+      {role === 'manager' && managerEmployees && (
+        <section id="section-forms-manager-assign" className={sectionClass}>
+          <h2 className="text-lg font-semibold text-app-primary mb-4">{t.forms.assignTitle}</h2>
+          {allTemplatesForOwner && allTemplatesForOwner.length > 0 ? (
+            <FormEmployeeAssignmentsPanel templates={allTemplatesForOwner} employees={managerEmployees} />
+          ) : (
+            <p className="text-sm text-app-muted">{t.common.noData}</p>
+          )}
+        </section>
+      )}
 
-      {staffOrQc && (
+      {canFill && (
         <section id="section-forms-available" className={sectionClass}>
           <h2 className="text-lg font-semibold text-app-primary mb-4">{t.forms.availableForms}</h2>
           {templatesForFill.length === 0 ? (
@@ -390,30 +580,34 @@ export function ManagementFormsView({
                           <button
                             type="button"
                             onClick={() => {
-                              setOpenId(openId === tpl.id ? null : tpl.id);
-                              setAnswers({});
+                              setOpenId((prev) => {
+                                const next = prev === tpl.id ? null : tpl.id;
+                                if (next === tpl.id) setAnswers({});
+                                return next;
+                              });
                             }}
-                            className="text-sm px-3 py-1.5 rounded-ios bg-ios-blue text-white"
+                            className="app-btn-primary !min-h-[2.1rem] !px-3 !py-1.5 !text-sm !font-medium"
                           >
                             {openId === tpl.id ? t.forms.collapse : t.forms.expand}
                           </button>
                         </div>
                         {openId === tpl.id && (
-                          <div className="mt-4 border-t border-gray-100 dark:border-ios-dark-separator pt-4">
-                            <p className="text-xs text-app-muted mb-3">Fields marked with * are required.</p>
-                            <div className="space-y-3">
-                              {tpl.fields.map((f) => (
-                                <div key={f.key} className="rounded-ios border border-gray-200 dark:border-ios-dark-separator bg-white/70 dark:bg-ios-dark-elevated-2/20 p-3">
-                                  {renderField(f, tpl.id)}
-                                </div>
-                              ))}
-                            </div>
-                            <div className="mt-4 sticky bottom-0 bg-white/95 dark:bg-ios-dark-elevated/95 border border-gray-200 dark:border-ios-dark-separator rounded-ios p-2.5">
+                          <div className="mt-4 space-y-3">
+                            <p className="text-xs text-app-muted">Fields marked with * are required.</p>
+                            {tpl.fields.map((f) => (
+                              <div key={f.key} className="rounded-ios border border-gray-200 dark:border-ios-dark-separator bg-white/70 dark:bg-ios-dark-elevated-2/20 p-3">
+                                {renderField(f, tpl.id)}
+                              </div>
+                            ))}
+                            <div className="flex justify-end gap-2">
+                              <button type="button" onClick={() => setOpenId(null)} className="app-btn-secondary">
+                                {t.common.cancel}
+                              </button>
                               <button
                                 type="button"
                                 disabled={submitting}
                                 onClick={() => handleSubmit(tpl)}
-                                className="w-full sm:w-auto px-4 py-2.5 rounded-ios bg-ios-blue text-white text-sm font-medium disabled:opacity-50"
+                                className="app-btn-primary"
                               >
                                 {submitting ? t.forms.submitting : t.forms.submit}
                               </button>
@@ -430,7 +624,7 @@ export function ManagementFormsView({
         </section>
       )}
 
-      {(role === 'staff' || role === 'qc') && myList.length > 0 && (
+      {(role === 'staff' || role === 'qc' || role === 'marketing') && myList.length > 0 && (
         <section id="section-forms-my-submissions" className={sectionClass}>
           <h2 className="text-lg font-semibold text-app-primary mb-4">{t.forms.mySubmissions}</h2>
           <ul className="space-y-3 text-sm">
@@ -461,7 +655,7 @@ export function ManagementFormsView({
         </section>
       )}
 
-      {showReview && reviewList.length > 0 && (
+      {showReview && (
         <section id="section-forms-review" className={sectionClass}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold text-app-primary">{t.forms.reviewQueue}</h2>
@@ -469,8 +663,11 @@ export function ManagementFormsView({
               {t.common.total}: {reviewList.length}
             </span>
           </div>
-          <ul className="space-y-5">
-            {reviewList.map((s) => (
+          {reviewList.length === 0 ? (
+            <p className="text-sm text-app-muted">{t.common.noData}</p>
+          ) : (
+            <ul className="space-y-5">
+              {reviewList.map((s) => (
               <li
                 id={`forms-review-submission-${s.id}`}
                 key={s.id}
@@ -482,15 +679,19 @@ export function ManagementFormsView({
                     <p className="text-sm text-app-secondary">
                       <span className="font-medium text-app-primary">{s.employee.name}</span> · {s.branch.name}
                     </p>
+                    <p className="text-sm text-app-secondary mt-1">
+                      <span className="text-app-label">{t.forms.submittedToManager}</span>{' '}
+                      <span className="font-medium text-app-primary">{s.reportsToManager?.name ?? '—'}</span>
+                    </p>
                   </div>
                   <div className="sm:ms-auto flex flex-col items-start sm:items-end gap-1">
                     <span
                       className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
-                        s.status === 'pending'
-                          ? 'bg-amber-100 text-amber-900 dark:bg-amber-600/90 dark:text-white'
-                          : s.status === 'approved'
-                            ? 'bg-green-100 text-green-900 dark:bg-green-900/50 dark:text-green-100'
-                            : 'bg-red-100 text-red-900 dark:bg-red-900/50 dark:text-red-100'
+                        s.status === 'approved'
+                          ? 'bg-green-100 text-green-900 dark:bg-green-900/50 dark:text-green-100'
+                          : s.status === 'denied'
+                            ? 'bg-red-100 text-red-900 dark:bg-red-900/50 dark:text-red-100'
+                            : 'bg-ios-blue/15 text-ios-blue dark:bg-ios-blue/25 dark:text-ios-blue'
                       }`}
                     >
                       {t.status[s.status as keyof typeof t.status] ?? s.status}
@@ -526,89 +727,21 @@ export function ManagementFormsView({
                     </div>
                   ))}
                 </dl>
-                {s.status === 'pending' ? (
-                  <ReviewActions
-                    submissionId={s.id}
-                    disabled={reviewingId === s.id}
-                    onReview={handleReview}
-                    t={t}
-                  />
-                ) : (
+                {(s.status === 'approved' || s.status === 'denied') && (s.rating != null || s.comments) ? (
                   <div className="text-sm border-t border-gray-100 dark:border-ios-dark-separator pt-3 space-y-1">
                     <p className="text-app-secondary">
                       <span className="font-medium text-app-primary">{t.status[s.status as keyof typeof t.status]}</span>
-                      {s.rating ? ` · ${s.rating}/5` : ''}
+                      {s.rating != null ? ` · ${t.qc.rating}: ${s.rating}/5` : ''}
                     </p>
-                    {s.comments && <p className="text-app-secondary">{s.comments}</p>}
+                    {s.comments ? <p className="text-app-secondary">{s.comments}</p> : null}
                   </div>
-                )}
+                ) : null}
               </li>
-            ))}
-          </ul>
+              ))}
+            </ul>
+          )}
         </section>
       )}
-    </div>
-  );
-}
-
-function ReviewActions({
-  submissionId,
-  disabled,
-  onReview,
-  t,
-}: {
-  submissionId: string;
-  disabled: boolean;
-  onReview: (id: string, status: 'approved' | 'denied', rating: number | '', comments: string) => void;
-  t: LocaleMessages;
-}) {
-  const [rating, setRating] = useState<number | ''>('');
-  const [comments, setComments] = useState('');
-
-  return (
-    <div className="flex flex-col gap-3 border-t border-gray-100 dark:border-ios-dark-separator pt-4 sm:flex-row sm:flex-wrap sm:items-end">
-      <label className="flex flex-col gap-1 text-sm text-app-label">
-        {t.qc.rating}
-        <select
-          value={rating === '' ? '' : rating}
-          onChange={(e) => setRating(e.target.value === '' ? '' : Number(e.target.value))}
-          className="mt-0 min-h-[2.5rem] rounded-ios border border-gray-300 bg-white px-2 py-1.5 text-sm font-medium text-app-primary shadow-sm dark:border-ios-dark-separator dark:bg-ios-dark-elevated"
-        >
-          <option value="">—</option>
-          {[1, 2, 3, 4, 5].map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm text-app-label">
-        {t.qc.commentsOptional}
-        <input
-          type="text"
-          value={comments}
-          onChange={(e) => setComments(e.target.value)}
-          className="min-h-[2.5rem] w-full rounded-ios border border-gray-300 bg-white px-3 py-2 text-sm text-app-primary shadow-sm dark:border-ios-dark-separator dark:bg-ios-dark-elevated"
-        />
-      </label>
-      <div className="flex flex-wrap gap-2 sm:ms-auto">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => onReview(submissionId, 'approved', rating, comments)}
-          className="min-h-[2.5rem] flex-1 rounded-ios bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50 sm:flex-none dark:bg-green-600"
-        >
-          {t.common.approve}
-        </button>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => onReview(submissionId, 'denied', rating, comments)}
-          className="min-h-[2.5rem] flex-1 rounded-ios bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50 sm:flex-none dark:bg-red-600"
-        >
-          {t.common.deny}
-        </button>
-      </div>
     </div>
   );
 }

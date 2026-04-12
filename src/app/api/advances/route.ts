@@ -39,9 +39,6 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  if (session.user.role !== 'staff' && session.user.role !== 'qc')
-    return new Response(JSON.stringify({ error: 'Only staff can request advances' }), { status: 403 });
-
   const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
   if (!user?.employee) return new Response(JSON.stringify({ error: 'Employee record not found' }), { status: 400 });
   if (user.employee.status === 'terminated') return new Response(JSON.stringify({ error: 'Terminated employees cannot request advances' }), { status: 403 });

@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession, requireQc } from '@/lib/session';
+import { normalizeUserRole } from '@/lib/formVisibility';
+import { runQcPhotoMonthlyCleanupIfDue } from '@/lib/qc-photo-cleanup';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -10,16 +12,45 @@ const createSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
+  await runQcPhotoMonthlyCleanupIfDue();
   const session = await requireSession();
+  const role = normalizeUserRole(session.user.role);
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status');
   const assignmentId = searchParams.get('assignmentId');
 
-  if (session.user.role === 'qc' || session.user.role === 'owner') {
+  if (role === 'qc' || role === 'owner') {
     const submissions = await prisma.qcSubmission.findMany({
       where: {
         ...(status ? { status } : {}),
         ...(assignmentId ? { assignmentId } : {}),
+      },
+      include: {
+        assignment: { include: { checklist: { include: { items: true } }, employee: true, branch: true } },
+        employee: { include: { branch: true } },
+        branch: true,
+        photos: true,
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+    return Response.json(submissions);
+  }
+
+  if (role === 'manager') {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      include: { employee: true },
+    });
+    if (!user?.employee) return Response.json([]);
+
+    const managerEmployee = user.employee;
+
+    const submissions = await prisma.qcSubmission.findMany({
+      where: {
+        ...(status ? { status } : {}),
+        ...(assignmentId ? { assignmentId } : {}),
+        branchId: managerEmployee.branchId,
+        employee: { reportsToEmployeeId: managerEmployee.id, branchId: managerEmployee.branchId },
       },
       include: {
         assignment: { include: { checklist: { include: { items: true } }, employee: true, branch: true } },
@@ -46,6 +77,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  await runQcPhotoMonthlyCleanupIfDue();
   const session = await requireSession();
   if (session.user.role !== 'staff' && session.user.role !== 'qc')
     return new Response(JSON.stringify({ error: 'Only staff can submit QC' }), { status: 403 });

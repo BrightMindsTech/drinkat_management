@@ -6,12 +6,16 @@ export async function GET() {
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
 
-  if (role === 'staff') {
+  if (role === 'staff' || role === 'marketing') {
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: { employee: { select: { id: true } } },
     });
     if (!user?.employee) return Response.json({ total: 0, items: [] });
+
+    if (role === 'marketing') {
+      return Response.json({ total: 0, items: [] });
+    }
 
     const assignments = await prisma.checklistAssignment.findMany({
       where: { employeeId: user.employee.id },
@@ -43,56 +47,86 @@ export async function GET() {
     });
   }
 
-  const pendingQcPromise = prisma.qcSubmission.findMany({
-    where: { status: 'pending' },
-    select: {
-      id: true,
-      employee: { select: { name: true } },
-      assignment: { select: { checklist: { select: { name: true } } } },
-    },
-    orderBy: { submittedAt: 'desc' },
-  });
+  let pendingQcPromise: Promise<{ id: string; assignment: { checklist: { name: string } }; employee: { name: string } }[]>;
+  let pendingLeavePromise: Promise<{ id: string; employee: { name: string } }[]>;
+  let pendingAdvancesPromise: Promise<{ id: string; employee: { name: string }; amount: number }[]>;
 
-  const pendingFormsPromise =
-    role === 'owner'
-      ? prisma.managementFormSubmission.findMany({
-          where: { status: 'pending' },
-          select: {
-            id: true,
-            employee: { select: { name: true } },
-            template: { select: { title: true } },
-          },
-          orderBy: { submittedAt: 'desc' },
-        })
-      : prisma.managementFormSubmission.findMany({
-          where: {
-            status: 'pending',
-            template: { category: { in: ['qc', 'marketing', 'kitchen', 'cash'] } },
-          },
-          select: {
-            id: true,
-            employee: { select: { name: true } },
-            template: { select: { title: true } },
-          },
-          orderBy: { submittedAt: 'desc' },
-        });
+  if (role === 'manager') {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { employee: { select: { id: true, branchId: true } } },
+    });
+    if (!user?.employee) return Response.json({ total: 0, items: [] });
 
-  const [pendingQc, pendingForms] = await Promise.all([pendingQcPromise, pendingFormsPromise]);
-  const [pendingLeave, pendingAdvances] =
-    role === 'owner'
-      ? await Promise.all([
-          prisma.leaveRequest.findMany({
+    const managerEmployeeId = user.employee.id;
+    const managerBranchId = user.employee.branchId;
+
+    pendingQcPromise = prisma.qcSubmission.findMany({
+      where: {
+        status: 'pending',
+        branchId: managerBranchId,
+        employee: { reportsToEmployeeId: managerEmployeeId },
+      },
+      select: {
+        id: true,
+        employee: { select: { name: true } },
+        assignment: { select: { checklist: { select: { name: true } } } },
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+
+    pendingLeavePromise = prisma.leaveRequest.findMany({
+      where: {
+        status: 'pending',
+        employee: { reportsToEmployeeId: managerEmployeeId, branchId: managerBranchId },
+      },
+      select: { id: true, employee: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    pendingAdvancesPromise = prisma.advance.findMany({
+      where: {
+        status: 'pending',
+        employee: { reportsToEmployeeId: managerEmployeeId, branchId: managerBranchId },
+      },
+      select: { id: true, employee: { select: { name: true } }, amount: true },
+      orderBy: { requestedAt: 'desc' },
+    });
+  } else {
+    pendingQcPromise = prisma.qcSubmission.findMany({
+      where: { status: 'pending' },
+      select: {
+        id: true,
+        employee: { select: { name: true } },
+        assignment: { select: { checklist: { select: { name: true } } } },
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+
+    pendingLeavePromise =
+      role === 'owner'
+        ? prisma.leaveRequest.findMany({
             where: { status: 'pending' },
             select: { id: true, employee: { select: { name: true } } },
             orderBy: { createdAt: 'desc' },
-          }),
-          prisma.advance.findMany({
+          })
+        : Promise.resolve([]);
+
+    pendingAdvancesPromise =
+      role === 'owner'
+        ? prisma.advance.findMany({
             where: { status: 'pending' },
             select: { id: true, employee: { select: { name: true } }, amount: true },
             orderBy: { requestedAt: 'desc' },
-          }),
-        ])
-      : [[], []];
+          })
+        : Promise.resolve([]);
+  }
+
+  const [pendingQc, pendingLeave, pendingAdvances] = await Promise.all([
+    pendingQcPromise,
+    pendingLeavePromise,
+    pendingAdvancesPromise,
+  ]);
 
   const items = [
     ...pendingQc.map((s) => ({
@@ -101,13 +135,6 @@ export async function GET() {
       title: s.assignment.checklist.name,
       subtitle: s.employee.name,
       href: `/dashboard/qc#qc-review-submission-${s.id}`,
-    })),
-    ...pendingForms.map((s) => ({
-      id: `forms-${s.id}`,
-      type: 'forms_review',
-      title: s.template.title,
-      subtitle: s.employee.name,
-      href: `/dashboard/forms#forms-review-submission-${s.id}`,
     })),
     ...pendingLeave.map((l) => ({
       id: `leave-${l.id}`,

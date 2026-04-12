@@ -20,18 +20,20 @@ export function DashboardHomeContent({ email, role }: { email: string; role: str
         >
           <h2 className="text-3xl font-bold text-app-primary">{t.dashboard.hrCard}</h2>
           <p className="mt-1 text-sm text-app-muted text-center">
-            {role === 'owner' ? t.dashboard.hrDescOwner : t.dashboard.hrDescStaff}
+            {role === 'owner' ? t.dashboard.hrDescOwner : role === 'manager' ? t.dashboard.hrDescManager : t.dashboard.hrDescStaff}
           </p>
         </Link>
-        <Link
-          href="/dashboard/qc"
-          className="flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated active:bg-gray-50 dark:active:bg-ios-dark-elevated-2 p-4 app-hover-lift app-press app-surface"
-        >
-          <h2 className="text-3xl font-bold text-app-primary">{t.dashboard.qcCard}</h2>
-          <p className="mt-1 text-sm text-app-muted text-center">
-            {role === 'staff' ? t.dashboard.qcDescSubmit : t.dashboard.qcDescReview}
-          </p>
-        </Link>
+        {role !== 'marketing' && (
+          <Link
+            href="/dashboard/qc"
+            className="flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated active:bg-gray-50 dark:active:bg-ios-dark-elevated-2 p-4 app-hover-lift app-press app-surface"
+          >
+            <h2 className="text-3xl font-bold text-app-primary">{t.dashboard.qcCard}</h2>
+            <p className="mt-1 text-sm text-app-muted text-center">
+              {role === 'staff' ? t.dashboard.qcDescSubmit : t.dashboard.qcDescReview}
+            </p>
+          </Link>
+        )}
         <Link
           href="/dashboard/forms"
           className="flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated active:bg-gray-50 dark:active:bg-ios-dark-elevated-2 p-4 app-hover-lift app-press app-surface"
