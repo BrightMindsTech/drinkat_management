@@ -1,0 +1,53 @@
+import { z } from 'zod';
+import { requireSession } from '@/lib/session';
+import { getActiveAwaySession, getOpenClockEntry, getTimeClockEmployee } from '@/lib/time-clock-helpers';
+import { isInsideBranchRadius } from '@/lib/geo';
+import { DEFAULT_APP_TIMEZONE, minutesUntilShiftEnd } from '@/lib/shifts';
+import { processExpiredAwaySessions } from '@/lib/time-clock-process';
+
+const bodySchema = z.object({
+  lat: z.number(),
+  lng: z.number(),
+});
+
+export async function POST(req: Request) {
+  const session = await requireSession();
+  try {
+    await processExpiredAwaySessions();
+  } catch (e) {
+    console.error('time-clock/presence-check: failed to process expired away sessions', e);
+  }
+
+  const emp = await getTimeClockEmployee(session.user.id, session.user.role);
+  if (!emp) return Response.json({ triggerAway: false, reason: 'not_applicable' });
+
+  const open = await getOpenClockEntry(emp.id);
+  if (!open) return Response.json({ triggerAway: false, reason: 'not_clocked_in' });
+
+  const away = await getActiveAwaySession(emp.id);
+  if (away) return Response.json({ triggerAway: false, reason: 'away_already_active' });
+
+  if (emp.branch.latitude == null || emp.branch.longitude == null) {
+    return Response.json({ triggerAway: false, reason: 'branch_geofence_not_configured' });
+  }
+
+  const raw = await req.json();
+  const parsed = bodySchema.safeParse(raw);
+  if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
+
+  const { lat, lng } = parsed.data;
+  const inside = isInsideBranchRadius(lat, lng, emp.branch.latitude, emp.branch.longitude, emp.branch.geofenceRadiusM);
+  if (inside) return Response.json({ triggerAway: false, reason: 'inside_radius' });
+
+  const shift = emp.shiftDefinition;
+  if (shift) {
+    const minsUntilEnd = minutesUntilShiftEnd(new Date(), shift, DEFAULT_APP_TIMEZONE, {
+      shiftProfile: emp.branch.shiftProfile,
+    });
+    if (minsUntilEnd <= 0) {
+      return Response.json({ triggerAway: false, reason: 'shift_ended' });
+    }
+  }
+
+  return Response.json({ triggerAway: true, reason: 'outside_radius_clocked_in' });
+}

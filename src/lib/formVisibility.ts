@@ -28,9 +28,8 @@ export type TemplateForVisibility = {
 export function canFillManagementForm(ctx: FormViewContext, template: TemplateForVisibility): boolean {
   const role = normalizeUserRole(ctx.userRole);
   if (role === 'owner') return false;
-  if (role === 'manager') return false;
 
-  // Form visibility is assignment-based only (department assignment).
+  // Form visibility is assignment-based (department and/or explicit employee assignment in callers).
   if (template.departmentAssignments.length > 0) {
     return !!(ctx.employeeDepartmentId && template.departmentAssignments.some((a) => a.departmentId === ctx.employeeDepartmentId));
   }

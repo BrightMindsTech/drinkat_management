@@ -1,12 +1,39 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { FormFieldDef } from '@/lib/formTemplate';
+import { scrollIntoViewById } from '@/lib/scrollIntoViewDeferred';
 import { FormAssignmentsPanel } from './FormAssignmentsPanel';
 import { CreateFormPanel } from './CreateFormPanel';
 import { FormEmployeeAssignmentsPanel } from './FormEmployeeAssignmentsPanel';
+
+function reportedFormsStorageKey(managerUserId: string) {
+  return `drinkat:forms-reported-to-owner:${managerUserId}`;
+}
+
+function readReportedFormIds(managerUserId: string): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(reportedFormsStorageKey(managerUserId));
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter((x): x is string => typeof x === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeReportedFormIds(managerUserId: string, ids: Set<string>) {
+  try {
+    window.localStorage.setItem(reportedFormsStorageKey(managerUserId), JSON.stringify([...ids]));
+  } catch {
+    /* quota */
+  }
+}
 
 export type FormsTemplateRow = {
   id: string;
@@ -42,6 +69,7 @@ export type FormsMySubmission = {
 
 export function ManagementFormsView({
   role,
+  managerUserId,
   templatesForFill,
   allTemplatesForOwner,
   departments,
@@ -51,6 +79,7 @@ export function ManagementFormsView({
   staffEmptyHint,
 }: {
   role: string;
+  managerUserId?: string;
   templatesForFill: FormsTemplateRow[];
   allTemplatesForOwner?: FormsTemplateRow[];
   departments?: { id: string; name: string }[];
@@ -70,6 +99,24 @@ export function ManagementFormsView({
   const [ownerEditId, setOwnerEditId] = useState<string | null>(null);
   const [ownerSaving, setOwnerSaving] = useState(false);
   const [importingDefaults, setImportingDefaults] = useState(false);
+  const [reportingFormSubmissionId, setReportingFormSubmissionId] = useState<string | null>(null);
+  const [reportedFormSubmissionIds, setReportedFormSubmissionIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!managerUserId) {
+      setReportedFormSubmissionIds(new Set());
+      return;
+    }
+    setReportedFormSubmissionIds(readReportedFormIds(managerUserId));
+  }, [managerUserId]);
+
+  useLayoutEffect(() => {
+    if (!ownerEditId) return;
+    document.getElementById('forms-owner-edit-panel')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  }, [ownerEditId]);
 
   const grouped = useMemo(() => {
     const m = new Map<string, FormsTemplateRow[]>();
@@ -377,7 +424,9 @@ export function ManagementFormsView({
   const sectionClass = 'app-section scroll-mt-28';
 
   const showReview = role === 'owner' || role === 'manager';
-  const canFill = role === 'staff' || role === 'qc' || role === 'marketing';
+  const showFillSection =
+    role === 'staff' || role === 'qc' || role === 'marketing' || (role === 'manager' && templatesForFill.length > 0);
+  const managerCanReportForms = role === 'manager' && !!managerUserId;
 
   return (
     <div className="app-page">
@@ -416,7 +465,10 @@ export function ManagementFormsView({
                   ))}
                 </ul>
                 {editingTemplate && (
-                  <div className="mt-4 rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 sm:p-5 space-y-4">
+                  <div
+                    id="forms-owner-edit-panel"
+                    className="mt-4 scroll-mt-28 rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 sm:p-5 space-y-4"
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <h4 className="text-base font-semibold text-app-primary">{t.common.edit}: {editingTemplate.title}</h4>
                       <button type="button" onClick={() => setOwnerEditId(null)} className="app-btn-secondary !min-h-[2rem] !px-3">
@@ -444,12 +496,18 @@ export function ManagementFormsView({
                       <p className="text-sm font-medium text-app-primary">{t.forms.createFormQuestions}</p>
                       <button
                         type="button"
-                        onClick={() =>
-                          setOwnerFields((prev) => [
-                            ...prev,
-                            { key: '', label: '', type: 'text', required: false, optionsText: '' },
-                          ])
-                        }
+                        onClick={() => {
+                          const insertAt = ownerFields.length;
+                          flushSync(() => {
+                            setOwnerFields((prev) => [
+                              ...prev,
+                              { key: '', label: '', type: 'text', required: false, optionsText: '' },
+                            ]);
+                          });
+                          document
+                            .getElementById(`forms-owner-field-${insertAt}`)
+                            ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        }}
                         className="app-btn-secondary"
                       >
                         {t.forms.addQuestion}
@@ -457,7 +515,11 @@ export function ManagementFormsView({
                     </div>
                     <ul className="space-y-3">
                       {ownerFields.map((f, idx) => (
-                        <li key={`${f.key}-${idx}`} className="rounded-ios border border-gray-200 dark:border-ios-dark-separator p-3 space-y-2">
+                        <li
+                          id={`forms-owner-field-${idx}`}
+                          key={`${f.key}-${idx}`}
+                          className="scroll-mt-28 rounded-ios border border-gray-200 dark:border-ios-dark-separator p-3 space-y-2"
+                        >
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-app-muted">#{idx + 1}</span>
                             <button
@@ -541,7 +603,7 @@ export function ManagementFormsView({
         </section>
       )}
 
-      {canFill && (
+      {showFillSection && (
         <section id="section-forms-available" className={sectionClass}>
           <h2 className="text-lg font-semibold text-app-primary mb-4">{t.forms.availableForms}</h2>
           {templatesForFill.length === 0 ? (
@@ -582,7 +644,10 @@ export function ManagementFormsView({
                             onClick={() => {
                               setOpenId((prev) => {
                                 const next = prev === tpl.id ? null : tpl.id;
-                                if (next === tpl.id) setAnswers({});
+                                if (next === tpl.id) {
+                                  setAnswers({});
+                                  scrollIntoViewById(`forms-fill-body-${tpl.id}`);
+                                }
                                 return next;
                               });
                             }}
@@ -592,7 +657,7 @@ export function ManagementFormsView({
                           </button>
                         </div>
                         {openId === tpl.id && (
-                          <div className="mt-4 space-y-3">
+                          <div id={`forms-fill-body-${tpl.id}`} className="mt-4 scroll-mt-28 space-y-3">
                             <p className="text-xs text-app-muted">Fields marked with * are required.</p>
                             {tpl.fields.map((f) => (
                               <div key={f.key} className="rounded-ios border border-gray-200 dark:border-ios-dark-separator bg-white/70 dark:bg-ios-dark-elevated-2/20 p-3">
@@ -624,7 +689,7 @@ export function ManagementFormsView({
         </section>
       )}
 
-      {(role === 'staff' || role === 'qc' || role === 'marketing') && myList.length > 0 && (
+      {(role === 'staff' || role === 'qc' || role === 'marketing' || role === 'manager') && myList.length > 0 && (
         <section id="section-forms-my-submissions" className={sectionClass}>
           <h2 className="text-lg font-semibold text-app-primary mb-4">{t.forms.mySubmissions}</h2>
           <ul className="space-y-3 text-sm">
@@ -736,6 +801,43 @@ export function ManagementFormsView({
                     {s.comments ? <p className="text-app-secondary">{s.comments}</p> : null}
                   </div>
                 ) : null}
+                {managerCanReportForms && (
+                  <div className="border-t border-gray-100 dark:border-ios-dark-separator pt-3">
+                    <button
+                      type="button"
+                      disabled={
+                        reportingFormSubmissionId === s.id || reportedFormSubmissionIds.has(s.id)
+                      }
+                      className="rounded-lg border border-ios-blue/40 px-2.5 py-1.5 text-xs font-medium text-ios-blue disabled:opacity-50"
+                      onClick={async () => {
+                        if (!managerUserId) return;
+                        setReportingFormSubmissionId(s.id);
+                        try {
+                          const res = await fetch(`/api/forms/submissions/${s.id}/report-to-owner`, {
+                            method: 'POST',
+                          });
+                          if (!res.ok) {
+                            const data = (await res.json().catch(() => ({}))) as { error?: string };
+                            alert(data.error ?? t.forms.reportFormToOwnerFailed);
+                            return;
+                          }
+                          setReportedFormSubmissionIds((prev) => {
+                            const next = new Set(prev);
+                            next.add(s.id);
+                            writeReportedFormIds(managerUserId, next);
+                            return next;
+                          });
+                        } finally {
+                          setReportingFormSubmissionId(null);
+                        }
+                      }}
+                    >
+                      {reportedFormSubmissionIds.has(s.id)
+                        ? t.forms.reportedFormToOwner
+                        : t.forms.reportFormToOwner}
+                    </button>
+                  </div>
+                )}
               </li>
               ))}
             </ul>

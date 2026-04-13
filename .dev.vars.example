@@ -1,6 +1,19 @@
-# Copy to `.dev.vars` (gitignored). Wrangler loads this for `npm run preview` / `wrangler dev`.
-# Do not commit real secrets.
+# LOCAL PREVIEW ONLY (wrangler dev / npm run preview). Do NOT use this file for production.
+#
+# Production: set every secret and variable in the Cloudflare dashboard on the
+# drinkat-management Worker (Workers & Pages → your worker → Settings → Variables and Secrets),
+# or with: wrangler secret put NAME  (and plain vars via dashboard / wrangler vars).
+# After changing production secrets, run: npm run deploy
+#
+# Do not commit `.dev.vars` — copy this file to `.dev.vars` only if you test locally.
 
 NEXTAUTH_SECRET=change-me-to-a-long-random-string
-# After `npm run preview` starts, set this to the URL shown (often http://127.0.0.1:8788 or http://localhost:8788)
 NEXTAUTH_URL=http://127.0.0.1:8788
+
+WEB_PUSH_VAPID_PUBLIC_KEY=
+WEB_PUSH_VAPID_PRIVATE_KEY=
+WEB_PUSH_CONTACT_EMAIL=mailto:you@example.com
+
+CRON_SECRET=
+APP_TIMEZONE=Asia/Amman
+FCM_LEGACY_SERVER_KEY=

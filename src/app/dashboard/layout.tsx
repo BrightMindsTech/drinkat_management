@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import { Logo } from '@/components/Logo';
 import { DashboardNav } from '@/components/DashboardNav';
+import { TimeClockGeofenceProvider } from '@/contexts/TimeClockGeofenceContext';
 import { SignOutButton } from '@/components/SignOutButton';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -37,6 +38,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
+    <TimeClockGeofenceProvider role={navRole}>
     <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden min-w-0 w-full bg-ios-gray dark:bg-ios-gray-dark">
       <PendingReviewNotice role={navRole} />
       <header className="shrink-0 bg-white/80 dark:bg-ios-dark-elevated/90 backdrop-blur-xl border-b border-gray-200/80 dark:border-ios-dark-separator/50 min-w-0 w-full pt-[env(safe-area-inset-top)]">
@@ -65,5 +67,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <DashboardNav role={navRole} variant="bottom" />
       </div>
     </div>
+    </TimeClockGeofenceProvider>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import type { FormFieldDef } from '@/lib/formTemplate';
@@ -65,17 +66,33 @@ export function CreateFormPanel() {
   const [fields, setFields] = useState<DraftField[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  useLayoutEffect(() => {
+    if (!open) return;
+    document.getElementById('forms-create-panel-body')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  }, [open]);
+
   function addField() {
-    setFields((prev) => [
-      ...prev,
-      {
-        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-        label: '',
-        type: 'text',
-        required: false,
-        optionsText: '',
-      },
-    ]);
+    const newId =
+      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+    flushSync(() => {
+      setFields((prev) => [
+        ...prev,
+        {
+          id: newId,
+          label: '',
+          type: 'text',
+          required: false,
+          optionsText: '',
+        },
+      ]);
+    });
+    document.getElementById(`forms-create-field-${newId}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    });
   }
 
   function updateField(id: string, patch: Partial<DraftField>) {
@@ -148,7 +165,10 @@ export function CreateFormPanel() {
         <span className="text-ios-blue text-sm font-normal">{open ? '−' : '+'}</span>
       </button>
       {open && (
-        <div className="mt-4 space-y-4 border-t border-gray-100 dark:border-ios-dark-separator pt-4">
+        <div
+          id="forms-create-panel-body"
+          className="mt-4 scroll-mt-28 space-y-4 border-t border-gray-100 dark:border-ios-dark-separator pt-4"
+        >
           <p className="text-sm text-app-secondary">{t.forms.createFormIntro}</p>
           <label className="block text-sm text-app-label">
             {t.forms.createFormName} *
@@ -195,8 +215,9 @@ export function CreateFormPanel() {
             <ul className="space-y-3">
               {fields.map((f, idx) => (
                 <li
+                  id={`forms-create-field-${f.id}`}
                   key={f.id}
-                  className="rounded-ios border border-gray-200 dark:border-ios-dark-separator p-3 space-y-2 bg-gray-50/80 dark:bg-ios-dark-elevated-2"
+                  className="scroll-mt-28 rounded-ios border border-gray-200 dark:border-ios-dark-separator p-3 space-y-2 bg-gray-50/80 dark:bg-ios-dark-elevated-2"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-xs font-medium text-app-muted">

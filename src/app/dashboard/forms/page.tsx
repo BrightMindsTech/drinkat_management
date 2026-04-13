@@ -54,15 +54,17 @@ export default async function FormsPage() {
   };
 
   const templatesForFill: FormsTemplateRow[] =
-    role === 'owner' || role === 'manager'
+    role === 'owner'
       ? []
       : allTemplates
-          .filter((t) =>
-            t.employeeAssignments.some((a) => a.employeeId === user?.employee?.id) ||
-            canFillManagementForm(ctx, {
-              category: t.category,
-              departmentAssignments: t.departmentAssignments,
-            })
+          .filter(
+            (t) =>
+              t.active &&
+              (t.employeeAssignments.some((a) => a.employeeId === user?.employee?.id) ||
+                canFillManagementForm(ctx, {
+                  category: t.category,
+                  departmentAssignments: t.departmentAssignments,
+                }))
           )
           .map(mapToRow);
 
@@ -99,6 +101,7 @@ export default async function FormsPage() {
           <div>
             <ManagementFormsView
               role={role}
+              managerUserId={undefined}
               templatesForFill={[]}
               initialReviewSubmissions={[]}
               initialMySubmissions={[]}
@@ -208,7 +211,7 @@ export default async function FormsPage() {
   }
 
   let mySubmissions: FormsMySubmission[] = [];
-  if (role === 'staff' || role === 'qc' || role === 'marketing') {
+  if (role === 'staff' || role === 'qc' || role === 'marketing' || role === 'manager') {
     if (user?.employee) {
       const list = await prisma.managementFormSubmission.findMany({
         where: { employeeId: user.employee.id },
@@ -232,7 +235,7 @@ export default async function FormsPage() {
   }
 
   let staffEmptyHint: 'noEmployee' | 'noDepartment' | 'noneForDept' | null = null;
-  if ((role === 'staff' || role === 'marketing') && templatesForFill.length === 0) {
+  if ((role === 'staff' || role === 'marketing' || role === 'manager') && templatesForFill.length === 0) {
     if (!user?.employee) staffEmptyHint = 'noEmployee';
     else if (!user.employee.departmentId) staffEmptyHint = 'noDepartment';
     else staffEmptyHint = 'noneForDept';
@@ -241,6 +244,7 @@ export default async function FormsPage() {
   return (
     <ManagementFormsView
       role={role}
+      managerUserId={role === 'manager' ? session.user.id : undefined}
       templatesForFill={templatesForFill}
       allTemplatesForOwner={allTemplatesForOwner}
       departments={departments}

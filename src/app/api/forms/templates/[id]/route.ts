@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const t = await prisma.managementFormTemplate.findUnique({
     where: { id },
-    include: { departmentAssignments: true },
+    include: { departmentAssignments: true, employeeAssignments: true },
   });
   if (!t) return Response.json({ error: 'Not found' }, { status: 404 });
   if (!t.active && role !== 'owner') {
@@ -39,10 +39,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       employeeDepartmentId: user?.employee?.departmentId ?? null,
       employeeDepartmentName: user?.employee?.department?.name ?? null,
     };
-    const ok = canFillManagementForm(ctx, {
-      category: t.category,
-      departmentAssignments: t.departmentAssignments,
-    });
+    const employeeId = user?.employee?.id ?? null;
+    const explicitlyAssigned = !!(employeeId && t.employeeAssignments.some((a) => a.employeeId === employeeId));
+    const ok =
+      explicitlyAssigned ||
+      canFillManagementForm(ctx, {
+        category: t.category,
+        departmentAssignments: t.departmentAssignments,
+      });
     if (!ok) return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 

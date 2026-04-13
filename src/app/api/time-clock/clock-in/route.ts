@@ -1,0 +1,73 @@
+import { z } from 'zod';
+import { requireSession } from '@/lib/session';
+import { prisma } from '@/lib/prisma';
+import { getTimeClockEmployee, getOpenClockEntry } from '@/lib/time-clock-helpers';
+import { isInsideBranchRadius } from '@/lib/geo';
+import { processExpiredAwaySessions } from '@/lib/time-clock-process';
+
+const bodySchema = z.object({
+  lat: z.number(),
+  lng: z.number(),
+});
+
+export async function POST(req: Request) {
+  const session = await requireSession();
+  try {
+    await processExpiredAwaySessions();
+  } catch (e) {
+    console.error('time-clock/clock-in: failed to process expired away sessions', e);
+  }
+
+  const emp = await getTimeClockEmployee(session.user.id, session.user.role);
+  if (!emp) {
+    return Response.json({ error: 'Time clock does not apply' }, { status: 403 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { locationConsentAt: true },
+  });
+  if (!user?.locationConsentAt) {
+    return Response.json({ error: 'Location consent required' }, { status: 403 });
+  }
+
+  const raw = await req.json();
+  const parsed = bodySchema.safeParse(raw);
+  if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
+
+  const { lat, lng } = parsed.data;
+  if (emp.branch.latitude == null || emp.branch.longitude == null) {
+    return Response.json({ error: 'Branch location not configured yet' }, { status: 400 });
+  }
+
+  const inside = isInsideBranchRadius(lat, lng, emp.branch.latitude, emp.branch.longitude, emp.branch.geofenceRadiusM);
+  if (!inside) {
+    return Response.json({ error: 'You must be within branch radius to clock in' }, { status: 400 });
+  }
+
+  const existing = await getOpenClockEntry(emp.id);
+  if (existing) {
+    // Idempotent success: if another request just clocked-in, avoid surfacing a client error.
+    return Response.json({
+      ok: true,
+      alreadyClockedIn: true,
+      entry: { id: existing.id, clockInAt: existing.clockInAt.toISOString() },
+    });
+  }
+
+  const entry = await prisma.timeClockEntry.create({
+    data: {
+      id: crypto.randomUUID(),
+      employeeId: emp.id,
+      branchId: emp.branchId,
+      clockInAt: new Date(),
+      clockInLat: lat,
+      clockInLng: lng,
+    },
+  });
+
+  return Response.json({
+    ok: true,
+    entry: { id: entry.id, clockInAt: entry.clockInAt.toISOString() },
+  });
+}

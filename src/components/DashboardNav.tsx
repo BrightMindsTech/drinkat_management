@@ -57,11 +57,31 @@ function IconChart({ className }: { className?: string }) {
   );
 }
 
+function IconClock({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </svg>
+  );
+}
+
+function IconEye({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 function navIconForHref(href: string) {
   if (href === base) return IconHome;
+  if (href.includes('/time-clock')) return IconClock;
   if (href.includes('/hr')) return IconUsers;
   if (href.includes('/qc')) return IconClipboardCheck;
   if (href.includes('/forms')) return IconDocument;
+  if (href.includes('/manager-reports')) return IconEye;
   if (href.includes('/reports')) return IconChart;
   return IconHome;
 }
@@ -77,14 +97,17 @@ export function DashboardNav({ role, variant = 'top' }: { role: string; variant?
     { href: `${base}/qc`, label: t.nav.qc },
     { href: `${base}/forms`, label: t.nav.forms },
     { href: `${base}/reports`, label: t.nav.reports },
+    { href: `${base}/manager-reports`, label: t.nav.managerReports },
   ];
   const qcLinks = [
     { href: base, label: t.nav.home },
+    { href: `${base}/time-clock`, label: t.nav.timeClock },
     { href: `${base}/qc`, label: t.nav.qc },
     { href: `${base}/forms`, label: t.nav.forms },
   ];
   const staffLinks = [
     { href: base, label: t.nav.home },
+    { href: `${base}/time-clock`, label: t.nav.timeClock },
     { href: `${base}/hr`, label: t.nav.myInfoAdvances },
     { href: `${base}/qc`, label: t.nav.qcSubmissions },
     { href: `${base}/forms`, label: t.nav.forms },
@@ -92,12 +115,14 @@ export function DashboardNav({ role, variant = 'top' }: { role: string; variant?
 
   const managerLinks = [
     { href: base, label: t.nav.home },
+    { href: `${base}/time-clock`, label: t.nav.timeClock },
     { href: `${base}/hr`, label: t.nav.hr },
     { href: `${base}/qc`, label: t.nav.qc },
     { href: `${base}/forms`, label: t.nav.forms },
   ];
   const marketingLinks = [
     { href: base, label: t.nav.home },
+    { href: `${base}/time-clock`, label: t.nav.timeClock },
     { href: `${base}/hr`, label: t.nav.myInfoAdvances },
     { href: `${base}/forms`, label: t.nav.forms },
   ];
@@ -153,7 +178,19 @@ export function DashboardNav({ role, variant = 'top' }: { role: string; variant?
               >
                 {isBottom ? (
                   <>
-                    <Icon className={active ? 'w-6 h-6 shrink-0' : 'w-6 h-6 shrink-0 opacity-90'} />
+                    {href.includes('/qc') ? (
+                      <span
+                        className={`font-bold tracking-wide shrink-0 leading-none tabular-nums ${
+                          active ? '' : 'opacity-90'
+                        }`}
+                        style={{ fontSize: 24, lineHeight: 1 }}
+                        aria-hidden
+                      >
+                        QC
+                      </span>
+                    ) : (
+                      <Icon className={active ? 'w-6 h-6 shrink-0' : 'w-6 h-6 shrink-0 opacity-90'} />
+                    )}
                     <span className="sr-only">{label}</span>
                   </>
                 ) : (

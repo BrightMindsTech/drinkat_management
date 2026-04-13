@@ -3,6 +3,12 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { parseTemplateFields, validateAnswersAgainstFields } from '@/lib/formTemplate';
 import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
+import {
+  createInboxForUsers,
+  getManagerUserIdForEmployee,
+  getOwnerUserIds,
+} from '@/lib/time-clock-helpers';
+import { sendPushToUser } from '@/lib/push';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -175,6 +181,71 @@ export async function POST(req: NextRequest) {
       branch: true,
     },
   });
+
+  // Manager-first line notifications; manager cash forms also go to owners (clock-out requires owner copy).
+  const roleNorm = normalizeUserRole(session.user.role);
+  const isManagerCashSubmission = roleNorm === 'manager' && template.category === 'cash';
+  const managerUserId = await getManagerUserIdForEmployee({
+    reportsToEmployeeId: emp.reportsToEmployeeId,
+    branchId: emp.branchId,
+  });
+  const ownerIds = await getOwnerUserIds();
+
+  const inboxTitle = `New form submission: ${template.title}`;
+  const inboxBody = `${emp.name} submitted "${template.title}" (${submission.branch.name}).`;
+  const inboxData = JSON.stringify({
+    submissionId: submission.id,
+    templateId: template.id,
+    employeeId: emp.id,
+    type: 'form_submitted',
+  });
+
+  const notifiedUserIds = new Set<string>();
+
+  if (managerUserId) {
+    await createInboxForUsers([managerUserId], {
+      category: 'forms_submission_manager',
+      title: inboxTitle,
+      body: inboxBody,
+      dataJson: inboxData,
+    });
+    notifiedUserIds.add(managerUserId);
+  }
+
+  if (isManagerCashSubmission && ownerIds.length > 0) {
+    await createInboxForUsers(ownerIds, {
+      category: 'forms_cash_submitted_to_owner',
+      title: inboxTitle,
+      body: inboxBody,
+      dataJson: inboxData,
+    });
+    for (const id of ownerIds) notifiedUserIds.add(id);
+  } else if (!managerUserId && ownerIds.length > 0) {
+    await createInboxForUsers(ownerIds, {
+      category: 'forms_submission_owner_fallback',
+      title: inboxTitle,
+      body: inboxBody,
+      dataJson: inboxData,
+    });
+    for (const id of ownerIds) notifiedUserIds.add(id);
+  }
+
+  if (notifiedUserIds.size > 0) {
+    try {
+      const uidList = [...notifiedUserIds];
+      const subs = await prisma.pushSubscription.findMany({ where: { userId: { in: uidList } } });
+      for (const uid of uidList) {
+        const userSubs = subs.filter((s) => s.userId === uid);
+        await sendPushToUser(uid, userSubs, {
+          title: inboxTitle,
+          body: inboxBody,
+          data: { type: 'management_form_submitted' },
+        });
+      }
+    } catch {
+      /* push optional */
+    }
+  }
 
   return Response.json({
     ...submission,

@@ -13,6 +13,13 @@ datasource db {
 model Branch {
   id        String   @id @default(cuid())
   name      String   @unique // MEU, HU, Airport Street
+  /// WGS84 — set by admin for geofence (nullable until configured)
+  latitude   Float?
+  longitude  Float?
+  /// Default ~20m; server uses slight tolerance around this
+  geofenceRadiusM Float @default(25)
+  /// `airport` = night shift uses Fri 17:30–Sat 02:30 instead of 17:00–02:00 on that evening
+  shiftProfile    String   @default("default")
   createdAt DateTime @default(now())
   users     User[]
   employees Employee[]
@@ -23,6 +30,8 @@ model Branch {
   employeeTransfersFrom EmployeeTransfer[] @relation("FromBranch")
   employeeTransfersTo   EmployeeTransfer[] @relation("ToBranch")
   managementFormSubmissions ManagementFormSubmission[]
+  timeClockEntries TimeClockEntry[]
+  awaySessions AwaySession[]
 }
 
 model Department {
@@ -41,8 +50,13 @@ model User {
   branchId      String?
   branch        Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   employee      Employee?
+  /// ISO consent timestamps for location / push (GDPR-style opt-in)
+  locationConsentAt DateTime?
+  pushConsentAt     DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  pushSubscriptions PushSubscription[]
+  inboxNotifications InboxNotification[]
 }
 
 model Employee {
@@ -83,6 +97,89 @@ model Employee {
   transfers   EmployeeTransfer[]
   managementFormSubmissions ManagementFormSubmission[]
   formTemplateAssignments FormTemplateEmployee[]
+  shiftDefinitionId String?
+  shiftDefinition   ShiftDefinition? @relation(fields: [shiftDefinitionId], references: [id], onDelete: SetNull)
+  timeClockEntries TimeClockEntry[]
+  awaySessions     AwaySession[]
+}
+
+/// Morning / Night work shifts (local minutes in APP_TIMEZONE, see lib/shifts.ts)
+model ShiftDefinition {
+  id              String   @id @default(cuid())
+  key             String   @unique // morning | night
+  name            String
+  /// 0–1439 minutes from midnight (start of shift)
+  startMinute     Int
+  /// 0–1439 end minute; if crossesMidnight, this is end on the *next* calendar day morning
+  endMinute       Int
+  crossesMidnight Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  employees       Employee[]
+}
+
+model TimeClockEntry {
+  id           String    @id @default(cuid())
+  employeeId   String
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  branchId     String
+  branch       Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  clockInAt    DateTime
+  clockOutAt   DateTime?
+  clockInLat   Float?
+  clockInLng   Float?
+  clockOutLat  Float?
+  clockOutLng  Float?
+  clockOutReason String? // manual | away_timer_expired | force_hr_manager | force_hr_owner
+  createdAt    DateTime  @default(now())
+
+  @@index([employeeId, clockOutAt])
+}
+
+/// Temporary leave from branch geofence (break / bathroom / other) with a timer
+model AwaySession {
+  id          String   @id @default(cuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  branchId    String
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  kind        String   // break | bathroom | other
+  otherNote   String?
+  startedAt   DateTime @default(now())
+  endsAt      DateTime
+  status      String   @default("active") // active | completed | canceled | expired_processed
+
+  @@index([employeeId, status])
+  @@index([endsAt, status])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Web Push endpoint URL, or FCM registration token stored as pseudo-URL `fcm:TOKEN`
+  endpoint  String
+  /// Web Push auth/p256dh JSON; null for FCM-only rows
+  keysJson  String?
+  provider  String   // web | fcm
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, endpoint])
+}
+
+/// In-app + audit trail for manager/owner (push complement)
+model InboxNotification {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    String    // time_clock
+  title       String
+  body        String
+  dataJson    String?
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, readAt])
 }
 
 model LeaveRequest {

@@ -22,12 +22,15 @@ export function EmployeeCard({
   branches = [],
   onDeleted,
   onUpdated,
+  hrForceClockRole,
 }: {
   employee: EmployeeWithRelations;
   departments?: { id: string; name: string }[];
   branches?: { id: string; name: string }[];
   onDeleted: (id: string) => void;
   onUpdated: (emp: EmployeeWithRelations) => void;
+  /** Owner/manager HR: show force clock-out for clocked-in staff (server enforces rules). */
+  hrForceClockRole?: 'owner' | 'manager';
 }) {
   const { t } = useLanguage();
   const [deleting, setDeleting] = useState(false);
@@ -45,6 +48,8 @@ export function EmployeeCard({
   const [showTransferHistory, setShowTransferHistory] = useState(false);
   const [showSalaryHistory, setShowSalaryHistory] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [forceClockBusy, setForceClockBusy] = useState(false);
+  const [forceClockNotice, setForceClockNotice] = useState('');
 
   const [draftName, setDraftName] = useState(employee.name);
   const [draftPhone, setDraftPhone] = useState(employee.contact ?? '');
@@ -130,6 +135,36 @@ export function EmployeeCard({
     setTransferBranchId('');
     setTransferOpen(true);
     setIsExpanded(true);
+  }
+
+  async function handleForceClockOut() {
+    if (!hrForceClockRole) return;
+    if (!confirm(interpolate(t.hr.forceClockOutConfirm, { name: employee.name }))) return;
+    setForceClockBusy(true);
+    setForceClockNotice('');
+    try {
+      const res = await fetch('/api/time-clock/force-clock-out', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: employee.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        alreadyClockedOut?: boolean;
+        error?: string;
+      };
+      if (!res.ok) {
+        setForceClockNotice(data.error ?? t.hr.forceClockOutFailed);
+        return;
+      }
+      if (data.alreadyClockedOut) {
+        setForceClockNotice(interpolate(t.hr.alreadyClockedOutNotice, { name: employee.name }));
+        return;
+      }
+      if (data.ok) setForceClockNotice(t.hr.forceClockOutSuccess);
+    } finally {
+      setForceClockBusy(false);
+    }
   }
 
   async function handleTerminate() {
@@ -340,14 +375,29 @@ export function EmployeeCard({
               </p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setIsExpanded((v) => !v)}
-            className="shrink-0 rounded-ios border border-ios-blue/60 bg-ios-blue/5 text-ios-blue px-3 py-2 text-sm font-medium hover:bg-ios-blue/10"
-          >
-            {detailsVisible ? t.employeeCard.hideInformation : t.employeeCard.viewInformation}
-          </button>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            {hrForceClockRole && (
+              <button
+                type="button"
+                onClick={() => void handleForceClockOut()}
+                disabled={forceClockBusy}
+                className="rounded-ios border border-amber-600/70 bg-amber-500/10 text-amber-800 dark:text-amber-200 px-3 py-2 text-xs font-semibold hover:bg-amber-500/15 disabled:opacity-50"
+              >
+                {forceClockBusy ? t.common.loading : t.hr.forceClockOut}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsExpanded((v) => !v)}
+              className="rounded-ios border border-ios-blue/60 bg-ios-blue/5 text-ios-blue px-3 py-2 text-sm font-medium hover:bg-ios-blue/10"
+            >
+              {detailsVisible ? t.employeeCard.hideInformation : t.employeeCard.viewInformation}
+            </button>
+          </div>
         </div>
+        {forceClockNotice ? (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300/90">{forceClockNotice}</p>
+        ) : null}
       </div>
       {detailsVisible && (
         <fieldset className="mt-3 rounded-lg border border-gray-200 dark:border-ios-dark-separator px-3 pb-3 pt-2">

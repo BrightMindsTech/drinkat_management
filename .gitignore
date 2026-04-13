@@ -1,7 +1,11 @@
 .DS_Store
 **/.DS_Store
 
+.cursor/
+
 .dev.vars
+.env
+.env*.local
 .wrangler
 tsconfig.tsbuildinfo
 *.db
