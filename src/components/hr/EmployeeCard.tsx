@@ -50,6 +50,7 @@ export function EmployeeCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [forceClockBusy, setForceClockBusy] = useState(false);
   const [forceClockNotice, setForceClockNotice] = useState('');
+  const [employmentSaving, setEmploymentSaving] = useState(false);
 
   const [draftName, setDraftName] = useState(employee.name);
   const [draftPhone, setDraftPhone] = useState(employee.contact ?? '');
@@ -164,6 +165,27 @@ export function EmployeeCard({
       if (data.ok) setForceClockNotice(t.hr.forceClockOutSuccess);
     } finally {
       setForceClockBusy(false);
+    }
+  }
+
+  async function handleEmploymentTypeChange(next: 'full_time' | 'part_time') {
+    const cur = employee.employmentType === 'part_time' ? 'part_time' : 'full_time';
+    if (next === cur) return;
+    setEmploymentSaving(true);
+    try {
+      const res = await fetch(`/api/employees/${employee.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employmentType: next }),
+      });
+      if (!res.ok) {
+        alert(await parseErrorMessage(res, t.employeeCard.failedUpdate));
+        return;
+      }
+      const updated = (await res.json()) as EmployeeWithRelations;
+      onUpdated(updated);
+    } finally {
+      setEmploymentSaving(false);
     }
   }
 
@@ -437,6 +459,27 @@ export function EmployeeCard({
             )}
             <dt className="text-app-muted">{t.employeeCard.joined}</dt>
             <dd className="text-app-primary">{joinDate}</dd>
+            {hrForceClockRole === 'owner' && (
+              <>
+                <dt className="text-app-muted">{t.employeeCard.employmentTypeLabel}</dt>
+                <dd className="text-app-primary min-w-0">
+                  <select
+                    value={employee.employmentType === 'part_time' ? 'part_time' : 'full_time'}
+                    disabled={employmentSaving || editing}
+                    onChange={(e) => void handleEmploymentTypeChange(e.target.value as 'full_time' | 'part_time')}
+                    className="app-select mt-0.5 max-w-[220px] text-sm"
+                  >
+                    <option value="full_time">{t.employeeCard.employmentFullTime}</option>
+                    <option value="part_time">{t.employeeCard.employmentPartTime}</option>
+                  </select>
+                  {employmentSaving ? (
+                    <p className="text-xs text-app-muted mt-1">{t.common.loading}</p>
+                  ) : employee.employmentType === 'part_time' ? (
+                    <p className="text-xs text-app-muted mt-1">{t.employeeCard.partTimeMinDaysHint}</p>
+                  ) : null}
+                </dd>
+              </>
+            )}
           </dl>
           {(resolvedIdCardFrontPhotoUrl || resolvedIdCardBackPhotoUrl) && (
             <div className="mt-3">

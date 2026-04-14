@@ -2,57 +2,71 @@
 
 import Link from 'next/link';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import type { LocaleMessages } from '@/locales/en';
+import { getDashboardShortcutDestinations, type DashboardNavItem } from '@/lib/dashboard-nav-config';
+
+function shortcutDescription(role: string, item: DashboardNavItem, t: LocaleMessages): string {
+  switch (item.labelKey) {
+    case 'hr':
+      if (role === 'owner') return t.dashboard.hrDescOwner;
+      if (role === 'manager') return t.dashboard.hrDescManager;
+      return t.dashboard.hrDescStaff;
+    case 'qc':
+    case 'qcSubmissions':
+      return role === 'staff' ? t.dashboard.qcDescSubmit : t.dashboard.qcDescReview;
+    case 'forms':
+      return t.dashboard.formsDesc;
+    case 'reports':
+      return t.dashboard.reportsDesc;
+    case 'managerReports':
+      return t.dashboard.shortcutManagerReports;
+    case 'timeClock':
+      return t.dashboard.shortcutTimeClock;
+    case 'ratings':
+      return t.dashboard.shortcutRatings;
+    case 'messages':
+      return t.dashboard.shortcutMessages;
+    case 'myInfoAdvances':
+      return t.dashboard.hrDescStaff;
+    default:
+      return '';
+  }
+}
 
 export function DashboardHomeContent({ email, role }: { email: string; role: string }) {
   const { t } = useLanguage();
-  const base = '/dashboard';
+  const shortcuts = getDashboardShortcutDestinations(role);
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-app-primary mb-1">{t.dashboard.title}</h1>
-      <p className="text-sm text-app-secondary mb-8">
-        {interpolate(t.dashboard.welcome, { email, role: role })}
-      </p>
-      <div className="space-y-3 app-stagger">
-        <Link
-          href="/dashboard/hr"
-          className="flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated active:bg-gray-50 dark:active:bg-ios-dark-elevated-2 p-4 app-hover-lift app-press app-surface"
-        >
-          <h2 className="text-3xl font-bold text-app-primary">{t.dashboard.hrCard}</h2>
-          <p className="mt-1 text-sm text-app-muted text-center">
-            {role === 'owner' ? t.dashboard.hrDescOwner : role === 'manager' ? t.dashboard.hrDescManager : t.dashboard.hrDescStaff}
-          </p>
-        </Link>
-        {role !== 'marketing' && (
-          <Link
-            href="/dashboard/qc"
-            className="flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated active:bg-gray-50 dark:active:bg-ios-dark-elevated-2 p-4 app-hover-lift app-press app-surface"
-          >
-            <h2 className="text-3xl font-bold text-app-primary">{t.dashboard.qcCard}</h2>
-            <p className="mt-1 text-sm text-app-muted text-center">
-              {role === 'staff' ? t.dashboard.qcDescSubmit : t.dashboard.qcDescReview}
-            </p>
-          </Link>
-        )}
-        <Link
-          href="/dashboard/forms"
-          className="flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated active:bg-gray-50 dark:active:bg-ios-dark-elevated-2 p-4 app-hover-lift app-press app-surface"
-        >
-          <h2 className="text-3xl font-bold text-app-primary">{t.dashboard.formsCard}</h2>
-          <p className="mt-1 text-sm text-app-muted text-center">{t.dashboard.formsDesc}</p>
-        </Link>
-        {role === 'owner' && (
-          <Link
-            href="/dashboard/reports"
-            className="flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated active:bg-gray-50 dark:active:bg-ios-dark-elevated-2 p-4 app-hover-lift app-press app-surface"
-          >
-            <h2 className="text-3xl font-bold text-app-primary">{t.dashboard.reportsCard}</h2>
-            <p className="mt-1 text-sm text-app-muted text-center">
-              {t.dashboard.reportsDesc}
-            </p>
-          </Link>
-        )}
-      </div>
+    <div className="app-page space-y-10">
+      <section id="section-home-overview" className="scroll-mt-28 space-y-2">
+        <h1 className="text-2xl font-bold text-app-primary">{t.dashboard.title}</h1>
+        <p className="text-sm text-app-secondary">{interpolate(t.dashboard.welcome, { email, role })}</p>
+      </section>
+
+      <section id="section-home-apps" className="scroll-mt-28 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-app-primary">{t.dashboard.allTools}</h2>
+          <p className="mt-1 text-sm text-app-muted">{t.dashboard.appsIntro}</p>
+        </div>
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {shortcuts.map((item) => {
+            const title = t.nav[item.labelKey];
+            const desc = shortcutDescription(role, item, t);
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className="flex min-h-[108px] flex-col justify-center rounded-ios-lg border border-gray-200 bg-white p-4 shadow-sm transition-colors hover:border-ios-blue/30 hover:bg-gray-50/80 active:scale-[0.99] dark:border-ios-dark-separator dark:bg-ios-dark-elevated dark:hover:bg-ios-dark-elevated-2"
+                >
+                  <span className="text-lg font-bold text-app-primary">{title}</span>
+                  {desc ? <span className="mt-1.5 text-sm text-app-muted leading-snug">{desc}</span> : null}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
 import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, format } from 'date-fns';
+import { DEFAULT_APP_TIMEZONE } from '@/lib/shifts';
+import { weekStartKeysBetweenRange, weekStartKeysOverlappingMonth } from '@/lib/weekly-ratings';
 
 export async function GET(req: NextRequest) {
   await requireOwner();
@@ -53,7 +55,7 @@ export async function GET(req: NextRequest) {
   ] = await Promise.all([
     prisma.employee.findMany({
       where: { ...branchFilter, ...statusFilter },
-      select: { id: true, branchId: true, name: true, joinDate: true },
+      select: { id: true, branchId: true, name: true, joinDate: true, employmentType: true, branch: { select: { name: true } } },
     }),
     prisma.advance.findMany({
       where: {
@@ -144,6 +146,8 @@ export async function GET(req: NextRequest) {
     acc[e.branchId] = (acc[e.branchId] ?? 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+
+  const attendance = await getAttendanceReport(employees, start, end, branchId, period);
 
   const advancesRequested = advances.length;
   const advancesApproved = advances.filter((a) => a.status === 'approved').length;
@@ -279,6 +283,125 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  const weekKeysPeriod = weekStartKeysBetweenRange(start, end, DEFAULT_APP_TIMEZONE);
+  const monthKeysForRef = weekStartKeysOverlappingMonth(refDate, DEFAULT_APP_TIMEZONE);
+  const branchRowsForRatings = await prisma.branch.findMany({
+    where: branchId ? { id: branchId } : undefined,
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
+
+  const [ratingsForPeriod, ratingsForMonth] = await Promise.all([
+    weekKeysPeriod.length
+      ? prisma.weeklyRating.findMany({
+          where: { weekStartKey: { in: weekKeysPeriod }, ...(branchId ? { branchId } : {}) },
+          select: {
+            branchId: true,
+            score: true,
+            targetEmployeeId: true,
+            target: { select: { id: true, name: true, joinDate: true } },
+          },
+        })
+      : Promise.resolve([]),
+    monthKeysForRef.length
+      ? prisma.weeklyRating.findMany({
+          where: { weekStartKey: { in: monthKeysForRef }, ...(branchId ? { branchId } : {}) },
+          select: {
+            branchId: true,
+            score: true,
+            targetEmployeeId: true,
+            target: { select: { id: true, name: true, joinDate: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  type AggRow = {
+    branchId: string;
+    employeeId: string;
+    name: string;
+    sum: number;
+    count: number;
+    join: Date | null;
+  };
+
+  function aggregateWeeklyRatings(
+    rows: {
+      branchId: string;
+      score: number;
+      targetEmployeeId: string;
+      target: { id: string; name: string; joinDate: Date | null };
+    }[]
+  ): AggRow[] {
+    const map = new Map<string, AggRow>();
+    for (const r of rows) {
+      const k = `${r.branchId}:${r.targetEmployeeId}`;
+      const cur =
+        map.get(k) ??
+        ({
+          branchId: r.branchId,
+          employeeId: r.targetEmployeeId,
+          name: r.target.name,
+          sum: 0,
+          count: 0,
+          join: r.target.joinDate,
+        } as AggRow);
+      cur.sum += r.score;
+      cur.count += 1;
+      map.set(k, cur);
+    }
+    return [...map.values()];
+  }
+
+  function sortAggRows(rows: AggRow[]): AggRow[] {
+    return [...rows].sort((a, b) => {
+      const avA = a.count ? a.sum / a.count : 0;
+      const avB = b.count ? b.sum / b.count : 0;
+      if (avB !== avA) return avB - avA;
+      if (b.count !== a.count) return b.count - a.count;
+      const ja = a.join ? new Date(a.join).getTime() : 0;
+      const jb = b.join ? new Date(b.join).getTime() : 0;
+      if (ja !== jb) return ja - jb;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  const periodAgg = aggregateWeeklyRatings(ratingsForPeriod);
+  const periodByBranch = branchRowsForRatings.map((b) => {
+    const rows = sortAggRows(periodAgg.filter((x) => x.branchId === b.id)).slice(0, 20);
+    return {
+      branchId: b.id,
+      branchName: b.name,
+      rows: rows.map((r) => ({
+        employeeName: r.name,
+        avgScore: r.count ? Math.round((r.sum / r.count) * 10) / 10 : 0,
+        count: r.count,
+      })),
+    };
+  });
+
+  const monthAgg = aggregateWeeklyRatings(ratingsForMonth);
+  const monthByBranch = branchRowsForRatings.map((b) => {
+    const sorted = sortAggRows(monthAgg.filter((x) => x.branchId === b.id));
+    const top = sorted[0];
+    return {
+      branchId: b.id,
+      branchName: b.name,
+      employeeOfTheMonth: top
+        ? {
+            employeeName: top.name,
+            avgScore: top.count ? Math.round((top.sum / top.count) * 10) / 10 : 0,
+            count: top.count,
+          }
+        : null,
+      leaderboard: sorted.slice(0, 20).map((r) => ({
+        employeeName: r.name,
+        avgScore: r.count ? Math.round((r.sum / r.count) * 10) / 10 : 0,
+        count: r.count,
+      })),
+    };
+  });
+
   return Response.json({
     period,
     month: monthParam || null,
@@ -291,6 +414,7 @@ export async function GET(req: NextRequest) {
       totalHeadcount: employees.length,
       newHires,
       headcountOverTime,
+      attendance,
       leave: leaveData,
       advances: {
         requested: advancesRequested,
@@ -341,6 +465,12 @@ export async function GET(req: NextRequest) {
       recent: formSubmissions.slice(0, 20),
     },
     managerReports,
+    weeklyRatings: {
+      periodLabel: format(start, 'yyyy-MM-dd') + ' – ' + format(end, 'yyyy-MM-dd'),
+      monthLabel: format(refDate, 'yyyy-MM'),
+      periodByBranch: periodByBranch,
+      monthByBranch: monthByBranch,
+    },
     activity: {
       transfers: {
         total: transfers.length,
@@ -422,6 +552,133 @@ function getQcByChecklist(
     approved: v.approved,
     rate: v.total ? Math.round((v.approved / v.total) * 100) : 0,
   }));
+}
+
+const PART_TIME_MIN_DAYS_MONTH = 15;
+
+function isWeekday(d: Date): boolean {
+  const wd = d.getDay();
+  return wd !== 0 && wd !== 6;
+}
+
+function formatYmd(d: Date): string {
+  return format(d, 'yyyy-MM-dd');
+}
+
+/** Calendar days from start..end inclusive (date-normalized). */
+function eachCalendarDay(start: Date, end: Date): Date[] {
+  const out: Date[] = [];
+  const d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (d <= last) {
+    out.push(new Date(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+function weekdayKeysInPeriod(start: Date, end: Date): Set<string> {
+  const set = new Set<string>();
+  for (const d of eachCalendarDay(start, end)) {
+    if (isWeekday(d)) set.add(formatYmd(d));
+  }
+  return set;
+}
+
+async function getAttendanceReport(
+  employees: {
+    id: string;
+    branchId: string;
+    name: string;
+    employmentType: string;
+    branch: { name: string };
+  }[],
+  start: Date,
+  end: Date,
+  branchId: string,
+  period: string
+) {
+  const [entries, leaves] = await Promise.all([
+    prisma.timeClockEntry.findMany({
+      where: {
+        clockInAt: { gte: start, lte: end },
+        ...(branchId ? { branchId } : {}),
+      },
+      select: { employeeId: true, clockInAt: true },
+    }),
+    prisma.leaveRequest.findMany({
+      where: {
+        status: 'approved',
+        startDate: { lte: end },
+        endDate: { gte: start },
+        ...(branchId ? { employee: { branchId } } : {}),
+      },
+      select: { employeeId: true, startDate: true, endDate: true },
+    }),
+  ]);
+
+  const presentAllDays = new Map<string, Set<string>>();
+  for (const e of entries) {
+    const day = formatYmd(new Date(e.clockInAt));
+    if (!presentAllDays.has(e.employeeId)) presentAllDays.set(e.employeeId, new Set());
+    presentAllDays.get(e.employeeId)!.add(day);
+  }
+
+  const leaveWeekdays = new Map<string, Set<string>>();
+  for (const l of leaves) {
+    const ovStart = l.startDate > start ? new Date(l.startDate) : new Date(start);
+    const ovEnd = l.endDate < end ? new Date(l.endDate) : new Date(end);
+    for (const d of eachCalendarDay(ovStart, ovEnd)) {
+      if (!isWeekday(d)) continue;
+      const key = formatYmd(d);
+      if (!leaveWeekdays.has(l.employeeId)) leaveWeekdays.set(l.employeeId, new Set());
+      leaveWeekdays.get(l.employeeId)!.add(key);
+    }
+  }
+
+  const allWeekdayKeys = weekdayKeysInPeriod(start, end);
+  const isMonthView = period === 'month';
+
+  const rows = employees.map((emp) => {
+    const presentAll = presentAllDays.get(emp.id) ?? new Set<string>();
+    const leaveSet = leaveWeekdays.get(emp.id) ?? new Set<string>();
+    let presentWeekdays = 0;
+    for (const day of presentAll) {
+      if (allWeekdayKeys.has(day)) presentWeekdays++;
+    }
+    let expectedWeekdays = 0;
+    for (const wk of allWeekdayKeys) {
+      if (!leaveSet.has(wk)) expectedWeekdays++;
+    }
+    const absenceDays = Math.max(0, expectedWeekdays - presentWeekdays);
+    const distinctClockInDays = presentAll.size;
+    const type = emp.employmentType === 'part_time' ? 'part_time' : 'full_time';
+    const partTimeMinimumMet =
+      isMonthView && type === 'part_time' ? distinctClockInDays >= PART_TIME_MIN_DAYS_MONTH : null;
+
+    return {
+      employeeId: emp.id,
+      name: emp.name,
+      branchName: emp.branch.name,
+      employmentType: type,
+      presentWeekdays,
+      absenceDays,
+      distinctClockInDays,
+      leaveWeekdaysCounted: leaveSet.size,
+      expectedWeekdays,
+      partTimeMinimumMet,
+      partTimeMinimumRequired: type === 'part_time' && isMonthView ? PART_TIME_MIN_DAYS_MONTH : null,
+    };
+  });
+
+  rows.sort((a, b) => a.branchName.localeCompare(b.branchName) || a.name.localeCompare(b.name));
+
+  return {
+    period,
+    isMonthView,
+    partTimeMinimumDays: PART_TIME_MIN_DAYS_MONTH,
+    rows,
+  };
 }
 
 async function getLeaveReport(start: Date, end: Date, branchId: string) {

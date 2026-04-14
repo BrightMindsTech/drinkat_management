@@ -27,6 +27,11 @@ export type TimeClockStatus = {
   consent?: { location: boolean; push: boolean };
   clock?: { id: string; clockInAt: string } | null;
   away?: { id: string; kind: string; endsAt: string; otherNote: string | null } | null;
+  weeklyRating?: {
+    blocking: boolean;
+    weekStartKey: string;
+    emphasisWeekend: boolean;
+  } | null;
 };
 
 export function useGeofenceWatch(opts: {

@@ -3,6 +3,13 @@ import { getTimeClockEmployee, getOpenClockEntry, getActiveAwaySession } from '@
 import { prisma } from '@/lib/prisma';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
 import { DEFAULT_APP_TIMEZONE } from '@/lib/shifts';
+import { normalizeUserRole } from '@/lib/formVisibility';
+import {
+  getObligationWeekStartKey,
+  isWeeklyRatingGateBlocking,
+  isWeekendSubmissionEmphasis,
+  rolesSubjectToWeeklyRating,
+} from '@/lib/weekly-ratings';
 
 export async function GET() {
   const session = await requireSession();
@@ -28,6 +35,20 @@ export async function GET() {
   });
 
   const branchOk = emp.branch.latitude != null && emp.branch.longitude != null;
+
+  const role = normalizeUserRole(session.user.role);
+  let weeklyRating: {
+    blocking: boolean;
+    weekStartKey: string;
+    emphasisWeekend: boolean;
+  } | null = null;
+  if (rolesSubjectToWeeklyRating(role)) {
+    weeklyRating = {
+      blocking: await isWeeklyRatingGateBlocking(prisma, emp.id, role),
+      weekStartKey: getObligationWeekStartKey(),
+      emphasisWeekend: isWeekendSubmissionEmphasis(),
+    };
+  }
 
   return Response.json({
     applicable: true,
@@ -62,5 +83,6 @@ export async function GET() {
           otherNote: away.otherNote,
         }
       : null,
+    weeklyRating,
   });
 }

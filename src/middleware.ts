@@ -20,5 +20,7 @@ export const config = {
     '/api/departments/:path*',
     '/api/leave/:path*',
     '/api/forms/:path*',
+    '/api/ratings/:path*',
+    '/api/chat/:path*',
   ],
 };

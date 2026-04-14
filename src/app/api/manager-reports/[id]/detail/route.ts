@@ -28,7 +28,7 @@ export async function GET(_req: Request, ctx: Ctx) {
     where: {
       id,
       userId: session.user.id,
-      category: { in: ['manager_time_clock_report', 'manager_form_report'] },
+      category: { in: ['manager_time_clock_report', 'manager_form_report', 'weekly_rating_submitted'] },
     },
   });
   if (!row) {
@@ -40,6 +40,34 @@ export async function GET(_req: Request, ctx: Ctx) {
     data = row.dataJson ? (JSON.parse(row.dataJson) as Record<string, unknown>) : {};
   } catch {
     data = {};
+  }
+
+  if (row.category === 'weekly_rating_submitted') {
+    const wid = String(data.weeklyRatingId ?? '');
+    if (!wid) {
+      return Response.json({ error: 'Missing rating reference' }, { status: 422 });
+    }
+    const wr = await prisma.weeklyRating.findUnique({
+      where: { id: wid },
+      include: {
+        rater: { select: { id: true, name: true } },
+        target: { select: { id: true, name: true } },
+        branch: { select: { name: true } },
+      },
+    });
+    if (!wr) {
+      return Response.json({ error: 'Rating not found' }, { status: 404 });
+    }
+    return Response.json({
+      kind: 'weekly_rating' as const,
+      weekStartKey: wr.weekStartKey,
+      score: wr.score,
+      reason: wr.reason,
+      rater: { id: wr.rater.id, name: wr.rater.name },
+      target: { id: wr.target.id, name: wr.target.name },
+      branchName: wr.branch.name,
+      createdAt: wr.createdAt.toISOString(),
+    });
   }
 
   if (row.category === 'manager_form_report') {

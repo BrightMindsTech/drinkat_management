@@ -8,7 +8,15 @@ function monthKeyUtc(d: Date): string {
 }
 
 /**
- * Deletes QC submission photos from previous months.
+ * Deletes QC submission photos one full calendar month after the submission month (UTC).
+ * Example: March submissions stay for all of March and all of April; they become eligible
+ * in May (first cleanup on/after May 7 UTC). Same pattern for every month.
+ *
+ * Cutoff: `submittedAt` strictly before the first day of the **previous** UTC month
+ * (when now is May → cutoff is April 1 → removes March and earlier, keeps April onward).
+ *
+ * Uses `QcSubmission.submittedAt` (not `SubmissionPhoto.createdAt`).
+ *
  * Runs only on/after day 7 (UTC), once per month per runtime instance.
  */
 export async function runQcPhotoMonthlyCleanupIfDue(now: Date = new Date()) {
@@ -18,10 +26,12 @@ export async function runQcPhotoMonthlyCleanupIfDue(now: Date = new Date()) {
   const thisMonthKey = monthKeyUtc(now);
   if (lastRunMonthUtc === thisMonthKey) return;
 
-  const startOfCurrentMonthUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+  const cutoffExclusive = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1, 0, 0, 0, 0));
 
   const photos = await prisma.submissionPhoto.findMany({
-    where: { createdAt: { lt: startOfCurrentMonthUtc } },
+    where: {
+      submission: { submittedAt: { lt: cutoffExclusive } },
+    },
     select: { id: true, filePath: true },
   });
 

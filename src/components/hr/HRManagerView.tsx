@@ -6,8 +6,6 @@ import { AdvancesList } from './AdvancesList';
 import { LeaveRequestsSection } from './LeaveRequestsSection';
 import { PerformanceReviewsSection } from './PerformanceReviewsSection';
 import type { Advance, Branch, Employee, LeaveRequest, PerformanceReview } from '@prisma/client';
-import { SectionJumpNav } from '@/components/SectionJumpNav';
-
 type EmployeeWithBranch = Employee & { branch: { name: string } };
 type AdvanceWithEmployee = Advance & { employee: Employee & { branch: { name: string } } };
 type LeaveWithEmployee = LeaveRequest & { employee: Employee & { branch: { name: string } } };
@@ -80,16 +78,6 @@ export function HRManagerView({
 
   return (
     <div className="app-page">
-      <SectionJumpNav
-        className="app-section"
-        items={[
-          { id: 'hr-manager-info', label: t.hr.myInformation },
-          { id: 'hr-manager-my-advances', label: t.hr.myAdvanceRequests },
-          { id: 'hr-owner-leave', label: t.hr.leaveRequests },
-          { id: 'hr-manager-team', label: t.hr.staff },
-          { id: 'hr-owner-advances', label: t.hr.teamAdvanceRequests },
-        ]}
-      />
       <section id="hr-manager-info" className={sectionClass}>
         <h2 className="text-lg font-semibold text-app-primary mb-4">{t.hr.myInformation}</h2>
         <div className="grid gap-3 sm:grid-cols-2">

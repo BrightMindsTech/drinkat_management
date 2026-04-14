@@ -41,7 +41,7 @@ export default async function TimeClockPage() {
       include: { employee: true },
     });
     if (user?.employee) {
-      const [alerts, ownerReports] = await Promise.all([
+      const [alerts, ownerReports, hiddenEmployeeRows] = await Promise.all([
         prisma.inboxNotification.findMany({
           where: { userId: session.user.id, category: 'time_clock' },
           orderBy: { createdAt: 'desc' },
@@ -52,7 +52,23 @@ export default async function TimeClockPage() {
           orderBy: { createdAt: 'desc' },
           take: 500,
         }),
+        prisma.inboxNotification.findMany({
+          where: { userId: session.user.id, category: 'time_clock_manager_hidden_employee' },
+          orderBy: { createdAt: 'desc' },
+          take: 500,
+        }),
       ]);
+      const hiddenEmployeeIds = new Set<string>();
+      for (const row of hiddenEmployeeRows) {
+        let data: Record<string, unknown> = {};
+        try {
+          data = row.dataJson ? (JSON.parse(row.dataJson) as Record<string, unknown>) : {};
+        } catch {
+          data = {};
+        }
+        const employeeId = String(data.employeeId ?? row.body ?? '').trim();
+        if (employeeId) hiddenEmployeeIds.add(employeeId);
+      }
       const reportedIds = new Set<string>();
       for (const r of ownerReports) {
         let data: Record<string, unknown> = {};
@@ -164,7 +180,7 @@ export default async function TimeClockPage() {
           });
         }
         rows.sort((a, b) => (a.when < b.when ? 1 : -1));
-        managerLogs = rows.slice(0, 150);
+        managerLogs = rows.filter((row) => !hiddenEmployeeIds.has(row.employeeId)).slice(0, 150);
       }
     }
   }

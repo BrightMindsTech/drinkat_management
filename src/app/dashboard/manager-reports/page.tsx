@@ -14,7 +14,7 @@ export default async function OwnerManagerReportsPage() {
   const reports = await prisma.inboxNotification.findMany({
     where: {
       userId: session.user.id,
-      category: { in: ['manager_time_clock_report', 'manager_form_report'] },
+      category: { in: ['manager_time_clock_report', 'manager_form_report', 'weekly_rating_submitted'] },
     },
     orderBy: { createdAt: 'desc' },
     take: 200,
@@ -29,15 +29,18 @@ export default async function OwnerManagerReportsPage() {
     }
     return {
       id: r.id,
-      category: r.category as 'manager_time_clock_report' | 'manager_form_report',
+      category: r.category as
+        | 'manager_time_clock_report'
+        | 'manager_form_report'
+        | 'weekly_rating_submitted',
       title: r.title,
       body: r.body,
       createdAt: r.createdAt.toISOString(),
       reviewedAt: r.readAt ? r.readAt.toISOString() : null,
       reportedByUserId: String(data.reportedByUserId ?? ''),
-      reporterDisplay: String(data.reporterDisplay ?? '').trim(),
-      employeeId: String(data.employeeId ?? ''),
-      reportType: String(data.type ?? ''),
+      reporterDisplay: String(data.raterName ?? data.reporterDisplay ?? '').trim(),
+      employeeId: String(data.targetEmployeeId ?? data.employeeId ?? ''),
+      reportType: String(data.type ?? r.category ?? ''),
       details: String(data.details ?? r.body),
       reportAt: String(data.when ?? r.createdAt.toISOString()),
     };

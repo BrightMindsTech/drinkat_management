@@ -3,7 +3,6 @@ import { requireSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
 import { getOpenClockEntry, getTimeClockEmployee } from '@/lib/time-clock-helpers';
 import { isInsideBranchRadius } from '@/lib/geo';
-import { DEFAULT_APP_TIMEZONE, minutesUntilShiftEnd } from '@/lib/shifts';
 import { sendPushToUser } from '@/lib/push';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
 
@@ -35,8 +34,8 @@ export async function POST(req: Request) {
     where: { id: session.user.id },
     select: { locationConsentAt: true, pushConsentAt: true },
   });
-  if (!user?.locationConsentAt || !user?.pushConsentAt) {
-    return Response.json({ error: 'Location and push consent required' }, { status: 403 });
+  if (!user?.locationConsentAt) {
+    return Response.json({ error: 'Location consent required' }, { status: 403 });
   }
 
   if (emp.branch.latitude == null || emp.branch.longitude == null) {
@@ -69,25 +68,11 @@ export async function POST(req: Request) {
   }
 
   if (kind === 'exit' && !inside && open) {
-    const shift = emp.shiftDefinition;
-    const isEnded = shift
-      ? minutesUntilShiftEnd(new Date(), shift, DEFAULT_APP_TIMEZONE, {
-          shiftProfile: emp.branch.shiftProfile,
-        }) <= 0
-      : false;
-    if (isEnded) {
-      action = 'clock_out_reminder';
-      await pushSelf('Clock out', 'Your shift is ending or has ended. Please clock out.', {
-        type: 'time_clock_clock_out',
-        url: `${deepLink}?remind=clock_out`,
-      });
-    } else {
-      action = 'destination_required';
-      await pushSelf('Did you leave?', 'Open the app and choose your reason.', {
-        type: 'time_clock_destination',
-        url: `${deepLink}?forceAway=1`,
-      });
-    }
+    action = 'destination_required';
+    await pushSelf('Did you leave?', 'Open the app and choose your reason.', {
+      type: 'time_clock_destination',
+      url: `${deepLink}?forceAway=1`,
+    });
   }
 
   return Response.json({ ok: true, action, inside });

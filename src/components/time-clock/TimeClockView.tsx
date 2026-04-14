@@ -171,7 +171,7 @@ export function TimeClockView({
   const tz = status.displayTimeZone ?? 'Asia/Amman';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 scroll-mt-28" id="section-tc-main">
       <header className="space-y-4">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-app-secondary">{t.timeClock.title}</p>
@@ -218,7 +218,7 @@ export function TimeClockView({
       )}
 
       {isManager && (
-        <section className="rounded-xl border border-gray-200 dark:border-ios-dark-separator overflow-hidden">
+        <section id="section-tc-alerts" className="scroll-mt-28 rounded-xl border border-gray-200 dark:border-ios-dark-separator overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 dark:border-ios-dark-separator bg-gray-50 dark:bg-ios-dark-elevated">
             <h2 className="text-sm font-semibold text-app-label">{t.timeClock.clockAlertsTitle}</h2>
           </div>
@@ -278,7 +278,7 @@ export function TimeClockView({
       )}
 
       {isManager && (
-        <section className="rounded-xl border border-gray-200 dark:border-ios-dark-separator overflow-hidden">
+        <section id="section-tc-logs" className="scroll-mt-28 rounded-xl border border-gray-200 dark:border-ios-dark-separator overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 dark:border-ios-dark-separator bg-gray-50 dark:bg-ios-dark-elevated">
             <h2 className="text-sm font-semibold text-app-label">{t.timeClock.employeeLogsTitle}</h2>
           </div>
@@ -298,9 +298,22 @@ export function TimeClockView({
                         <button
                           type="button"
                           className="rounded-lg border border-red-300/70 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-300"
-                          onClick={() => {
+                          onClick={async () => {
                             const employeeId = group.rows[0]?.employeeId;
                             if (!employeeId) return;
+                            try {
+                              const res = await fetch('/api/time-clock/manager-log-hidden', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ employeeId }),
+                              });
+                              if (!res.ok) {
+                                const e = (await res.json().catch(() => ({}))) as { error?: string };
+                                setErr(e.error ?? t.timeClock.reportToOwnerFailed);
+                              }
+                            } catch {
+                              // Keep local fallback to avoid blocking UX when network fails.
+                            }
                             if (managerUserId) {
                               const hidden = readHiddenEmployeeIds(managerUserId);
                               hidden.add(employeeId);
@@ -448,6 +461,7 @@ function ClockActions({
   t: { timeClock: Record<string, string>; common: Record<string, string> };
 }) {
   const [cashFormGateHref, setCashFormGateHref] = useState<string | null>(null);
+  const [weeklyRatingsGateHref, setWeeklyRatingsGateHref] = useState<string | null>(null);
 
   if (!status.consent?.location) return null;
   if (!status.branch?.hasGeofence) {
@@ -458,6 +472,11 @@ function ClockActions({
 
   return (
     <>
+    {status.weeklyRating?.blocking ? (
+      <p className="text-sm text-amber-800 dark:text-amber-200 rounded-lg border border-amber-300/60 dark:border-amber-700/50 bg-amber-50/90 dark:bg-amber-950/40 px-3 py-2">
+        {t.timeClock.weeklyRatingBlockingHint}
+      </p>
+    ) : null}
     <div className="flex flex-wrap gap-3">
       {!status.clock ? (
         <button
@@ -475,8 +494,20 @@ function ClockActions({
             });
             setLoading(false);
             if (!r.ok) {
-              const e = await r.json().catch(() => ({}));
-              setErr((e as { error?: string }).error ?? t.timeClock.clockInFailed);
+              const e = (await r.json().catch(() => ({}))) as {
+                error?: string;
+                code?: string;
+                ratingsPath?: string;
+              };
+              if (e.code === 'weekly_rating_required') {
+                setWeeklyRatingsGateHref(
+                  typeof e.ratingsPath === 'string' && e.ratingsPath.length > 0
+                    ? e.ratingsPath
+                    : '/dashboard/ratings'
+                );
+                return;
+              }
+              setErr(e.error ?? t.timeClock.clockInFailed);
               return;
             }
             await onRefresh();
@@ -504,7 +535,16 @@ function ClockActions({
                 error?: string;
                 code?: string;
                 formsPath?: string;
+                ratingsPath?: string;
               };
+              if (e.code === 'weekly_rating_required') {
+                setWeeklyRatingsGateHref(
+                  typeof e.ratingsPath === 'string' && e.ratingsPath.length > 0
+                    ? e.ratingsPath
+                    : '/dashboard/ratings'
+                );
+                return;
+              }
               if (e.code === 'cash_form_required') {
                 setCashFormGateHref(
                   typeof e.formsPath === 'string' && e.formsPath.length > 0
@@ -523,6 +563,37 @@ function ClockActions({
         </button>
       )}
     </div>
+    {weeklyRatingsGateHref ? (
+      <div
+        className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="weekly-rating-gate-title"
+      >
+        <div className="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4">
+          <h2 id="weekly-rating-gate-title" className="text-lg font-semibold text-app-label">
+            {t.timeClock.weeklyRatingRequiredTitle}
+          </h2>
+          <p className="text-sm text-app-secondary">{t.timeClock.weeklyRatingRequiredBody}</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              className="rounded-xl border border-gray-300 dark:border-ios-dark-separator px-4 py-2.5 text-sm font-medium text-app-primary"
+              onClick={() => setWeeklyRatingsGateHref(null)}
+            >
+              {t.common.cancel}
+            </button>
+            <Link
+              href={weeklyRatingsGateHref}
+              className="rounded-xl bg-ios-blue px-4 py-2.5 text-center text-sm font-semibold text-white"
+              onClick={() => setWeeklyRatingsGateHref(null)}
+            >
+              {t.timeClock.weeklyRatingGoToRatings}
+            </Link>
+          </div>
+        </div>
+      </div>
+    ) : null}
     {cashFormGateHref ? (
       <div
         className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4"

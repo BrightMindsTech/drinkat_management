@@ -6,7 +6,7 @@ import type { LocaleMessages } from '@/locales/en';
 
 export type OwnerManagerReport = {
   id: string;
-  category: 'manager_time_clock_report' | 'manager_form_report';
+  category: 'manager_time_clock_report' | 'manager_form_report' | 'weekly_rating_submitted';
   title: string;
   body: string;
   createdAt: string;
@@ -19,7 +19,11 @@ export type OwnerManagerReport = {
   details: string;
 };
 
-const CATEGORY_ORDER: OwnerManagerReport['category'][] = ['manager_form_report', 'manager_time_clock_report'];
+const CATEGORY_ORDER: OwnerManagerReport['category'][] = [
+  'weekly_rating_submitted',
+  'manager_form_report',
+  'manager_time_clock_report',
+];
 
 type FormExtendPayload = {
   kind: 'form';
@@ -44,6 +48,17 @@ type TimeClockExtendPayload = {
   createdAt: string;
   data: Record<string, unknown>;
   timeClockRecord: Record<string, unknown> | null;
+};
+
+type WeeklyRatingExtendPayload = {
+  kind: 'weekly_rating';
+  weekStartKey: string;
+  score: number;
+  reason: string | null;
+  rater: { id: string; name: string };
+  target: { id: string; name: string };
+  branchName: string;
+  createdAt: string;
 };
 
 function formatDataValue(v: unknown): string {
@@ -120,6 +135,37 @@ function FormSubmissionDetail({
   );
 }
 
+function WeeklyRatingDetailBody({ payload }: { payload: WeeklyRatingExtendPayload }) {
+  const { t } = useLanguage();
+  const m = t.managerReports;
+  const c = t.common;
+  return (
+    <div className="space-y-3 text-sm">
+      <p className="text-base font-semibold text-app-label">
+        {m.weekRatingTitle}: {payload.score}/100
+      </p>
+      <p className="text-app-secondary">
+        {m.weekRatingWeek}: {payload.weekStartKey}
+      </p>
+      <p className="text-app-secondary">
+        {m.weekRatingRater}: <span className="font-medium text-app-primary">{payload.rater.name}</span>
+      </p>
+      <p className="text-app-secondary">
+        {m.weekRatingTarget}: <span className="font-medium text-app-primary">{payload.target.name}</span>
+      </p>
+      <p className="text-app-secondary">
+        {c.branch}: {payload.branchName}
+      </p>
+      {payload.reason ? (
+        <p className="text-app-secondary whitespace-pre-wrap border-t border-gray-100 dark:border-ios-dark-separator pt-3">
+          <span className="font-medium">{m.weekRatingReason}:</span> {payload.reason}
+        </p>
+      ) : null}
+      <p className="text-xs text-app-muted tabular-nums">{new Date(payload.createdAt).toLocaleString()}</p>
+    </div>
+  );
+}
+
 function TimeClockDetailBody({ payload }: { payload: TimeClockExtendPayload }) {
   const { t } = useLanguage();
   const m = t.managerReports;
@@ -162,6 +208,21 @@ function TimeClockDetailBody({ payload }: { payload: TimeClockExtendPayload }) {
   );
 }
 
+function metaRow(label: string, value: string, mono = false) {
+  return (
+    <div className="grid grid-cols-[minmax(5.5rem,7rem)_1fr] gap-x-2 gap-y-0.5 items-baseline sm:grid-cols-[minmax(6rem,8rem)_1fr]">
+      <dt className="text-xs font-semibold text-gray-600 dark:text-zinc-400">{label}</dt>
+      <dd
+        className={`text-xs text-gray-900 dark:text-ios-dark-label leading-snug ${
+          mono ? 'font-mono break-all tabular-nums' : 'font-medium'
+        }`}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
 function ReportListItem({
   r,
   busyId,
@@ -177,21 +238,23 @@ function ReportListItem({
 }) {
   const showOk = !r.reviewedAt;
   return (
-    <li className="px-4 py-3">
-      <p className="text-sm font-semibold text-app-label">{r.title}</p>
-      <p className="text-sm text-app-secondary mt-1">{r.details}</p>
-      <p className="text-xs text-app-muted mt-2">
-        {m.reportId}: {r.id} · {m.manager}: {r.managerName} · {m.employee}: {r.employeeName} · {m.branch}: {r.branchName}
-      </p>
-      <p className="text-xs text-app-muted">
-        {m.eventType}: {r.reportType} · {m.reportTime}: {new Date(r.reportAt).toLocaleString()}
-        {r.reviewedAt ? ` · ${m.reviewedLabel}: ${new Date(r.reviewedAt).toLocaleString()}` : ''}
-      </p>
-      <div className="mt-2 flex flex-wrap gap-2">
+    <li className="rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated px-4 py-3.5 shadow-sm dark:shadow-none ring-1 ring-black/[0.03] dark:ring-white/[0.06]">
+      <p className="text-sm font-semibold text-gray-900 dark:text-ios-dark-label">{r.title}</p>
+      <p className="text-sm text-gray-700 dark:text-ios-dark-label-secondary mt-1.5 leading-relaxed">{r.details}</p>
+      <dl className="mt-3 space-y-2 border-t border-gray-200/90 dark:border-ios-dark-separator pt-3">
+        {metaRow(m.reportId, r.id, true)}
+        {metaRow(m.manager, r.managerName)}
+        {metaRow(m.employee, r.employeeName)}
+        {metaRow(m.branch, r.branchName)}
+        {metaRow(m.eventType, r.reportType)}
+        {metaRow(m.reportTime, new Date(r.reportAt).toLocaleString())}
+        {r.reviewedAt ? metaRow(m.reviewedLabel, new Date(r.reviewedAt).toLocaleString()) : null}
+      </dl>
+      <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 dark:border-ios-dark-separator/80 pt-3">
         <button
           type="button"
           onClick={() => onExtend(r.id)}
-          className="rounded-lg border border-ios-blue/40 px-3 py-1.5 text-xs font-medium text-ios-blue"
+          className="rounded-lg border-2 border-ios-blue/50 bg-white dark:bg-ios-dark-elevated-2 px-3 py-1.5 text-xs font-semibold text-ios-blue hover:bg-ios-blue/5 dark:hover:bg-ios-blue/10"
         >
           {m.extend}
         </button>
@@ -200,7 +263,7 @@ function ReportListItem({
             type="button"
             disabled={busyId === r.id}
             onClick={() => onMarkReviewed(r.id)}
-            className="rounded-lg bg-ios-blue px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+            className="rounded-lg bg-ios-blue px-3 py-1.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
           >
             {m.ok}
           </button>
@@ -224,7 +287,9 @@ export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerM
   const [extendId, setExtendId] = useState<string | null>(null);
   const [extendLoading, setExtendLoading] = useState(false);
   const [extendError, setExtendError] = useState<string | null>(null);
-  const [extendPayload, setExtendPayload] = useState<FormExtendPayload | TimeClockExtendPayload | null>(null);
+  const [extendPayload, setExtendPayload] = useState<
+    FormExtendPayload | TimeClockExtendPayload | WeeklyRatingExtendPayload | null
+  >(null);
   const extendLayerRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -306,13 +371,21 @@ export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerM
       setExtendLoading(true);
       try {
         const res = await fetch(`/api/manager-reports/${id}/detail`);
-        const data = (await res.json().catch(() => ({}))) as FormExtendPayload | TimeClockExtendPayload | { error?: string };
+        const data = (await res.json().catch(() => ({}))) as
+          | FormExtendPayload
+          | TimeClockExtendPayload
+          | WeeklyRatingExtendPayload
+          | { error?: string };
         if (!res.ok) {
           setExtendError((data as { error?: string }).error ?? m.loadFailed);
           return;
         }
-        if ((data as FormExtendPayload).kind === 'form' || (data as TimeClockExtendPayload).kind === 'time_clock') {
-          setExtendPayload(data as FormExtendPayload | TimeClockExtendPayload);
+        if (
+          (data as FormExtendPayload).kind === 'form' ||
+          (data as TimeClockExtendPayload).kind === 'time_clock' ||
+          (data as WeeklyRatingExtendPayload).kind === 'weekly_rating'
+        ) {
+          setExtendPayload(data as FormExtendPayload | TimeClockExtendPayload | WeeklyRatingExtendPayload);
         } else {
           setExtendError(m.unexpectedResponse);
         }
@@ -336,7 +409,7 @@ export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerM
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-app-label">{m.pageTitle}</h1>
 
-      <section className="rounded-xl border border-gray-200 dark:border-ios-dark-separator p-3 space-y-3">
+      <section id="section-manager-reports-filters" className="scroll-mt-28 rounded-xl border border-gray-200 dark:border-ios-dark-separator p-3 space-y-3">
         <input
           className="app-input"
           placeholder={m.searchPlaceholder}
@@ -398,62 +471,72 @@ export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerM
         const unreviewed = inCat.filter((r) => !r.reviewedAt);
         const reviewed = inCat.filter((r) => !!r.reviewedAt);
         const heading =
-          category === 'manager_form_report' ? m.categoryForm : m.categoryTimeClock;
+          category === 'manager_form_report'
+            ? m.categoryForm
+            : category === 'manager_time_clock_report'
+              ? m.categoryTimeClock
+              : m.categoryWeeklyRating;
         const countLine =
           inCat.length === 1 ? m.reportsInCategoryOne : m.reportsInCategoryMany.replace('{count}', String(inCat.length));
         return (
-          <section key={category} className="rounded-xl border border-gray-200 dark:border-ios-dark-separator space-y-3">
-            <div className="px-4 py-3 border-b border-gray-100 dark:border-ios-dark-separator bg-gray-50/80 dark:bg-ios-dark-elevated/40">
-              <h2 className="text-base font-semibold text-app-label">{heading}</h2>
-              <p className="text-xs text-app-muted mt-0.5">{countLine}</p>
+          <section
+            key={category}
+            id={`section-mgr-rpt-cat-${category}`}
+            className="scroll-mt-28 rounded-xl border-2 border-gray-200 dark:border-ios-dark-separator bg-gray-50/50 dark:bg-ios-dark-fill/30 shadow-sm dark:shadow-none overflow-hidden"
+          >
+            <div className="px-4 py-3.5 border-b-2 border-gray-200 dark:border-ios-dark-separator bg-gray-100/90 dark:bg-ios-dark-elevated/80">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-ios-dark-label">{heading}</h2>
+              <p className="text-xs font-medium text-gray-600 dark:text-zinc-400 mt-1">{countLine}</p>
             </div>
 
-            <div className="px-0 pb-3">
-              <div className="px-4 py-2 border-b border-gray-100 dark:border-ios-dark-separator">
-                <h3 className="text-sm font-semibold text-app-label">
-                  {m.unreviewed} ({unreviewed.length})
-                </h3>
+            <div className="px-3 sm:px-4 pb-4 pt-3 space-y-4">
+              <div>
+                <div className="px-1 pb-2 mb-2 border-b border-gray-300/80 dark:border-ios-dark-separator">
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-ios-dark-label">
+                    {m.unreviewed} ({unreviewed.length})
+                  </h3>
+                </div>
+                {unreviewed.length === 0 ? (
+                  <p className="px-1 py-3 text-sm text-app-secondary">{m.noUnreviewedInCategory}</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {unreviewed.map((r) => (
+                      <ReportListItem
+                        key={r.id}
+                        r={r}
+                        busyId={busyId}
+                        onMarkReviewed={markReviewed}
+                        onExtend={openExtend}
+                        m={m}
+                      />
+                    ))}
+                  </ul>
+                )}
               </div>
-              {unreviewed.length === 0 ? (
-                <p className="px-4 py-4 text-sm text-app-secondary">{m.noUnreviewedInCategory}</p>
-              ) : (
-                <ul className="divide-y divide-gray-100 dark:divide-ios-dark-separator">
-                  {unreviewed.map((r) => (
-                    <ReportListItem
-                      key={r.id}
-                      r={r}
-                      busyId={busyId}
-                      onMarkReviewed={markReviewed}
-                      onExtend={openExtend}
-                      m={m}
-                    />
-                  ))}
-                </ul>
-              )}
-            </div>
 
-            <div className="px-0 pb-3">
-              <div className="px-4 py-2 border-b border-gray-100 dark:border-ios-dark-separator">
-                <h3 className="text-sm font-semibold text-app-label">
-                  {m.reviewed} ({reviewed.length})
-                </h3>
+              <div>
+                <div className="px-1 pb-2 mb-2 border-b border-gray-300/80 dark:border-ios-dark-separator">
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-ios-dark-label">
+                    {m.reviewed} ({reviewed.length})
+                  </h3>
+                </div>
+                {reviewed.length === 0 ? (
+                  <p className="px-1 py-3 text-sm text-app-secondary">{m.noReviewedInCategory}</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {reviewed.map((r) => (
+                      <ReportListItem
+                        key={r.id}
+                        r={r}
+                        busyId={busyId}
+                        onMarkReviewed={markReviewed}
+                        onExtend={openExtend}
+                        m={m}
+                      />
+                    ))}
+                  </ul>
+                )}
               </div>
-              {reviewed.length === 0 ? (
-                <p className="px-4 py-4 text-sm text-app-secondary">{m.noReviewedInCategory}</p>
-              ) : (
-                <ul className="divide-y divide-gray-100 dark:divide-ios-dark-separator">
-                  {reviewed.map((r) => (
-                    <ReportListItem
-                      key={r.id}
-                      r={r}
-                      busyId={busyId}
-                      onMarkReviewed={markReviewed}
-                      onExtend={openExtend}
-                      m={m}
-                    />
-                  ))}
-                </ul>
-              )}
             </div>
           </section>
         );
@@ -496,6 +579,9 @@ export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerM
               ) : null}
               {!extendLoading && !extendError && extendPayload?.kind === 'time_clock' ? (
                 <TimeClockDetailBody payload={extendPayload} />
+              ) : null}
+              {!extendLoading && !extendError && extendPayload?.kind === 'weekly_rating' ? (
+                <WeeklyRatingDetailBody payload={extendPayload} />
               ) : null}
             </div>
           </div>

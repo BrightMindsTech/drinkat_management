@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { getTimeClockEmployee, getOpenClockEntry } from '@/lib/time-clock-helpers';
 import { isInsideBranchRadius } from '@/lib/geo';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
+import { normalizeUserRole } from '@/lib/formVisibility';
+import { isWeeklyRatingGateBlocking, rolesSubjectToWeeklyRating } from '@/lib/weekly-ratings';
 
 const bodySchema = z.object({
   lat: z.number(),
@@ -21,6 +23,21 @@ export async function POST(req: Request) {
   const emp = await getTimeClockEmployee(session.user.id, session.user.role);
   if (!emp) {
     return Response.json({ error: 'Time clock does not apply' }, { status: 403 });
+  }
+
+  const role = normalizeUserRole(session.user.role);
+  if (rolesSubjectToWeeklyRating(role)) {
+    const block = await isWeeklyRatingGateBlocking(prisma, emp.id, role);
+    if (block) {
+      return Response.json(
+        {
+          error: 'Complete required weekly ratings before clocking in.',
+          code: 'weekly_rating_required',
+          ratingsPath: '/dashboard/ratings',
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const user = await prisma.user.findUnique({

@@ -12,7 +12,6 @@ import { DepartmentSection } from './DepartmentSection';
 import { LeaveRequestsSection } from './LeaveRequestsSection';
 import { ManagerAssignmentsSection } from './ManagerAssignmentsSection';
 import { BranchGeofenceSection } from './BranchGeofenceSection';
-import { SectionJumpNav } from '@/components/SectionJumpNav';
 
 type EmployeeWithRelations = Employee & { branch: Branch; department?: Department | null; user: { email: string } | null };
 type AdvanceWithEmployee = Advance & { employee: Employee & { branch: { name: string } } };
@@ -101,18 +100,6 @@ export function HROwnerView({
 
   return (
     <div className="app-page">
-      <SectionJumpNav
-        className="app-section"
-        items={[
-          { id: 'hr-branch-geofence', label: t.hr.branchGeofenceTitle },
-          { id: 'hr-owner-staff', label: t.hr.staff },
-          { id: 'hr-owner-departments', label: t.hr.departments },
-          { id: 'hr-owner-manager-assignments', label: t.hr.assignToManager },
-          { id: 'hr-owner-leave', label: t.hr.leaveRequests },
-          { id: 'hr-owner-advances', label: t.hr.advances },
-          { id: 'hr-owner-salary', label: t.salary.salary },
-        ]}
-      />
       <BranchGeofenceSection branches={branches} />
       <section id="hr-owner-staff" className={sectionClass}>
         <div className="flex items-center justify-between mb-4">

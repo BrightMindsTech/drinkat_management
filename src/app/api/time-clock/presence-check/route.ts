@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { getActiveAwaySession, getOpenClockEntry, getTimeClockEmployee } from '@/lib/time-clock-helpers';
 import { isInsideBranchRadius } from '@/lib/geo';
-import { DEFAULT_APP_TIMEZONE, minutesUntilShiftEnd } from '@/lib/shifts';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
 
 const bodySchema = z.object({
@@ -38,16 +37,6 @@ export async function POST(req: Request) {
   const { lat, lng } = parsed.data;
   const inside = isInsideBranchRadius(lat, lng, emp.branch.latitude, emp.branch.longitude, emp.branch.geofenceRadiusM);
   if (inside) return Response.json({ triggerAway: false, reason: 'inside_radius' });
-
-  const shift = emp.shiftDefinition;
-  if (shift) {
-    const minsUntilEnd = minutesUntilShiftEnd(new Date(), shift, DEFAULT_APP_TIMEZONE, {
-      shiftProfile: emp.branch.shiftProfile,
-    });
-    if (minsUntilEnd <= 0) {
-      return Response.json({ triggerAway: false, reason: 'shift_ended' });
-    }
-  }
 
   return Response.json({ triggerAway: true, reason: 'outside_radius_clocked_in' });
 }

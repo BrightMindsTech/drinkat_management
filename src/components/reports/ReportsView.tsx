@@ -25,9 +25,11 @@ const SIDEBAR_SECTIONS = [
   { id: 'branch-overview', labelKey: 'branchOverview' as const },
   { id: 'hr', labelKey: 'hrSection' as const },
   { id: 'leave', labelKey: 'leaveSection' as const },
+  { id: 'attendance', labelKey: 'attendanceSection' as const },
   { id: 'advances', labelKey: 'advancesSection' as const },
   { id: 'qc', labelKey: 'qcSection' as const },
   { id: 'forms', labelKey: 'formsSection' as const },
+  { id: 'weekly-ratings', labelKey: 'weeklyRatingsLeaderboard' as const },
   { id: 'manager-reports', labelKey: 'managerReportsSection' as const },
   { id: 'activity', labelKey: 'activitySection' as const },
   { id: 'salary', labelKey: 'salarySection' as const },
@@ -80,6 +82,24 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         pendingAmount: number;
       };
       advancesList: { id: string; amount: number; status: string; requestedAt: string; employee: { name: string; branch: { name: string } } }[];
+      attendance?: {
+        period: string;
+        isMonthView: boolean;
+        partTimeMinimumDays: number;
+        rows: {
+          employeeId: string;
+          name: string;
+          branchName: string;
+          employmentType: string;
+          presentWeekdays: number;
+          absenceDays: number;
+          distinctClockInDays: number;
+          leaveWeekdaysCounted: number;
+          expectedWeekdays: number;
+          partTimeMinimumMet: boolean | null;
+          partTimeMinimumRequired: number | null;
+        }[];
+      };
       leave?: {
         byBranch: Record<string, { pending: number; approved: number; denied: number; daysApproved: number }>;
         totalPending: number;
@@ -151,6 +171,17 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       leave: { total: number; approved: number; denied: number; pending: number };
       overall: { total: number; approved: number; denied: number; pending: number };
     }[];
+    weeklyRatings?: {
+      periodLabel: string;
+      monthLabel: string;
+      periodByBranch: { branchId: string; branchName: string; rows: { employeeName: string; avgScore: number; count: number }[] }[];
+      monthByBranch: {
+        branchId: string;
+        branchName: string;
+        employeeOfTheMonth: { employeeName: string; avgScore: number; count: number } | null;
+        leaderboard: { employeeName: string; avgScore: number; count: number }[];
+      }[];
+    };
     activity: {
       transfers: { total: number; recent: { id: string; transferredAt: string; employee: { name: string }; fromBranch: { name: string }; toBranch: { name: string } }[] };
       reviews: { total: number; averageRating: number | null; recent: { id: string; reviewedAt: string; rating: number; employee: { name: string; branch: { name: string } } }[] };
@@ -172,7 +203,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         if (!r.ok) throw new Error(`Failed to load: ${r.status}`);
         return r.json();
       })
-      .then(setData)
+      .then((json: unknown) => setData(json as NonNullable<typeof data>))
       .catch((err) => setError(err.message ?? 'Failed to load'))
       .finally(() => setLoading(false));
   }, [period, branchId, month, salaryMonth]);
@@ -691,6 +722,66 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
           </section>
         )}
 
+        {data.hr.attendance ? (
+          <section id="attendance" className={`scroll-mt-6 ${reportCardClass}`}>
+            <h2 className={sectionTitleClass}>{t.reports.attendanceSection}</h2>
+            <p className="text-sm text-app-muted mb-2">{t.reports.attendanceIntro}</p>
+            {data.hr.attendance.isMonthView ? (
+              <p className="text-xs text-app-muted mb-4">{t.reports.attendancePartTimeMonthNote}</p>
+            ) : (
+              <p className="text-xs text-app-muted mb-4">{t.reports.attendanceShortPeriodNote}</p>
+            )}
+            <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead>
+                  <tr className="bg-gray-100 dark:bg-ios-dark-elevated-2/50 text-left">
+                    <th className="p-2 font-semibold">{t.common.employee}</th>
+                    <th className="p-2 font-semibold">{t.common.branch}</th>
+                    <th className="p-2 font-semibold">{t.reports.attendanceEmploymentType}</th>
+                    <th className="p-2 font-semibold tabular-nums">{t.reports.attendancePresentWeekdays}</th>
+                    <th className="p-2 font-semibold tabular-nums">{t.reports.attendanceAbsenceDays}</th>
+                    <th className="p-2 font-semibold tabular-nums">{t.reports.attendanceDistinctDays}</th>
+                    <th className="p-2 font-semibold">{t.reports.attendancePartTimeStatus}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.hr.attendance.rows.map((row, i) => (
+                    <tr
+                      key={row.employeeId}
+                      className={`border-t border-gray-200 dark:border-ios-dark-separator ${
+                        i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/50 dark:bg-ios-dark-elevated-2/20'
+                      }`}
+                    >
+                      <td className="p-2 font-medium text-app-primary">{row.name}</td>
+                      <td className="p-2">{row.branchName}</td>
+                      <td className="p-2">
+                        {row.employmentType === 'part_time' ? t.reports.employmentPartTime : t.reports.employmentFullTime}
+                      </td>
+                      <td className="p-2 tabular-nums">{row.presentWeekdays}</td>
+                      <td className="p-2 tabular-nums">{row.absenceDays}</td>
+                      <td className="p-2 tabular-nums">{row.distinctClockInDays}</td>
+                      <td className="p-2">
+                        {row.employmentType === 'part_time' && data.hr.attendance?.isMonthView ? (
+                          row.partTimeMinimumMet ? (
+                            <span className="text-green-700 dark:text-green-400">{t.reports.partTimeComplianceMet}</span>
+                          ) : (
+                            <span className="text-amber-800 dark:text-amber-300">
+                              {t.reports.partTimeComplianceShort} ({row.distinctClockInDays}/
+                              {row.partTimeMinimumRequired ?? data.hr.attendance?.partTimeMinimumDays ?? 15})
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-app-muted">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
+
         {/* Advances Section */}
         <section id="advances" className={`scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.advancesSection}</h2>
@@ -1159,6 +1250,104 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               </table>
             </div>
           ) : null}
+        </section>
+
+        {/* Weekly ratings leaderboards */}
+        <section id="weekly-ratings" className={`scroll-mt-6 ${reportCardClass}`}>
+          <h2 className={sectionTitleClass}>{t.reports.weeklyRatingsLeaderboard}</h2>
+          <p className="text-sm text-app-muted mb-2">
+            {data.weeklyRatings?.periodLabel ? (
+              <>
+                {t.reports.weeklyLeaderboard}: {data.weeklyRatings.periodLabel}
+              </>
+            ) : null}
+          </p>
+          {!data.weeklyRatings ? (
+            <p className="text-app-muted text-sm">{t.common.noData}</p>
+          ) : (
+            <div className="space-y-10">
+              <div className="grid gap-4 md:grid-cols-2">
+                {data.weeklyRatings.periodByBranch.map((b) => (
+                  <div
+                    key={b.branchId}
+                    className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4"
+                  >
+                    <h3 className="text-sm font-semibold text-app-primary mb-2">{b.branchName}</h3>
+                    {b.rows.length === 0 ? (
+                      <p className="text-xs text-app-muted">{t.common.noData}</p>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200 dark:border-ios-dark-separator">
+                            <th className="text-left py-1 pr-2">{t.common.employee}</th>
+                            <th className="text-right py-1">{t.reports.scoreOutOf100}</th>
+                            <th className="text-right py-1">{t.reports.ratingsCount}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {b.rows.map((row, i) => (
+                            <tr key={`${b.branchId}-${row.employeeName}-${i}`} className="border-t border-gray-100 dark:border-ios-dark-separator/60">
+                              <td className="py-1.5 pr-2 font-medium text-app-primary">{row.employeeName}</td>
+                              <td className="py-1.5 text-right tabular-nums">{row.avgScore}</td>
+                              <td className="py-1.5 text-right tabular-nums">{row.count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <h3 className="text-base font-semibold text-app-primary mb-1">{t.reports.employeeOfTheMonth}</h3>
+                <p className="text-xs text-app-muted mb-3">
+                  {t.reports.monthlyLeaderboard} · {data.weeklyRatings.monthLabel}
+                </p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {data.weeklyRatings.monthByBranch.map((b) => (
+                    <div
+                      key={`m-${b.branchId}`}
+                      className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4"
+                    >
+                      <h4 className="text-sm font-semibold text-app-primary mb-2">{b.branchName}</h4>
+                      {b.employeeOfTheMonth ? (
+                        <p className="text-sm text-app-secondary mb-3">
+                          <span className="font-semibold text-app-label">{b.employeeOfTheMonth.employeeName}</span>
+                          {' · '}
+                          <span className="tabular-nums">{b.employeeOfTheMonth.avgScore}</span> / 100
+                          {' · '}
+                          {b.employeeOfTheMonth.count} {t.reports.ratingsCount.toLowerCase()}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-app-muted mb-3">{t.common.noData}</p>
+                      )}
+                      {b.leaderboard.length > 0 ? (
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-200 dark:border-ios-dark-separator">
+                              <th className="text-left py-1 pr-2">#</th>
+                              <th className="text-left py-1 pr-2">{t.common.employee}</th>
+                              <th className="text-right py-1">{t.reports.scoreOutOf100}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {b.leaderboard.map((row, idx) => (
+                              <tr key={`${b.branchId}-m-${row.employeeName}-${idx}`} className="border-t border-gray-100 dark:border-ios-dark-separator/60">
+                                <td className="py-1.5 pr-2 text-app-muted">{idx + 1}</td>
+                                <td className="py-1.5 pr-2 font-medium text-app-primary">{row.employeeName}</td>
+                                <td className="py-1.5 text-right tabular-nums">{row.avgScore}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Manager Reports Section */}

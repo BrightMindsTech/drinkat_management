@@ -83,13 +83,14 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   const branch = status?.branch;
-  const consentOk = !!(status?.consent?.location && status?.consent?.push);
+  const locationConsentOk = !!status?.consent?.location;
+  const pushConsentOk = !!status?.consent?.push;
   const geoOk = !!(
     status?.applicable &&
     branch?.hasGeofence &&
     branch.latitude != null &&
     branch.longitude != null &&
-    consentOk
+    locationConsentOk
   );
 
   const closeForcedAwayModal = useCallback(() => {
@@ -106,14 +107,32 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
 
   const onGeoTransition = useCallback(
     async (kind: 'enter' | 'exit', lat: number, lng: number) => {
-      const res = await fetch('/api/time-clock/location-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind, lat, lng }),
-      });
-      const payload = (await res.json().catch(() => ({}))) as { action?: string; inside?: boolean };
+      let payload: { action?: string; inside?: boolean } = {};
+      try {
+        const res = await fetch('/api/time-clock/location-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind, lat, lng }),
+        });
+        payload = (await res.json().catch(() => ({}))) as { action?: string; inside?: boolean };
+      } catch {
+        payload = {};
+      }
       await refresh();
-      if (kind === 'exit' && payload.action === 'destination_required') {
+      if (kind === 'exit') {
+        let shouldPromptAway = payload.action === 'destination_required';
+        if (!shouldPromptAway) {
+          const check = await fetch('/api/time-clock/presence-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat, lng }),
+          });
+          if (check.ok) {
+            const j = (await check.json()) as { triggerAway?: boolean };
+            shouldPromptAway = !!j.triggerAway;
+          }
+        }
+        if (!shouldPromptAway) return;
         const s = await fetch('/api/time-clock/status').then((r) => r.json() as Promise<TimeClockStatus>);
         if (s.clock && !s.away && s.branch?.hasGeofence) {
           setAwayNotice(null);
@@ -121,14 +140,17 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
         }
       }
       if (kind === 'enter') {
-        const s = await fetch('/api/time-clock/status').then((r) => r.json() as Promise<TimeClockStatus>);
-        if (s.away) {
-          await fetch('/api/time-clock/away/reenter', { method: 'POST' });
-          await refresh();
-        }
+        // Always hit reenter on enter: server no-ops if there is no active away (avoids stale client status).
+        await fetch('/api/time-clock/away/reenter', { method: 'POST' });
+        await refresh();
+        // Back inside geofence: close forced-away UI and countdown; away timer canceled server-side.
+        setAwayNotice(null);
+        setOtherText('');
+        exitCheckRaisedRef.current = false;
+        closeForcedAwayModal();
       }
     },
-    [refresh]
+    [refresh, closeForcedAwayModal]
   );
 
   const onGeoError = useCallback((message: string) => {
@@ -187,7 +209,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   }, [geoOk, status?.clock, status?.away, forceAwayOpen]);
 
   useEffect(() => {
-    if (!consentOk) return;
+    if (!pushConsentOk) return;
     let cancelled = false;
     (async () => {
       try {
@@ -206,7 +228,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [consentOk]);
+  }, [pushConsentOk]);
 
   const value = useMemo(
     () => ({

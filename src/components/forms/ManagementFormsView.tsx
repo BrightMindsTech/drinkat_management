@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { FormFieldDef } from '@/lib/formTemplate';
 import { scrollIntoViewById } from '@/lib/scrollIntoViewDeferred';
+import { downloadSubmissionReportCsv, type SubmissionReportCsvInput } from '@/lib/formSubmissionCsv';
 import { FormAssignmentsPanel } from './FormAssignmentsPanel';
 import { CreateFormPanel } from './CreateFormPanel';
 import { FormEmployeeAssignmentsPanel } from './FormEmployeeAssignmentsPanel';
@@ -49,12 +50,14 @@ export type FormsReviewSubmission = {
   id: string;
   status: string;
   submittedAt: Date | string;
+  reviewedAt?: Date | string | null;
   rating: number | null;
   comments: string | null;
   answers: Record<string, string>;
   template: FormsTemplateRow;
   employee: { name: string };
   branch: { name: string };
+  departmentName?: string | null;
   reportsToManager?: { name: string } | null;
 };
 
@@ -265,6 +268,32 @@ export function ManagementFormsView({
     }
   }
 
+  function submissionToCsvInput(s: FormsReviewSubmission): SubmissionReportCsvInput {
+    return {
+      id: s.id,
+      status: s.status,
+      submittedAt: s.submittedAt,
+      reviewedAt: s.reviewedAt,
+      rating: s.rating,
+      comments: s.comments,
+      answers: s.answers,
+      template: { title: s.template.title, fields: s.template.fields },
+      employee: s.employee,
+      branch: s.branch,
+      departmentName: s.departmentName,
+      reportsToManager: s.reportsToManager,
+    };
+  }
+
+  function handleExportSubmissionCsv(s: FormsReviewSubmission) {
+    try {
+      const base = `${s.template.title}-${s.id}`.replace(/\s+/g, '-');
+      downloadSubmissionReportCsv(submissionToCsvInput(s), base);
+    } catch {
+      alert(t.forms.exportCsvFailed);
+    }
+  }
+
   async function importDefaultTemplates() {
     setImportingDefaults(true);
     try {
@@ -458,9 +487,11 @@ export function ManagementFormsView({
                         <p className="text-sm font-semibold text-app-primary truncate">{tpl.title}</p>
                         <p className="text-xs text-app-muted">{categoryTitle(tpl.category)} - {tpl.fields.length} fields</p>
                       </div>
-                      <button type="button" onClick={() => startOwnerEdit(tpl)} className="app-btn-secondary">
-                        {t.common.edit}
-                      </button>
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        <button type="button" onClick={() => startOwnerEdit(tpl)} className="app-btn-secondary">
+                          {t.common.edit}
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -749,19 +780,30 @@ export function ManagementFormsView({
                       <span className="font-medium text-app-primary">{s.reportsToManager?.name ?? '—'}</span>
                     </p>
                   </div>
-                  <div className="sm:ms-auto flex flex-col items-start sm:items-end gap-1">
-                    <span
-                      className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
-                        s.status === 'approved'
-                          ? 'bg-green-100 text-green-900 dark:bg-green-900/50 dark:text-green-100'
-                          : s.status === 'denied'
-                            ? 'bg-red-100 text-red-900 dark:bg-red-900/50 dark:text-red-100'
-                            : 'bg-ios-blue/15 text-ios-blue dark:bg-ios-blue/25 dark:text-ios-blue'
-                      }`}
-                    >
-                      {t.status[s.status as keyof typeof t.status] ?? s.status}
-                    </span>
-                    <span className="text-xs tabular-nums text-app-muted">{new Date(s.submittedAt).toLocaleString()}</span>
+                  <div className="sm:ms-auto flex flex-col items-stretch sm:items-end gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <span
+                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
+                          s.status === 'approved'
+                            ? 'bg-green-100 text-green-900 dark:bg-green-900/50 dark:text-green-100'
+                            : s.status === 'denied'
+                              ? 'bg-red-100 text-red-900 dark:bg-red-900/50 dark:text-red-100'
+                              : 'bg-ios-blue/15 text-ios-blue dark:bg-ios-blue/25 dark:text-ios-blue'
+                        }`}
+                      >
+                        {t.status[s.status as keyof typeof t.status] ?? s.status}
+                      </span>
+                      {showReview && (
+                        <button
+                          type="button"
+                          onClick={() => handleExportSubmissionCsv(s)}
+                          className="rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated px-2.5 py-1.5 text-xs font-medium text-app-primary hover:bg-gray-50 dark:hover:bg-ios-dark-fill"
+                        >
+                          {t.forms.exportSubmissionCsv}
+                        </button>
+                      )}
+                    </div>
+                    <span className="text-xs tabular-nums text-app-muted text-end">{new Date(s.submittedAt).toLocaleString()}</span>
                   </div>
                 </div>
                 <dl className="space-y-2 text-sm border-t border-gray-100 dark:border-ios-dark-separator pt-3">

@@ -19,7 +19,11 @@ export async function POST(_req: Request, ctx: Ctx) {
   if (!row || row.userId !== session.user.id) {
     return Response.json({ error: 'Report not found' }, { status: 404 });
   }
-  if (row.category !== 'manager_time_clock_report' && row.category !== 'manager_form_report') {
+  if (
+    row.category !== 'manager_time_clock_report' &&
+    row.category !== 'manager_form_report' &&
+    row.category !== 'weekly_rating_submitted'
+  ) {
     return Response.json({ error: 'Report not found' }, { status: 404 });
   }
 

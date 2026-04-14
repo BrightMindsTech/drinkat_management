@@ -26,6 +26,7 @@ export function RegisterStaffForm({
   const [shiftTimeFrom, setShiftTimeFrom] = useState('09:00');
   const [shiftTimeUntil, setShiftTimeUntil] = useState('17:00');
   const [role, setRole] = useState<'staff' | 'qc' | 'marketing'>('staff');
+  const [employmentType, setEmploymentType] = useState<'full_time' | 'part_time'>('full_time');
   const [branchId, setBranchId] = useState(branches[0]?.id ?? '');
   const [departmentId, setDepartmentId] = useState('');
   const [advanceLimit, setAdvanceLimit] = useState('');
@@ -103,6 +104,7 @@ export function RegisterStaffForm({
             shiftTimeFrom && shiftTimeUntil ? `${shiftTimeFrom}–${shiftTimeUntil}` : undefined,
           idCardFrontPhotoPath,
           idCardBackPhotoPath,
+          employmentType,
         }),
       });
       const data = await res.json();
@@ -118,6 +120,7 @@ export function RegisterStaffForm({
       setResidentialArea('');
       setShiftTimeFrom('09:00');
       setShiftTimeUntil('17:00');
+      setEmploymentType('full_time');
       setEmail('');
       setPassword('');
       setIdCardFrontFile(null);
@@ -204,6 +207,20 @@ export function RegisterStaffForm({
             <option value="qc">{t.registerStaff.qc}</option>
             <option value="marketing">{t.registerStaff.marketing}</option>
           </select>
+        </div>
+        <div>
+          <label className="block text-sm text-app-label mb-1">{t.registerStaff.schedule}</label>
+          <select
+            value={employmentType}
+            onChange={(e) => setEmploymentType(e.target.value as 'full_time' | 'part_time')}
+            className="w-full rounded-lg border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2"
+          >
+            <option value="full_time">{t.registerStaff.fullTime}</option>
+            <option value="part_time">{t.registerStaff.partTime}</option>
+          </select>
+          {employmentType === 'part_time' ? (
+            <p className="text-xs text-app-muted mt-1">{t.registerStaff.partTimeScheduleHint}</p>
+          ) : null}
         </div>
         <div>
           <label className="block text-sm text-app-label mb-1">{t.registerStaff.branch}</label>

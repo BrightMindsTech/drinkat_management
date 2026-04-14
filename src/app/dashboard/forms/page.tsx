@@ -139,6 +139,7 @@ export default async function FormsPage() {
         id: s.id,
         status: s.status,
         submittedAt: s.submittedAt,
+        reviewedAt: s.reviewedAt,
         rating: s.rating,
         comments: s.comments,
         answers: JSON.parse(s.answersJson) as Record<string, string>,
@@ -158,6 +159,7 @@ export default async function FormsPage() {
         },
         employee: { name: s.employee.name },
         branch: { name: s.branch.name },
+        departmentName: s.employee.department?.name ?? null,
         reportsToManager: s.employee.reportsToEmployee
           ? { name: s.employee.reportsToEmployee.name }
           : null,
@@ -184,6 +186,7 @@ export default async function FormsPage() {
         id: s.id,
         status: s.status,
         submittedAt: s.submittedAt,
+        reviewedAt: s.reviewedAt,
         rating: s.rating,
         comments: s.comments,
         answers: JSON.parse(s.answersJson) as Record<string, string>,
@@ -203,6 +206,7 @@ export default async function FormsPage() {
         },
         employee: { name: s.employee.name },
         branch: { name: s.branch.name },
+        departmentName: s.employee.department?.name ?? null,
         reportsToManager: s.employee.reportsToEmployee
           ? { name: s.employee.reportsToEmployee.name }
           : null,

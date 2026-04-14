@@ -10,6 +10,7 @@ import {
 import { isInsideBranchRadius, isNearRecordedFix } from '@/lib/geo';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
 import { DEFAULT_APP_TIMEZONE, localCalendarDayBoundsUtc } from '@/lib/shifts';
+import { isWeeklyRatingGateBlocking, rolesSubjectToWeeklyRating } from '@/lib/weekly-ratings';
 
 const bodySchema = z.object({
   lat: z.number(),
@@ -27,6 +28,21 @@ export async function POST(req: Request) {
   const emp = await getTimeClockEmployee(session.user.id, session.user.role);
   if (!emp) {
     return Response.json({ error: 'Time clock does not apply' }, { status: 403 });
+  }
+
+  const role = normalizeUserRole(session.user.role);
+  if (rolesSubjectToWeeklyRating(role)) {
+    const block = await isWeeklyRatingGateBlocking(prisma, emp.id, role);
+    if (block) {
+      return Response.json(
+        {
+          error: 'Complete required weekly ratings before clocking out.',
+          code: 'weekly_rating_required',
+          ratingsPath: '/dashboard/ratings',
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const user = await prisma.user.findUnique({
@@ -66,7 +82,6 @@ export async function POST(req: Request) {
     return Response.json({ error: 'You must be within branch radius to clock out' }, { status: 400 });
   }
 
-  const role = normalizeUserRole(session.user.role);
   if (role === 'manager') {
     const applicableCashTemplates = await prisma.managementFormTemplate.findMany({
       where: {

@@ -113,6 +113,21 @@ If `npx cap …` errors with **“could not determine executable to run”**, us
 
 Scripts: `npm run cap:sync` · `npm run cap:ios` (opens Xcode) · **`npm run cap:run:ios`** (build & launch Simulator **without** opening Xcode).
 
+## Time clock troubleshooting (popup not showing)
+
+If the **"Did you leave?"** popup does not appear when a clocked-in user leaves the branch geofence, check these known causes/fixes:
+
+- Geofence watch must require **location consent only** (not push consent).
+- `POST /api/time-clock/location-event` must allow location-only consent and not reject with push-related `403`.
+- Client geofence transition handler should have a fallback call to `POST /api/time-clock/presence-check` when transition response is missing/failed.
+- `POST /api/time-clock/presence-check` should trigger away when **outside radius + clocked in + no active away** (do not suppress just because shift ended).
+- `POST /api/time-clock/location-event` should return `destination_required` on `exit` while clocked in and outside radius.
+
+Current expected behavior:
+
+- Presence check runs every ~3 seconds while clocked in.
+- Leaving branch radius should open the forced-away modal reliably, even if push notifications are disabled.
+
 ## Tech stack
 
 - Next.js 14 (App Router), React, TypeScript

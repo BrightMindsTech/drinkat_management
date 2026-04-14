@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
 import { SessionProvider } from '@/components/SessionProvider';
+import { ModalScrollIntoViewListener } from '@/components/ModalScrollIntoViewListener';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import './globals.css';
@@ -34,7 +35,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen w-full max-w-[100dvw] overflow-x-hidden bg-ios-gray dark:bg-ios-gray-dark text-app-primary antialiased transition-colors">
         <ThemeProvider>
           <LanguageProvider>
-            <SessionProvider>{children}</SessionProvider>
+            <SessionProvider>
+              <ModalScrollIntoViewListener />
+              {children}
+            </SessionProvider>
           </LanguageProvider>
         </ThemeProvider>
       </body>

@@ -32,6 +32,7 @@ model Branch {
   managementFormSubmissions ManagementFormSubmission[]
   timeClockEntries TimeClockEntry[]
   awaySessions AwaySession[]
+  weeklyRatings WeeklyRating[]
 }
 
 model Department {
@@ -57,6 +58,60 @@ model User {
   updatedAt     DateTime  @updatedAt
   pushSubscriptions PushSubscription[]
   inboxNotifications InboxNotification[]
+  chatParticipants  ChatParticipant[]
+  chatMessagesSent  ChatMessage[]       @relation("ChatMessageSender")
+  chatTypingStates  ChatTypingState[]
+}
+
+/// Single-row keys for infrequent jobs (e.g. throttled chat retention) without external schedulers.
+model AppCronWatermark {
+  key       String   @id
+  lastRunAt DateTime
+}
+
+/// Direct 1:1 thread (exactly two participants). Messages older than 24h are purged automatically (throttled).
+model ChatThread {
+  id           String              @id @default(cuid())
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  participants ChatParticipant[]
+  messages     ChatMessage[]
+  typingStates ChatTypingState[]
+}
+
+model ChatParticipant {
+  threadId   String
+  userId     String
+  thread     ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime   @default(now())
+  lastReadAt DateTime?
+
+  @@id([threadId, userId])
+  @@index([userId])
+}
+
+model ChatMessage {
+  id           String     @id @default(cuid())
+  threadId     String
+  thread       ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderUserId String
+  sender       User       @relation("ChatMessageSender", fields: [senderUserId], references: [id], onDelete: Cascade)
+  body         String
+  createdAt    DateTime   @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+/// Ephemeral typing indicator; stale rows removed by retention job.
+model ChatTypingState {
+  threadId  String
+  userId    String
+  thread    ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime   @updatedAt
+
+  @@id([threadId, userId])
 }
 
 model Employee {
@@ -76,6 +131,8 @@ model Employee {
   idCardFrontPhotoPath String?
   idCardBackPhotoPath String?
   role        String    // staff | qc | manager
+  /// full_time (default) | part_time — part-time staff are expected ≥15 distinct clock-in days per calendar month
+  employmentType String @default("full_time")
   status      String    @default("active") // active | on_leave | terminated
   advanceLimit Float?   // max JOD advance allowed, null = no limit
   leaveBalanceDays Int? // annual entitlement remaining
@@ -101,6 +158,28 @@ model Employee {
   shiftDefinition   ShiftDefinition? @relation(fields: [shiftDefinitionId], references: [id], onDelete: SetNull)
   timeClockEntries TimeClockEntry[]
   awaySessions     AwaySession[]
+  weeklyRatingsAsRater   WeeklyRating[] @relation("WeeklyRatingRater")
+  weeklyRatingsAsTarget  WeeklyRating[] @relation("WeeklyRatingTarget")
+}
+
+/// One directional weekly score (0–100). Unique per rater + target + ISO week (Monday key YYYY-MM-DD in APP_TIMEZONE).
+model WeeklyRating {
+  id               String   @id @default(cuid())
+  raterEmployeeId  String
+  rater            Employee @relation("WeeklyRatingRater", fields: [raterEmployeeId], references: [id], onDelete: Cascade)
+  targetEmployeeId String
+  target           Employee @relation("WeeklyRatingTarget", fields: [targetEmployeeId], references: [id], onDelete: Cascade)
+  branchId         String
+  branch           Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  weekStartKey     String
+  score            Int
+  reason           String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([raterEmployeeId, targetEmployeeId, weekStartKey])
+  @@index([branchId, weekStartKey])
+  @@index([targetEmployeeId, weekStartKey])
 }
 
 /// Morning / Night work shifts (local minutes in APP_TIMEZONE, see lib/shifts.ts)
