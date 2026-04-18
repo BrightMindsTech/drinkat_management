@@ -280,6 +280,10 @@ model EmployeeDocument {
   employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   filePath    String
   title       String    // e.g. "Contract"
+  documentType String   @default("other") // criminal_record | contract | certificate | id_copy | other
+  documentNumber String?
+  issuedOn    DateTime?
+  expiresOn   DateTime?
   createdAt   DateTime  @default(now())
 }
 

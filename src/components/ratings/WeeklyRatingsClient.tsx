@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 type TargetRow = {
@@ -17,8 +17,10 @@ type WeeklyPayload = {
   blockingClock: boolean;
 };
 
+const THANK_YOU_MS = 4000;
+
 export function WeeklyRatingsClient() {
-  const { t } = useLanguage();
+  const { t, dir } = useLanguage();
   const r = t.ratings;
   const [data, setData] = useState<WeeklyPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,20 +29,23 @@ export function WeeklyRatingsClient() {
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [showThankYou, setShowThankYou] = useState(false);
+  const [thankYouProgressPct, setThankYouProgressPct] = useState(100);
+  const thankYouRaf = useRef<number | null>(null);
 
-  const load = useCallback(async (opts?: { signal?: AbortSignal }) => {
+  const load = useCallback(async (opts?: { signal?: AbortSignal }): Promise<WeeklyPayload | null> => {
     const signal = opts?.signal;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/ratings/weekly', { credentials: 'include', signal });
-      if (signal?.aborted) return;
+      if (signal?.aborted) return null;
       const j = (await res.json().catch(() => ({}))) as WeeklyPayload & { error?: string };
-      if (signal?.aborted) return;
+      if (signal?.aborted) return null;
       if (!res.ok) {
         setError((j as { error?: string }).error ?? r.loadFailed);
         setData(null);
-        return;
+        return null;
       }
       setData(j);
       const nextScores: Record<string, string> = {};
@@ -51,10 +56,12 @@ export function WeeklyRatingsClient() {
       }
       setScores(nextScores);
       setReasons(nextReasons);
+      return j;
     } catch (e) {
-      if (signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) return;
+      if (signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) return null;
       setError(r.loadFailed);
       setData(null);
+      return null;
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -65,6 +72,36 @@ export function WeeklyRatingsClient() {
     void load({ signal: ac.signal });
     return () => ac.abort();
   }, [load]);
+
+  useEffect(() => {
+    if (!showThankYou) return;
+    setThankYouProgressPct(100);
+    const start = performance.now();
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      const pct = Math.max(0, 100 - (elapsed / THANK_YOU_MS) * 100);
+      setThankYouProgressPct(pct);
+      if (elapsed >= THANK_YOU_MS) {
+        setShowThankYou(false);
+        return;
+      }
+      thankYouRaf.current = requestAnimationFrame(tick);
+    };
+    thankYouRaf.current = requestAnimationFrame(tick);
+    return () => {
+      if (thankYouRaf.current != null) cancelAnimationFrame(thankYouRaf.current);
+      thankYouRaf.current = null;
+    };
+  }, [showThankYou]);
+
+  useEffect(() => {
+    if (!showThankYou) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [showThankYou]);
 
   const statusLine = useMemo(() => {
     if (!data) return '';
@@ -111,7 +148,19 @@ export function WeeklyRatingsClient() {
       }
       setError(null);
       setSavedId(targetId);
-      await load();
+      const fresh = await load();
+      if (fresh?.complete) {
+        setShowThankYou(true);
+      } else if (fresh) {
+        const nextId = fresh.expectedTargets.find((row) => !row.existing)?.id;
+        if (nextId) {
+          requestAnimationFrame(() => {
+            const el = document.getElementById(`weekly-rating-card-${nextId}`);
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el?.querySelector<HTMLInputElement>('input[type="number"]')?.focus();
+          });
+        }
+      }
     } catch {
       setError(r.saveFailed);
     } finally {
@@ -149,7 +198,11 @@ export function WeeklyRatingsClient() {
             const num = Number(sc);
             const needReason = Number.isFinite(num) && num < 85;
             return (
-              <li key={row.id} className="rounded-xl border border-gray-200 dark:border-ios-dark-separator p-4 space-y-3">
+              <li
+                key={row.id}
+                id={`weekly-rating-card-${row.id}`}
+                className="rounded-xl border border-gray-200 dark:border-ios-dark-separator p-4 space-y-3 scroll-mt-28"
+              >
                 <p className="text-sm font-semibold text-app-label">
                   {r.targetLabel}: {row.name}
                 </p>
@@ -195,6 +248,43 @@ export function WeeklyRatingsClient() {
           })}
         </ul>
       )}
+
+      {showThankYou ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4"
+          role="presentation"
+          onClick={() => setShowThankYou(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="weekly-ratings-thank-you-title"
+            className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="weekly-ratings-thank-you-title" className="text-lg font-semibold text-app-label">
+              {r.thankYouTitle}
+            </h2>
+            <p className="mt-2 text-sm text-app-secondary">{r.thankYouBody}</p>
+            <div
+              className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600"
+              aria-hidden
+            >
+              <div
+                className={`h-full rounded-full bg-ios-blue ${dir === 'rtl' ? 'ml-auto' : ''}`}
+                style={{ width: `${thankYouProgressPct}%` }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowThankYou(false)}
+              className="mt-4 w-full rounded-lg bg-ios-blue py-2.5 text-sm font-semibold text-white"
+            >
+              {t.common.close}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

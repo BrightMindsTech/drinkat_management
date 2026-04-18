@@ -82,7 +82,7 @@ export function HRStaffView({ employee, advances, leaveRequests, documents, sala
 
       <section id="hr-staff-documents" className={sectionClass}>
         <h2 className="text-lg font-semibold text-app-primary mb-4">{t.employeeCard.myDocuments}</h2>
-        <EmployeeDocumentsSection employeeId={employee.id} documents={documents} ownerView={false} />
+        <EmployeeDocumentsSection employeeId={employee.id} documents={documents} ownerView={false} allowSelfUpload />
       </section>
 
       <section id="hr-staff-salary" className={sectionClass}>
