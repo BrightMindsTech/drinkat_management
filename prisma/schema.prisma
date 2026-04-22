@@ -239,7 +239,7 @@ model PushSubscription {
   endpoint  String
   /// Web Push auth/p256dh JSON; null for FCM-only rows
   keysJson  String?
-  provider  String   // web | fcm
+  provider  String   // web | fcm | apns
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

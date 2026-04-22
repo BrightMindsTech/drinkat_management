@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTimeClockGeofence } from '@/contexts/TimeClockGeofenceContext';
 import type { TimeClockStatus } from '@/components/time-clock/geofence-shared';
+import { isCapacitorIos, registerIosPushWithBackend } from '@/lib/native-push-client';
+import { subscribeWebPush } from '@/lib/web-push-client';
 
 type ManagerLog = {
   id: string;
@@ -414,7 +416,7 @@ function ConsentBlock({ status, onUpdated }: { status: TimeClockStatus; onUpdate
             await new Promise<void>((res, rej) => {
               navigator.geolocation.getCurrentPosition(() => res(), rej, { timeout: 20000 });
             });
-            if ('Notification' in window && Notification.permission === 'default') {
+            if (!isCapacitorIos() && 'Notification' in window && Notification.permission === 'default') {
               await Notification.requestPermission();
             }
             await fetch('/api/time-clock/consent', {
@@ -422,11 +424,15 @@ function ConsentBlock({ status, onUpdated }: { status: TimeClockStatus; onUpdate
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ location: loc, push }),
             });
-            if (push && 'serviceWorker' in navigator) {
-              await navigator.serviceWorker.register('/sw.js');
-              const v = await fetch('/api/push/vapid-public').then((r) => r.json());
-              if (v.configured && v.publicKey && Notification.permission === 'granted') {
-                await subscribeWebPush(v.publicKey);
+            if (push) {
+              if (isCapacitorIos()) {
+                await registerIosPushWithBackend();
+              } else if ('serviceWorker' in navigator) {
+                await navigator.serviceWorker.register('/sw.js');
+                const v = await fetch('/api/push/vapid-public').then((r) => r.json());
+                if (v.configured && v.publicKey && Notification.permission === 'granted') {
+                  await subscribeWebPush(v.publicKey);
+                }
               }
             }
             await onUpdated();

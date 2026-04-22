@@ -38,7 +38,7 @@ export function DashboardScrollMain({ children }: { children: React.ReactNode })
     <main className="app-animate-in mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col overflow-hidden">
       <div
         ref={scrollRef}
-        className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 py-5 sm:px-4 sm:py-6"
+        className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-5 sm:px-4 sm:py-6"
         style={{ touchAction: 'pan-y' }}
       >
         <div

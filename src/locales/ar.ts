@@ -236,7 +236,8 @@ export const ar: LocaleMessages = {
   },
   dashboard: {
     title: 'لوحة التحكم',
-    welcome: 'مرحباً، {email}. أنت مسجل كـ {role}.',
+    welcomeWord: 'مرحباً',
+    welcomeMeta: '{email} · {role}',
     hrCard: 'الموارد البشرية',
     hrDescOwner: 'الموظفون، السلف، خصومات الرواتب',
     hrDescManager: 'فريقي، مراجعة الإجازات والسلف',

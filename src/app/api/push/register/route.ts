@@ -17,6 +17,11 @@ const fcmSchema = z.object({
   token: z.string().min(10),
 });
 
+const apnsSchema = z.object({
+  provider: z.literal('apns'),
+  token: z.string().min(10),
+});
+
 export async function POST(req: Request) {
   const session = await requireSession();
   const emp = await getTimeClockEmployee(session.user.id, session.user.role);
@@ -27,7 +32,8 @@ export async function POST(req: Request) {
   const raw = await req.json();
   const web = webSchema.safeParse(raw);
   const fcm = fcmSchema.safeParse(raw);
-  if (!web.success && !fcm.success) {
+  const apns = apnsSchema.safeParse(raw);
+  if (!web.success && !fcm.success && !apns.success) {
     return Response.json({ error: 'Invalid body' }, { status: 400 });
   }
 
@@ -50,19 +56,41 @@ export async function POST(req: Request) {
     return Response.json({ ok: true });
   }
 
-  const endpoint = `fcm:${fcm.data.token}`;
-  await prisma.pushSubscription.upsert({
-    where: {
-      userId_endpoint: { userId: session.user.id, endpoint },
-    },
-    create: {
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      endpoint,
-      keysJson: null,
-      provider: 'fcm',
-    },
-    update: { updatedAt: new Date() },
-  });
-  return Response.json({ ok: true });
+  if (fcm.success) {
+    const endpoint = `fcm:${fcm.data.token}`;
+    await prisma.pushSubscription.upsert({
+      where: {
+        userId_endpoint: { userId: session.user.id, endpoint },
+      },
+      create: {
+        id: crypto.randomUUID(),
+        userId: session.user.id,
+        endpoint,
+        keysJson: null,
+        provider: 'fcm',
+      },
+      update: { updatedAt: new Date() },
+    });
+    return Response.json({ ok: true });
+  }
+
+  if (apns.success) {
+    const apnsEndpoint = `apns:${apns.data.token}`;
+    await prisma.pushSubscription.upsert({
+      where: {
+        userId_endpoint: { userId: session.user.id, endpoint: apnsEndpoint },
+      },
+      create: {
+        id: crypto.randomUUID(),
+        userId: session.user.id,
+        endpoint: apnsEndpoint,
+        keysJson: null,
+        provider: 'apns',
+      },
+      update: { updatedAt: new Date() },
+    });
+    return Response.json({ ok: true });
+  }
+
+  return Response.json({ error: 'Invalid body' }, { status: 400 });
 }

@@ -33,7 +33,7 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen w-full min-w-0 flex items-center justify-center px-4 py-6 box-border bg-ios-gray dark:bg-ios-gray-dark">
+    <div className="min-h-[100dvh] w-full min-w-0 flex items-center justify-center px-4 py-6 box-border bg-ios-gray dark:bg-ios-gray-dark safe-pt-top pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
       <div className="w-full max-w-sm min-w-0 rounded-ios-lg bg-white dark:bg-ios-dark-elevated shadow-sm dark:shadow-none p-8">
         <div className="flex justify-end gap-2 mb-2">
           <ThemeToggle />

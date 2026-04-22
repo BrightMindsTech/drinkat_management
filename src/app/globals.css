@@ -141,6 +141,25 @@
   }
 }
 
+@layer utilities {
+  /**
+   * Top inset for status bar / Dynamic Island only (no extra px — avoids a huge empty band).
+   * Pair with the same background as the bar below so the inset isn’t a different-colored gap.
+   */
+  .safe-pt-top {
+    padding-top: constant(safe-area-inset-top);
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /**
+   * Mobile nav drawer: block iOS rubber-band scroll and overscroll chaining on the panel.
+   */
+  .drawer-touch-lock {
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+}
+
 @keyframes app-fade-up {
   from {
     opacity: 0;

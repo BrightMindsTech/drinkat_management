@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession, requireOwner } from '@/lib/session';
+import { createInboxForUsers, getManagerUserIdForEmployee } from '@/lib/time-clock-helpers';
+import { sendPushToUser } from '@/lib/push';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -76,5 +78,34 @@ export async function POST(req: NextRequest) {
     },
     include: { employee: { include: { branch: true } } },
   });
+
+  const managerUserId = await getManagerUserIdForEmployee({
+    reportsToEmployeeId: user.employee.reportsToEmployeeId,
+    branchId: user.employee.branchId,
+  });
+  if (managerUserId) {
+    const href = '/dashboard/hr#hr-owner-leave';
+    await createInboxForUsers([managerUserId], {
+      category: 'leave_review',
+      title: 'Leave request needs review',
+      body: `${user.employee.name} requested ${parsed.data.type} leave.`,
+      dataJson: JSON.stringify({
+        type: 'leave_request_pending_review',
+        leaveRequestId: leaveRequest.id,
+        href,
+      }),
+    });
+    const subs = await prisma.pushSubscription.findMany({ where: { userId: managerUserId } });
+    await sendPushToUser(managerUserId, subs, {
+      title: 'Leave request needs review',
+      body: `${user.employee.name} requested ${parsed.data.type} leave.`,
+      data: {
+        type: 'leave_request_pending_review',
+        url: href,
+        leaveRequestId: leaveRequest.id,
+      },
+    });
+  }
+
   return Response.json(leaveRequest);
 }

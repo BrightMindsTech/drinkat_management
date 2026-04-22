@@ -16,13 +16,13 @@ export function Logo({ className = '', size = 36, showPoweredBy = true, subtitle
       {compact ? (
         <>
           <span
-            className="font-semibold tracking-tight block sm:hidden max-w-[42vw] truncate text-teal-600 dark:text-teal-400"
+            className="font-semibold tracking-tight block sm:hidden max-w-[42vw] truncate text-black dark:text-white"
             style={{ fontSize: size }}
           >
             DrinkatHR
           </span>
           <span
-            className="font-semibold tracking-tight hidden sm:block text-teal-600 dark:text-teal-400"
+            className="font-semibold tracking-tight hidden sm:block text-black dark:text-white"
             style={{ fontSize: size }}
           >
             DrinkatHR — Management System
@@ -30,7 +30,7 @@ export function Logo({ className = '', size = 36, showPoweredBy = true, subtitle
         </>
       ) : (
         <span
-          className="font-semibold tracking-tight block text-teal-600 dark:text-teal-400"
+          className="font-semibold tracking-tight block text-black dark:text-white"
           style={{ fontSize: size }}
         >
           DrinkatHR — Management System

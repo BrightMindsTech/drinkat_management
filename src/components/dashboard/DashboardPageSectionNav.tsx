@@ -28,16 +28,18 @@ export function DashboardPageSectionNav({ role }: { role: string }) {
   }, []);
 
   if (sections.length === 0) {
-    return <div className="h-[env(safe-area-inset-bottom)] shrink-0 bg-white/95 dark:bg-ios-dark-elevated/95 md:h-0" />;
+    return (
+      <div className="h-[env(safe-area-inset-bottom)] shrink-0 touch-none bg-white/95 dark:bg-ios-dark-elevated/95 md:h-0" />
+    );
   }
 
   return (
-    <div className="shrink-0 border-t border-gray-200/90 dark:border-ios-dark-separator/80 bg-white/98 dark:bg-ios-dark-elevated/98 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
+    <div className="shrink-0 touch-none border-t border-gray-200/90 dark:border-ios-dark-separator/80 bg-white/98 dark:bg-ios-dark-elevated/98 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
       <nav className="max-w-6xl mx-auto min-w-0 px-2 pt-2 pb-1" aria-label={t.dashboard.pageSectionsNavAria}>
         <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-app-muted">
           {t.dashboard.pageSectionsNavLabel}
         </p>
-        <div className="flex flex-nowrap items-stretch gap-1 overflow-x-auto [-webkit-overflow-scrolling:touch] pb-1">
+        <div className="flex flex-wrap items-stretch gap-1 pb-1">
           {sections.map((s) => (
             <button
               key={s.id}

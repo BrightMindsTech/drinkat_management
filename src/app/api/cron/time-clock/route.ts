@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { purgeExpiredChat } from '@/lib/chat-retention';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
+import { sendWeeklyRatingRemindersIfDue } from '@/lib/weekly-rating-reminders';
 
 /**
  * Authenticated with CRON_SECRET (query `?secret=` or `Authorization: Bearer`).
@@ -22,15 +23,22 @@ export async function GET(req: Request) {
   const awayProcessed = await processExpiredAwaySessions();
 
   let chat: { messagesDeleted: number; threadsDeleted: number; typingDeleted: number } | null = null;
+  let weeklyRatings: { sentUsers: number; weekKey: string; skipped: boolean } | null = null;
   try {
     chat = await purgeExpiredChat(prisma);
   } catch (e) {
     console.error('[cron/time-clock] chat purge failed', e);
+  }
+  try {
+    weeklyRatings = await sendWeeklyRatingRemindersIfDue();
+  } catch (e) {
+    console.error('[cron/time-clock] weekly rating reminders failed', e);
   }
 
   return Response.json({
     ok: true,
     processed: awayProcessed,
     chat,
+    weeklyRatings,
   });
 }

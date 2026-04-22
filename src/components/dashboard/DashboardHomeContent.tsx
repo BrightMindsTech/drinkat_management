@@ -130,15 +130,26 @@ function shortcutDescription(role: string, item: DashboardNavItem, t: LocaleMess
   }
 }
 
-export function DashboardHomeContent({ email, role }: { email: string; role: string }) {
+export function DashboardHomeContent({
+  email,
+  role,
+  displayName,
+}: {
+  email: string;
+  role: string;
+  displayName: string;
+}) {
   const { t } = useLanguage();
   const shortcuts = getDashboardShortcutDestinations(role);
 
   return (
     <div className="app-page space-y-10">
-      <section id="section-home-overview" className="scroll-mt-28 space-y-2">
-        <h1 className="text-2xl font-bold text-app-primary">{t.dashboard.title}</h1>
-        <p className="text-sm text-app-secondary">{interpolate(t.dashboard.welcome, { email, role })}</p>
+      <section id="section-home-overview" className="scroll-mt-28 space-y-3">
+        <h1 className="text-3xl font-bold leading-tight tracking-tight text-app-primary sm:text-4xl">
+          <span className="font-semibold text-app-secondary">{t.dashboard.welcomeWord}</span>{' '}
+          <span className="font-extrabold text-app-primary">{displayName}</span>
+        </h1>
+        <p className="text-sm text-app-secondary">{interpolate(t.dashboard.welcomeMeta, { email, role })}</p>
       </section>
 
       <section id="section-home-apps" className="scroll-mt-28 space-y-4">

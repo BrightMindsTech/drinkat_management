@@ -13,6 +13,7 @@ import {
 import { usePathname, useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { isCapacitorIos, registerIosPushWithBackend } from '@/lib/native-push-client';
 import { subscribeWebPush } from '@/lib/web-push-client';
 import { ForcedAwayModal, useGeofenceWatch, type TimeClockStatus } from '@/components/time-clock/geofence-shared';
 
@@ -213,6 +214,11 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
+        if (isCapacitorIos()) {
+          if (cancelled) return;
+          await registerIosPushWithBackend();
+          return;
+        }
         if (!('serviceWorker' in navigator)) return;
         await navigator.serviceWorker.register('/sw.js');
         const v = await fetch('/api/push/vapid-public').then((r) => r.json());

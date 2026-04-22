@@ -234,7 +234,8 @@ export const en = {
   },
   dashboard: {
     title: 'Dashboard',
-    welcome: 'Welcome, {email}. You are logged in as {role}.',
+    welcomeWord: 'Welcome',
+    welcomeMeta: '{email} · {role}',
     hrCard: 'HR',
     hrDescOwner: 'Staff, advances, salary deductions',
     hrDescManager: 'My team, leave/advances review',
