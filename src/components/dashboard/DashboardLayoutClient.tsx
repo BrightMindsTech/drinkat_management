@@ -65,7 +65,29 @@ export function DashboardLayoutClient({
   }, [drawerOpen]);
 
   useEffect(() => {
-    void registerIosPushWithBackend();
+    let stopped = false;
+    let timerId: number | null = null;
+    let inLoop = false;
+    async function attemptRegister() {
+      if (stopped || inLoop) return;
+      inLoop = true;
+      const ok = await registerIosPushWithBackend();
+      inLoop = false;
+      if (ok || stopped) return;
+      timerId = window.setTimeout(() => {
+        void attemptRegister();
+      }, 5000);
+    }
+    void attemptRegister();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void attemptRegister();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stopped = true;
+      if (timerId != null) window.clearTimeout(timerId);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   useEffect(() => {
@@ -103,6 +125,7 @@ export function DashboardLayoutClient({
   const menuOpenDirection = dir === 'rtl' ? -1 : 1;
   const menuEdge = dir === 'rtl' ? 'right' : 'left';
   const isDashboardHome = pathname === '/dashboard';
+  const isMessagesPage = pathname.startsWith('/dashboard/messages');
 
   function onTouchStart(e: React.TouchEvent<HTMLDivElement>) {
     const t = e.touches[0];
@@ -175,11 +198,10 @@ export function DashboardLayoutClient({
 
       {/* Main column */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overscroll-none">
+        <PendingReviewNotice role={role} />
         {/* touch-none: drags on chrome must not scroll the main column / webview (iOS scroll chaining) */}
         {/* bg matches header through safe-area inset so there’s no gray “empty” strip under the status bar */}
         <div className="safe-pt-top shrink-0 touch-none border-b border-gray-200/80 bg-white/90 backdrop-blur-xl dark:border-ios-dark-separator dark:bg-ios-dark-elevated/90">
-          <PendingReviewNotice role={role} />
-
           <header className="min-w-0">
             <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-wrap items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5">
             <button
@@ -214,25 +236,27 @@ export function DashboardLayoutClient({
           </header>
         </div>
 
-        <DashboardScrollMain>{children}</DashboardScrollMain>
+        <DashboardScrollMain disableScroll={isMessagesPage}>{children}</DashboardScrollMain>
 
         <DashboardPageSectionNav role={role} />
       </div>
 
-      <Link
-        href="/dashboard/messages"
-        className="fixed bottom-[max(5.25rem,calc(env(safe-area-inset-bottom)+4.5rem))] right-4 z-[120] inline-flex h-14 w-14 items-center justify-center rounded-full bg-ios-blue text-white shadow-xl ring-2 ring-white/70 transition hover:scale-[1.03] active:scale-95 dark:ring-ios-dark-elevated"
-        aria-label="Open messages"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6" aria-hidden>
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-        {chatUnreadCount > 0 ? (
-          <span className="absolute -top-1 -right-1 min-w-[1.25rem] rounded-full bg-red-600 px-1.5 text-center text-[11px] font-bold leading-5 text-white shadow">
-            {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-          </span>
-        ) : null}
-      </Link>
+      {!isMessagesPage ? (
+        <Link
+          href="/dashboard/messages"
+          className="fixed bottom-[max(5.25rem,calc(env(safe-area-inset-bottom)+4.5rem))] right-4 z-[120] inline-flex h-14 w-14 items-center justify-center rounded-full bg-ios-blue text-white shadow-xl ring-2 ring-white/70 transition hover:scale-[1.03] active:scale-95 dark:ring-ios-dark-elevated"
+          aria-label="Open messages"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6" aria-hidden>
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          {chatUnreadCount > 0 ? (
+            <span className="absolute -top-1 -right-1 min-w-[1.25rem] rounded-full bg-red-600 px-1.5 text-center text-[11px] font-bold leading-5 text-white shadow">
+              {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+            </span>
+          ) : null}
+        </Link>
+      ) : null}
 
       {/* Mobile drawer: viewport-fixed panel (not nested absolute) + shell safe-area padding = full-bleed bg, no black letterboxing */}
       <div
