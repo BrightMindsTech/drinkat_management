@@ -1,13 +1,25 @@
 #!/bin/sh
-# Xcode Cloud: repo has no ios/App/Pods (gitignored). Install JS deps, then CocoaPods.
-set -e
+# Xcode Cloud: ios/App/Pods is gitignored — install JS deps (Capacitor pod paths), then CocoaPods.
+set -eu
 
 REPO="${CI_PRIMARY_REPOSITORY_PATH:-.}"
 cd "$REPO"
 
-echo "ci_post_clone: npm ci"
-npm ci
+echo "ci_post_clone: REPO=$REPO pwd=$(pwd)"
 
-echo "ci_post_clone: pod install (ios/App)"
+echo "ci_post_clone: npm install (ci uses lockfile via npm ci when possible)"
+if ! npm ci; then
+  echo "ci_post_clone: npm ci failed, trying npm install"
+  npm install
+fi
+
+echo "ci_post_clone: pod install"
 cd ios/App
 pod install
+
+XCCONFIG="Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"
+if [ ! -f "$XCCONFIG" ]; then
+  echo "ci_post_clone: ERROR missing $XCCONFIG after pod install"
+  exit 1
+fi
+echo "ci_post_clone: OK $XCCONFIG"
