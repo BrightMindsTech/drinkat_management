@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs immediately before xcodebuild — safety net if Pods are still missing.
+# Xcode Cloud: ci_scripts/ci_pre_xcodebuild.sh — runs before xcodebuild.
 set -eu
 
 REPO="${CI_PRIMARY_REPOSITORY_PATH:-.}"
