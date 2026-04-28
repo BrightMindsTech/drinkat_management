@@ -1,7 +1,16 @@
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
-import { getTimeClockEmployee } from '@/lib/time-clock-helpers';
+import { sendPushToSubscription } from '@/lib/push';
+
+async function claimEndpointForUser(userId: string, endpoint: string) {
+  await prisma.pushSubscription.deleteMany({
+    where: {
+      endpoint,
+      userId: { not: userId },
+    },
+  });
+}
 
 const webSchema = z.object({
   provider: z.literal('web'),
@@ -24,10 +33,6 @@ const apnsSchema = z.object({
 
 export async function POST(req: Request) {
   const session = await requireSession();
-  const emp = await getTimeClockEmployee(session.user.id, session.user.role);
-  if (!emp) {
-    return Response.json({ error: 'Not applicable' }, { status: 403 });
-  }
 
   const raw = await req.json();
   const web = webSchema.safeParse(raw);
@@ -40,6 +45,7 @@ export async function POST(req: Request) {
   if (web.success) {
     const endpoint = web.data.endpoint;
     const keysJson = JSON.stringify(web.data.keys);
+    await claimEndpointForUser(session.user.id, endpoint);
     await prisma.pushSubscription.upsert({
       where: {
         userId_endpoint: { userId: session.user.id, endpoint },
@@ -58,6 +64,7 @@ export async function POST(req: Request) {
 
   if (fcm.success) {
     const endpoint = `fcm:${fcm.data.token}`;
+    await claimEndpointForUser(session.user.id, endpoint);
     await prisma.pushSubscription.upsert({
       where: {
         userId_endpoint: { userId: session.user.id, endpoint },
@@ -76,7 +83,14 @@ export async function POST(req: Request) {
 
   if (apns.success) {
     const apnsEndpoint = `apns:${apns.data.token}`;
-    await prisma.pushSubscription.upsert({
+    await claimEndpointForUser(session.user.id, apnsEndpoint);
+    const existed = await prisma.pushSubscription.findUnique({
+      where: {
+        userId_endpoint: { userId: session.user.id, endpoint: apnsEndpoint },
+      },
+      select: { id: true },
+    });
+    const saved = await prisma.pushSubscription.upsert({
       where: {
         userId_endpoint: { userId: session.user.id, endpoint: apnsEndpoint },
       },
@@ -89,6 +103,20 @@ export async function POST(req: Request) {
       },
       update: { updatedAt: new Date() },
     });
+
+    // One-time self-test when APNs token is first seen for this user.
+    if (!existed) {
+      const ok = await sendPushToSubscription(saved, {
+        title: 'Push connected',
+        body: 'Your iPhone push notifications are now connected.',
+        data: { type: 'push_connected', url: '/dashboard' },
+      });
+      console.log('[push/register] apns first-registration self-test', {
+        userId: session.user.id,
+        subscriptionId: saved.id,
+        ok,
+      });
+    }
     return Response.json({ ok: true });
   }
 

@@ -92,20 +92,9 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
   }
 
   if (path.startsWith('/dashboard/reports')) {
-    return [
-      { id: 'branch-overview', labelRef: 'reports.branchOverview', roles: ['owner'] },
-      { id: 'hr', labelRef: 'reports.hrSection', roles: ['owner'] },
-      { id: 'leave', labelRef: 'reports.leaveSection', roles: ['owner'] },
-      { id: 'attendance', labelRef: 'reports.attendanceSection', roles: ['owner'] },
-      { id: 'advances', labelRef: 'reports.advancesSection', roles: ['owner'] },
-      { id: 'qc', labelRef: 'reports.qcSection', roles: ['owner'] },
-      { id: 'forms', labelRef: 'reports.formsSection', roles: ['owner'] },
-      { id: 'weekly-ratings', labelRef: 'reports.weeklyRatingsLeaderboard', roles: ['owner'] },
-      { id: 'manager-reports', labelRef: 'reports.managerReportsSection', roles: ['owner'] },
-      { id: 'activity', labelRef: 'reports.activitySection', roles: ['owner'] },
-      { id: 'salary', labelRef: 'reports.salarySection', roles: ['owner'] },
-      { id: 'export', labelRef: 'reports.exportCsv', roles: ['owner'] },
-    ].filter((s) => !s.roles || s.roles.includes(role));
+    // Reports already lists every section in-page; the bottom "On this page" bar duplicated
+    // it and consumed too much space on small screens—omit the sticky footer here.
+    return [];
   }
 
   if (path.startsWith('/dashboard/time-clock')) {

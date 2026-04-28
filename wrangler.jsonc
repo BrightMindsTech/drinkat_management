@@ -5,7 +5,8 @@
 	"compatibility_date": "2026-03-17",
 	"compatibility_flags": [
 		"nodejs_compat",
-		"global_fetch_strictly_public"
+		"global_fetch_strictly_public",
+		"no_handle_cross_request_promise_resolution"
 	],
 	"assets": {
 		"directory": ".open-next/assets",
@@ -43,5 +44,11 @@
 			"binding": "UPLOADS",
 			"bucket_name": "drinkat-management-uploads"
 		}
-	]
+	],
+	// Internal cron: no third-party pinger. Patched worker calls /api/cron/time-clock via WORKER_SELF_REFERENCE.
+	"triggers": {
+		"crons": [
+			"*/5 * * * *"
+		]
+	}
 }

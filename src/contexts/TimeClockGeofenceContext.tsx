@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { normalizeUserRole } from '@/lib/formVisibility';
@@ -52,6 +53,27 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   const [awayNotice, setAwayNotice] = useState<string | null>(null);
   const [awaySubmitting, setAwaySubmitting] = useState(false);
   const exitCheckRaisedRef = useRef(false);
+
+  const timeClockHref = '/dashboard/time-clock';
+  const onTimeClockPage =
+    pathname === timeClockHref || pathname === `${timeClockHref}/` || (pathname?.startsWith(`${timeClockHref}/`) ?? false);
+  const showClockInRequiredGate = !!(
+    status?.applicable &&
+    !status.clock &&
+    !onTimeClockPage
+  );
+
+  useEffect(() => {
+    if (!showClockInRequiredGate) return;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, [showClockInRequiredGate]);
 
   const refresh = useCallback(async () => {
     try {
@@ -250,6 +272,29 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   return (
     <TimeClockGeofenceContext.Provider value={value}>
       {children}
+      {showClockInRequiredGate && (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="clock-in-required-title"
+        >
+          <div className="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4">
+            <h2 id="clock-in-required-title" className="text-lg font-semibold text-app-label">
+              {t.timeClock.clockInRequiredTitle}
+            </h2>
+            <p className="text-sm text-app-secondary">{t.timeClock.clockInRequiredBody}</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Link
+                href={timeClockHref}
+                className="rounded-xl bg-ios-blue px-4 py-2.5 text-center text-sm font-semibold text-white"
+              >
+                {t.timeClock.goToClockIn}
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
       {forceAwayOpen && status?.clock && !status.away && (
         <ForcedAwayModal
           onPick={async (kind: 'break' | 'bathroom' | 'other', note?: string) => {

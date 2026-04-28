@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
@@ -112,29 +113,27 @@ export async function POST(req: Request, ctx: RouteCtx) {
     await touchThreadUpdatedAt(prisma, threadId);
 
     const thread = await loadThreadWithTwoParticipants(prisma, threadId);
-    const senderName =
-      thread?.participants.find((p) => p.userId === session.user.id)?.user.email.split('@')[0] ?? 'Someone';
-
     const recipientIds =
       thread?.participants.filter((p) => p.userId !== session.user.id).map((p) => p.userId) ?? [];
     const origin = originFromRequest(req);
     const deepLink = `${origin}/dashboard/messages?thread=${encodeURIComponent(threadId)}`;
 
-    void (async () => {
+    // Use after() so Cloudflare Workers keep the isolate alive (waitUntil); fire-and-forget promises are often cut off when the response is sent.
+    after(async () => {
       try {
         for (const uid of recipientIds) {
           const subs = await prisma.pushSubscription.findMany({ where: { userId: uid } });
           if (subs.length === 0) continue;
           await sendPushToUser(uid, subs, {
-            title: 'New message',
-            body: `${senderName}: ${body.length > 120 ? `${body.slice(0, 117)}…` : body}`,
+            title: 'You have new messages',
+            body: 'Open the app to read your chat.',
             data: { type: 'chat_message', url: deepLink, threadId },
           });
         }
       } catch (pushErr) {
         console.error('[chat/messages POST] push', pushErr);
       }
-    })();
+    });
 
     return Response.json({
       message: {

@@ -9,7 +9,13 @@ import { DEFAULT_TRIGGER, attachPullToRefresh } from '@/lib/attach-pull-to-refre
  * Dashboard main scroll area with pull-to-refresh (touch).
  * Revalidates server components via `router.refresh()` when the user pulls down from the top.
  */
-export function DashboardScrollMain({ children }: { children: React.ReactNode }) {
+export function DashboardScrollMain({
+  children,
+  disableScroll = false,
+}: {
+  children: React.ReactNode;
+  disableScroll?: boolean;
+}) {
   const router = useRouter();
   const { t } = useLanguage();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -23,23 +29,26 @@ export function DashboardScrollMain({ children }: { children: React.ReactNode })
   }, [router]);
 
   useEffect(() => {
+    if (disableScroll) return;
     const el = scrollRef.current;
     if (!el) return;
     return attachPullToRefresh(el, runRefresh, {
       canRefresh: () => !isPending,
       onPullChange: setPullPx,
     });
-  }, [isPending, runRefresh]);
+  }, [disableScroll, isPending, runRefresh]);
 
-  const showBar = pullPx > 4 || isPending;
+  const showBar = !disableScroll && (pullPx > 4 || isPending);
   const progress = isPending ? 1 : Math.min(1, pullPx / DEFAULT_TRIGGER);
 
   return (
     <main className="app-animate-in mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col overflow-hidden">
       <div
         ref={scrollRef}
-        className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-5 sm:px-4 sm:py-6"
-        style={{ touchAction: 'pan-y' }}
+        className={`relative min-h-0 flex-1 overflow-x-hidden px-3 py-5 sm:px-4 sm:py-6 ${
+          disableScroll ? 'overflow-hidden overscroll-none' : 'overflow-y-auto overscroll-contain'
+        }`}
+        style={{ touchAction: disableScroll ? 'none' : 'pan-y' }}
       >
         <div
           className="pointer-events-none sticky top-0 z-[5] -mx-3 -mt-5 mb-1 flex h-0 justify-center sm:-mx-4 sm:-mt-6"

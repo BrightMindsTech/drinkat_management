@@ -24,8 +24,10 @@ export function AdvancesList({
 }) {
   const { t } = useLanguage();
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
 
   async function handleApproveDeny(id: string, status: 'approved' | 'denied') {
+    setActionError('');
     setUpdatingId(id);
     try {
       const res = await fetch(`/api/advances/${id}`, {
@@ -34,7 +36,11 @@ export function AdvancesList({
         body: JSON.stringify({ status }),
       });
       const data = await res.json();
-      if (res.ok && onUpdated) onUpdated(data);
+      if (!res.ok) {
+        setActionError(data?.error ?? t.common.saveFailed);
+        return;
+      }
+      if (onUpdated) onUpdated(data);
     } finally {
       setUpdatingId(null);
     }
@@ -49,6 +55,7 @@ export function AdvancesList({
           approvedSum={approvedSum}
         />
       )}
+      {actionError ? <p className="text-sm text-red-600">{actionError}</p> : null}
       <ul className="divide-y divide-gray-200 dark:divide-ios-dark-separator rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated overflow-hidden">
         {advances.length === 0 && <li className="p-4 text-app-muted text-sm">{t.advances.noAdvances}</li>}
         {advances.map((a) => (

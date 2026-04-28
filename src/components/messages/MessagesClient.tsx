@@ -360,7 +360,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
   }, [activeThreadId, refreshActiveThread, loadingMessages, messages.length]);
 
   return (
-    <div className="flex flex-col -mx-4 -mb-6 min-h-[calc(100dvh-8rem)] sm:min-h-[calc(100dvh-9rem)] bg-[#efeae2] dark:bg-zinc-950 text-app-primary">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#efeae2] text-app-primary dark:bg-zinc-950">
       {/* List + optional chat: WhatsApp-style split on md+ */}
       <div
         className={`flex flex-1 min-h-0 min-w-0 ${
@@ -418,8 +418,8 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
 
           <div
             ref={threadListScrollRef}
-            className="flex-1 overflow-y-auto min-h-0 overscroll-contain"
-            style={{ touchAction: 'pan-y' }}
+            className="min-h-0 flex-1 overflow-y-hidden overscroll-none md:overflow-y-auto md:overscroll-contain"
+            style={{ touchAction: 'none' }}
           >
             {loadingThreads ? (
               <div className="flex flex-col gap-0 px-2 py-3">
@@ -553,8 +553,8 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
 
             <div
               ref={messagesScrollRef}
-              className="relative flex-1 overflow-y-auto min-h-0 px-2 py-3"
-              style={{ touchAction: 'pan-y' }}
+              className="relative min-h-0 flex-1 overflow-y-hidden px-2 py-3 md:overflow-y-auto"
+              style={{ touchAction: 'none' }}
             >
               {loadingMessages && messages.length === 0 ? (
                 <div className="flex h-full items-center justify-center">

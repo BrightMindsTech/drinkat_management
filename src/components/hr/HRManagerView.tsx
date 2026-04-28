@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { interpolate, useLanguage } from '@/contexts/LanguageContext';
 import { AdvancesList } from './AdvancesList';
 import { LeaveRequestsSection } from './LeaveRequestsSection';
@@ -29,6 +29,7 @@ export function HRManagerView({
 }) {
   const { t } = useLanguage();
   const [myAdvanceList, setMyAdvanceList] = useState(initialMyAdvances);
+  const [teamAdvanceList, setTeamAdvanceList] = useState(initialTeamAdvances);
   const [forceClockBusyId, setForceClockBusyId] = useState<string | null>(null);
   const [forceClockNoticeById, setForceClockNoticeById] = useState<Record<string, string>>({});
 
@@ -38,6 +39,29 @@ export function HRManagerView({
   function onMyAdvanceRequested(a: AdvanceWithEmployee) {
     setMyAdvanceList((prev) => [a, ...prev]);
   }
+
+  function onTeamAdvanceUpdated(a: AdvanceWithEmployee) {
+    setTeamAdvanceList((prev) => prev.map((x) => (x.id === a.id ? a : x)));
+  }
+
+  async function refreshTeamAdvances() {
+    try {
+      const res = await fetch('/api/advances?team=1', { cache: 'no-store' });
+      if (!res.ok) return;
+      const rows = (await res.json()) as AdvanceWithEmployee[];
+      setTeamAdvanceList(rows);
+    } catch {
+      // keep current snapshot if refresh fails
+    }
+  }
+
+  useEffect(() => {
+    void refreshTeamAdvances();
+    const id = window.setInterval(() => {
+      void refreshTeamAdvances();
+    }, 12000);
+    return () => window.clearInterval(id);
+  }, []);
 
   async function forceClockOutTeamMember(emp: EmployeeWithBranch) {
     if (!confirm(interpolate(t.hr.forceClockOutConfirm, { name: emp.name }))) return;
@@ -177,7 +201,7 @@ export function HRManagerView({
 
       <section id="hr-owner-advances" className={sectionClass}>
         <h2 className="text-lg font-semibold text-app-primary mb-4">{t.hr.teamAdvanceRequests}</h2>
-        <AdvancesList advances={initialTeamAdvances} ownerView />
+        <AdvancesList advances={teamAdvanceList} ownerView onUpdated={onTeamAdvanceUpdated} />
       </section>
     </div>
   );

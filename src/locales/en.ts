@@ -160,6 +160,9 @@ export const en = {
       'Submit your required weekly ratings (Saturday–Sunday window, or catch up if overdue) before using the time clock.',
     weeklyRatingGoToRatings: 'Open ratings',
     weeklyRatingBlockingHint: 'Complete your weekly ratings to use clock in/out.',
+    clockInRequiredTitle: 'Clock in required',
+    clockInRequiredBody: 'You need to clock in before using the app. Open the time clock to register your attendance.',
+    goToClockIn: 'Go to clock in',
   },
   ratings: {
     pageTitle: 'Weekly ratings',

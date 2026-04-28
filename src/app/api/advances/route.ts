@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession, requireOwner } from '@/lib/session';
+import { requireSession } from '@/lib/session';
 import { createInboxForUsers, getManagerUserIdForEmployee } from '@/lib/time-clock-helpers';
 import { sendPushToUser } from '@/lib/push';
+import { normalizeUserRole } from '@/lib/formVisibility';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -13,11 +14,13 @@ const createSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await requireSession();
+  const role = normalizeUserRole(session.user.role);
   const { searchParams } = new URL(req.url);
   const branchId = searchParams.get('branchId');
   const employeeId = searchParams.get('employeeId');
+  const team = searchParams.get('team') === '1';
 
-  if (session.user.role === 'owner') {
+  if (role === 'owner') {
     const advances = await prisma.advance.findMany({
       where: {
         ...(branchId ? { employee: { branchId } } : {}),
@@ -31,6 +34,18 @@ export async function GET(req: NextRequest) {
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
   if (!user?.employee) return Response.json([]);
+
+  if (role === 'manager' && team) {
+    const teamAdvances = await prisma.advance.findMany({
+      where: {
+        employee: { reportsToEmployeeId: user.employee.id, branchId: user.employee.branchId },
+      },
+      include: { employee: { include: { branch: true } } },
+      orderBy: { requestedAt: 'desc' },
+    });
+    return Response.json(teamAdvances);
+  }
+
   const advances = await prisma.advance.findMany({
     where: { employeeId: user.employee.id },
     include: { employee: { include: { branch: true } } },
