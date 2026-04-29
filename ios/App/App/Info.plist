@@ -26,6 +26,12 @@
 	<string>DrinkatHR uses your location to detect branch entry and exit during active shifts.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>DrinkatHR uses your location to verify branch attendance clock in and clock out.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>DrinkatHR uses the camera to capture QC submission photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>DrinkatHR may access your photo library when attaching QC submission photos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>DrinkatHR may save captured QC photos to your photo library when requested by iOS.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

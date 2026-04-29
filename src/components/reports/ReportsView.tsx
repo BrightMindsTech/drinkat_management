@@ -18,6 +18,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { downloadCsvWithMobileFallback } from '@/lib/client-download';
 
 const COLORS = ['#007AFF', '#5856D6', '#34C759', '#FF9500', '#FF3B30'];
 
@@ -360,22 +361,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   }
 
-  function downloadCsvFile(filename: string, csv: string) {
-    // UTF-8 BOM improves Excel/Numbers Arabic+English CSV rendering.
-    const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    // Safari/WKWebView can fail if revoked synchronously.
-    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-  }
-
-  function exportSalaryCsv() {
+  async function exportSalaryCsv() {
     const rows = data!.salary.rows;
     if (!rows.length) return;
     const header = [t.reports.month, t.common.employee, t.common.branch, t.salary.salary, t.salary.deduction, t.salary.net]
@@ -399,10 +385,14 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       )
     );
     const csv = [header, ...bodyLines].join('\n');
-    downloadCsvFile(`salary-${data!.salary.periodMonth}.csv`, csv);
+    try {
+      await downloadCsvWithMobileFallback(`salary-${data!.salary.periodMonth}.csv`, csv);
+    } catch {
+      alert(t.forms.exportCsvFailed);
+    }
   }
 
-  function exportAdvancesCsv() {
+  async function exportAdvancesCsv() {
     const list = data!.hr.advancesList ?? [];
     if (!list.length) return;
     const header = [t.reports.month, t.common.employee, t.common.branch, t.advances.amountJod, t.common.status, t.common.date]
@@ -436,10 +426,14 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       )
     );
     const csv = [header, ...bodyLines].join('\n');
-    downloadCsvFile(`advances-${data!.salary.periodMonth}.csv`, csv);
+    try {
+      await downloadCsvWithMobileFallback(`advances-${data!.salary.periodMonth}.csv`, csv);
+    } catch {
+      alert(t.forms.exportCsvFailed);
+    }
   }
 
-  function exportFormsCsv() {
+  async function exportFormsCsv() {
     const list = data!.forms.recent ?? [];
     if (!list.length) return;
     const header = [t.common.employee, t.common.branch, t.forms.createFormName, t.common.status, t.common.date]
@@ -453,7 +447,11 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       )
       .join('\n');
     const csv = header + '\n' + body;
-    downloadCsvFile(`forms-${data!.salary.periodMonth}.csv`, csv);
+    try {
+      await downloadCsvWithMobileFallback(`forms-${data!.salary.periodMonth}.csv`, csv);
+    } catch {
+      alert(t.forms.exportCsvFailed);
+    }
   }
 
   const reportCardClass = 'app-section';

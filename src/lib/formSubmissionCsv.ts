@@ -1,4 +1,5 @@
 import type { FormFieldDef } from '@/lib/formTemplate';
+import { downloadCsvWithMobileFallback } from '@/lib/client-download';
 
 export type SubmissionReportCsvInput = {
   id: string;
@@ -78,22 +79,11 @@ export function buildSubmissionReportCsvRows(s: SubmissionReportCsvInput): { hea
   return { header: headerLine, row };
 }
 
-export function downloadSubmissionReportCsv(s: SubmissionReportCsvInput, filenameBase: string): void {
+export async function downloadSubmissionReportCsv(s: SubmissionReportCsvInput, filenameBase: string): Promise<void> {
   const { header, row } = buildSubmissionReportCsvRows(s);
   const csvBody = `${header}\r\n${row}\r\n`;
-  const bom = '\uFEFF';
   const safe = filenameBase.replace(/[/\\?%*:|"<>]/g, '-').trim().slice(0, 100) || 'submission';
   const day = new Date().toISOString().slice(0, 10);
   const filename = `${safe}-report-${day}.csv`;
-
-  const blob = new Blob([bom + csvBody], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  await downloadCsvWithMobileFallback(filename, csvBody);
 }

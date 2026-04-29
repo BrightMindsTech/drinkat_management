@@ -523,7 +523,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
         {activeThreadId ? (
           <section
             id="section-messages-thread"
-            className="flex min-h-0 min-w-0 flex-1 flex-col scroll-mt-28 bg-[#e5ddd5] dark:bg-zinc-900 md:border-s md:border-gray-200/60 dark:md:border-ios-dark-separator"
+            className="flex h-full min-h-0 min-w-0 flex-1 flex-col scroll-mt-28 bg-[#e5ddd5] dark:bg-zinc-900 md:border-s md:border-gray-200/60 dark:md:border-ios-dark-separator"
           >
             <header className="flex shrink-0 items-center gap-2 border-b border-gray-300/60 bg-[#f0f2f5] dark:bg-ios-dark-elevated-2 px-2 py-2 dark:border-ios-dark-separator">
               <button
@@ -593,10 +593,10 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
               </div>
             </div>
 
-            <footer className="shrink-0 border-t border-gray-300/50 bg-[#f0f2f5] px-2 py-2 dark:border-ios-dark-separator dark:bg-ios-dark-elevated-2">
+            <footer className="shrink-0 border-t border-gray-300/50 bg-[#f0f2f5] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] dark:border-ios-dark-separator dark:bg-ios-dark-elevated-2">
               <div className="flex items-end gap-2 rounded-2xl bg-white px-2 py-1.5 shadow-sm dark:bg-zinc-800">
                 <textarea
-                  className="max-h-28 min-h-[40px] flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-0 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                  className="max-h-28 min-h-[40px] flex-1 resize-none border-0 bg-transparent px-1 py-2 text-base sm:text-sm text-gray-900 placeholder:text-gray-400 focus:ring-0 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                   rows={1}
                   placeholder={c.messagePlaceholder}
                   value={draft}

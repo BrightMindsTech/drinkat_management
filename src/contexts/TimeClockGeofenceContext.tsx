@@ -278,20 +278,20 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
     <TimeClockGeofenceContext.Provider value={value}>
       {children}
       {showClockInRequiredGate && (
-        <div className="fixed inset-x-0 top-0 z-[210] px-4 pt-3">
+        <div className="fixed top-[calc(9rem+env(safe-area-inset-top))] sm:top-[calc(6rem+env(safe-area-inset-top))] end-4 z-[220] pointer-events-auto w-[min(92vw,420px)] app-animate-in">
           <div
-            className="mx-auto max-w-3xl rounded-xl border border-amber-300/70 bg-amber-50/95 dark:border-amber-800/70 dark:bg-amber-950/85 p-3 shadow-md"
+            className="rounded-ios-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-900/25 p-4 shadow-lg"
             role="status"
             aria-live="polite"
           >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-app-label">{t.timeClock.clockInRequiredTitle}</p>
-                <p className="text-xs text-app-secondary">{t.timeClock.clockInRequiredBody}</p>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-semibold text-amber-900 dark:text-amber-200">{t.timeClock.clockInRequiredTitle}</p>
+                <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">{t.timeClock.clockInRequiredBody}</p>
               </div>
               <Link
                 href={timeClockHref}
-                className="shrink-0 rounded-lg bg-ios-blue px-3 py-1.5 text-center text-xs font-semibold text-white"
+                className="shrink-0 rounded-ios border border-amber-300/70 dark:border-amber-500/40 px-2 py-1 text-xs font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100/60 dark:hover:bg-amber-900/40"
               >
                 {t.timeClock.goToClockIn}
               </Link>

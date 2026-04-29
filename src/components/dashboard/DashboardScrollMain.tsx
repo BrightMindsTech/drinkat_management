@@ -45,8 +45,10 @@ export function DashboardScrollMain({
     <main className="app-animate-in mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col overflow-hidden">
       <div
         ref={scrollRef}
-        className={`relative min-h-0 flex-1 overflow-x-hidden px-3 py-5 sm:px-4 sm:py-6 ${
-          disableScroll ? 'overflow-hidden overscroll-none' : 'overflow-y-auto overscroll-contain'
+        className={`relative min-h-0 flex-1 overflow-x-hidden ${
+          disableScroll
+            ? 'overflow-hidden overscroll-none px-0 py-0'
+            : 'overflow-y-auto overscroll-contain px-3 py-5 sm:px-4 sm:py-6'
         }`}
         style={{ touchAction: disableScroll ? 'none' : 'pan-y' }}
       >
@@ -80,7 +82,7 @@ export function DashboardScrollMain({
         </div>
 
         <div
-          className="will-change-transform"
+          className={`will-change-transform ${disableScroll ? 'h-full min-h-0' : ''}`}
           style={{
             transform: pullPx > 0 && !isPending ? `translateY(${pullPx * 0.25}px)` : undefined,
             transition: pullPx === 0 && !isPending ? 'transform 0.2s ease-out' : undefined,

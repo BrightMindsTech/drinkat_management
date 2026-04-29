@@ -124,8 +124,9 @@ export function DashboardLayoutClient({
 
   const menuOpenDirection = dir === 'rtl' ? -1 : 1;
   const menuEdge = dir === 'rtl' ? 'right' : 'left';
-  const isDashboardHome = pathname === '/dashboard';
-  const isMessagesPage = pathname.startsWith('/dashboard/messages');
+  const path = pathname ?? '';
+  const isDashboardHome = path === '/dashboard';
+  const isMessagesPage = path.startsWith('/dashboard/messages');
 
   function onTouchStart(e: React.TouchEvent<HTMLDivElement>) {
     const t = e.touches[0];
@@ -236,9 +237,15 @@ export function DashboardLayoutClient({
           </header>
         </div>
 
-        <DashboardScrollMain disableScroll={isMessagesPage}>{children}</DashboardScrollMain>
+        {isMessagesPage ? (
+          <main className="app-animate-in mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col overflow-hidden">
+            {children}
+          </main>
+        ) : (
+          <DashboardScrollMain>{children}</DashboardScrollMain>
+        )}
 
-        <DashboardPageSectionNav role={role} />
+        {!isMessagesPage ? <DashboardPageSectionNav role={role} /> : null}
       </div>
 
       {!isMessagesPage ? (

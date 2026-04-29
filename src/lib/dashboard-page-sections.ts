@@ -107,10 +107,9 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
   }
 
   if (path.startsWith('/dashboard/messages')) {
-    return [
-      { id: 'section-messages-list', labelRef: 'chat.chatsTitle' },
-      { id: 'section-messages-thread', labelRef: 'chat.conversation' },
-    ];
+    // Chat already has its own navigation/header patterns; the sticky bottom
+    // "On this page" bar overlaps the composer on phones.
+    return [];
   }
 
   if (path.startsWith('/dashboard/ratings')) {

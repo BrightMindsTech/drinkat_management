@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
 import { SessionProvider } from '@/components/SessionProvider';
 import { ModalScrollIntoViewListener } from '@/components/ModalScrollIntoViewListener';
+import { MobileZoomResetGesture } from '@/components/MobileZoomResetGesture';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import './globals.css';
@@ -37,6 +38,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <LanguageProvider>
             <SessionProvider>
               <ModalScrollIntoViewListener />
+              <MobileZoomResetGesture />
               {children}
             </SessionProvider>
           </LanguageProvider>

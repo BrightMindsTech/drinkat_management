@@ -285,10 +285,10 @@ export function ManagementFormsView({
     };
   }
 
-  function handleExportSubmissionCsv(s: FormsReviewSubmission) {
+  async function handleExportSubmissionCsv(s: FormsReviewSubmission) {
     try {
       const base = `${s.template.title}-${s.id}`.replace(/\s+/g, '-');
-      downloadSubmissionReportCsv(submissionToCsvInput(s), base);
+      await downloadSubmissionReportCsv(submissionToCsvInput(s), base);
     } catch {
       alert(t.forms.exportCsvFailed);
     }
