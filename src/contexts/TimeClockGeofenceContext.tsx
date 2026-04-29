@@ -55,12 +55,17 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   const exitCheckRaisedRef = useRef(false);
 
   const timeClockHref = '/dashboard/time-clock';
+  const ratingsHref = '/dashboard/ratings';
   const onTimeClockPage =
     pathname === timeClockHref || pathname === `${timeClockHref}/` || (pathname?.startsWith(`${timeClockHref}/`) ?? false);
+  const onRatingsPage =
+    pathname === ratingsHref || pathname === `${ratingsHref}/` || (pathname?.startsWith(`${ratingsHref}/`) ?? false);
+  const weeklyRatingBlocking = !!status?.weeklyRating?.blocking;
   const showClockInRequiredGate = !!(
     status?.applicable &&
     !status.clock &&
-    !onTimeClockPage
+    !onTimeClockPage &&
+    !(weeklyRatingBlocking && onRatingsPage)
   );
 
   useEffect(() => {
@@ -273,21 +278,20 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
     <TimeClockGeofenceContext.Provider value={value}>
       {children}
       {showClockInRequiredGate && (
-        <div
-          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="clock-in-required-title"
-        >
-          <div className="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4">
-            <h2 id="clock-in-required-title" className="text-lg font-semibold text-app-label">
-              {t.timeClock.clockInRequiredTitle}
-            </h2>
-            <p className="text-sm text-app-secondary">{t.timeClock.clockInRequiredBody}</p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <div className="fixed inset-x-0 top-0 z-[210] px-4 pt-3">
+          <div
+            className="mx-auto max-w-3xl rounded-xl border border-amber-300/70 bg-amber-50/95 dark:border-amber-800/70 dark:bg-amber-950/85 p-3 shadow-md"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-app-label">{t.timeClock.clockInRequiredTitle}</p>
+                <p className="text-xs text-app-secondary">{t.timeClock.clockInRequiredBody}</p>
+              </div>
               <Link
                 href={timeClockHref}
-                className="rounded-xl bg-ios-blue px-4 py-2.5 text-center text-sm font-semibold text-white"
+                className="shrink-0 rounded-lg bg-ios-blue px-3 py-1.5 text-center text-xs font-semibold text-white"
               >
                 {t.timeClock.goToClockIn}
               </Link>
