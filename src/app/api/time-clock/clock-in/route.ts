@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
+import { isTimeClockGeofenceExempt } from '@/lib/time-clock-geofence-policy';
 import { getTimeClockEmployee, getOpenClockEntry, resolveClockBranchForEmployee } from '@/lib/time-clock-helpers';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
 import { normalizeUserRole } from '@/lib/formVisibility';
@@ -52,11 +53,16 @@ export async function POST(req: Request) {
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
 
   const { lat, lng } = parsed.data;
+  const geofenceExempt = isTimeClockGeofenceExempt(
+    { name: emp.name, department: emp.department },
+    session.user.email
+  );
   const branchForClock = await resolveClockBranchForEmployee({
     employmentType: emp.employmentType,
     fallbackBranchId: emp.branchId,
     lat,
     lng,
+    geofenceExempt,
   });
   if (!branchForClock) {
     return Response.json({ error: 'You must be within branch radius to clock in' }, { status: 400 });

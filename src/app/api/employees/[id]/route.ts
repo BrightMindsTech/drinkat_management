@@ -8,7 +8,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const employee = await prisma.employee.findUnique({
     where: { id },
-    include: { branch: true, department: true, user: { select: { email: true } } },
+    include: { branch: true, department: true, user: { select: { email: true, role: true } } },
   });
   if (!employee) return new Response(null, { status: 404 });
   return Response.json(employee);
@@ -30,6 +30,8 @@ const patchSchema = z.object({
   salaryAmount: z.number().nullable().optional(),
   residentialArea: z.string().nullable().optional(),
   shiftTime: z.string().nullable().optional(),
+  /** Must stay in sync with linked `User.role` when a login exists. */
+  role: z.enum(['staff', 'qc', 'marketing', 'manager']).optional(),
   departmentId: z.string().nullable().optional(),
   // Assign this employee under a manager (direct reports only).
   reportsToEmployeeId: z.string().nullable().optional(),
@@ -61,6 +63,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     salaryAmount,
     residentialArea,
     shiftTime,
+    role,
     departmentId,
     reportsToEmployeeId,
     status,
@@ -95,6 +98,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
+  if (role !== undefined && existing.userId) {
+    await prisma.user.update({
+      where: { id: existing.userId },
+      data: { role },
+    });
+  }
+
   const updated = await prisma.employee.update({
     where: { id },
     data: {
@@ -103,6 +113,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(salaryAmount !== undefined ? { salaryAmount } : {}),
       ...(residentialArea !== undefined ? { residentialArea } : {}),
       ...(shiftTime !== undefined ? { shiftTime } : {}),
+      ...(role !== undefined ? { role } : {}),
       ...(departmentId !== undefined ? { departmentId } : {}),
       ...(reportsToEmployeeId !== undefined ? { reportsToEmployeeId } : {}),
       ...(status !== undefined ? { status } : {}),
@@ -115,7 +126,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: {
       branch: true,
       department: true,
-      user: { select: { email: true } },
+      user: { select: { email: true, role: true } },
       transfers: {
         include: {
           fromBranch: true,

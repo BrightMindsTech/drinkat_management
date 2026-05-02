@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
+import { isTimeClockGeofenceExempt } from '@/lib/time-clock-geofence-policy';
 import { getActiveAwaySession, getOpenClockEntry, getTimeClockEmployee } from '@/lib/time-clock-helpers';
 import { isInsideBranchRadius } from '@/lib/geo';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
@@ -26,6 +27,10 @@ export async function POST(req: Request) {
 
   const away = await getActiveAwaySession(emp.id);
   if (away) return Response.json({ triggerAway: false, reason: 'away_already_active' });
+
+  if (isTimeClockGeofenceExempt({ name: emp.name, department: emp.department }, session.user.email)) {
+    return Response.json({ triggerAway: false, reason: 'geofence_exempt' });
+  }
 
   const entryBranch = await prisma.branch.findUnique({ where: { id: open.branchId } });
   if (!entryBranch || entryBranch.latitude == null || entryBranch.longitude == null) {

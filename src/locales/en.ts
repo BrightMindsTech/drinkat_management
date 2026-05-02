@@ -390,6 +390,7 @@ export const en = {
     staff: 'Staff',
     qc: 'QC',
     marketing: 'Marketing',
+    manager: 'Manager',
     schedule: 'Schedule',
     fullTime: 'Full time',
     partTime: 'Part time',
@@ -437,11 +438,14 @@ export const en = {
   forms: {
     title: 'Forms',
     intro:
-      'Checklists for QC, marketing, kitchen, and cash. Who sees each form depends on team (department) and role; the owner can assign each checklist to departments below.',
-    assignTitle: 'Assign forms to teams',
+      'Checklists for QC, marketing, kitchen, and cash. The owner assigns each form to departments and/or specific employees below.',
+    assignTitle: 'Assign forms to teams and people',
     assignIntro:
-      'Tick which departments may use each form. Leave none ticked to use the default rules (QC form → QC team only; marketing → marketing team; kitchen & cash → all staff).',
+      'Tick which departments may use each form. Optionally tick specific employees below—they can fill the form even if their department is not selected. Leave departments empty to use the default rules (QC form → QC team only; marketing → marketing team; kitchen & cash → all staff).',
     assignHint: 'QC role and owner always see every form.',
+    assignSpecificEmployees: 'Specific employees',
+    assignSpecificEmployeesHint:
+      'Selected people can use this form even when their department is not ticked above. Use this for one-off or cross-team access.',
     saveAssignments: 'Save assignment',
     openExternal: 'Open Google Form',
     submit: 'Submit',

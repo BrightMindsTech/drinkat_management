@@ -8,9 +8,12 @@ import type { FormsTemplateRow } from './ManagementFormsView';
 export function FormAssignmentsPanel({
   templates,
   departments,
+  employees = [],
 }: {
   templates: FormsTemplateRow[];
   departments: { id: string; name: string }[];
+  /** Active employees (all branches); owner assigns forms to individuals in addition to departments. */
+  employees?: { id: string; name: string; branchName?: string }[];
 }) {
   const { t } = useLanguage();
   const router = useRouter();
@@ -20,10 +23,16 @@ export function FormAssignmentsPanel({
   const [local, setLocal] = useState<Record<string, string[]>>(() =>
     Object.fromEntries(templates.map((tpl) => [tpl.id, [...tpl.departmentIds]]))
   );
+  const [localEmp, setLocalEmp] = useState<Record<string, string[]>>(() =>
+    Object.fromEntries(templates.map((tpl) => [tpl.id, [...(tpl.employeeIds ?? [])]]))
+  );
 
-  const templatesKey = templates.map((x) => `${x.id}:${x.departmentIds.join(',')}`).join('|');
+  const templatesKey = templates
+    .map((x) => `${x.id}:${x.departmentIds.join(',')}:${(x.employeeIds ?? []).join(',')}`)
+    .join('|');
   useEffect(() => {
     setLocal(Object.fromEntries(templates.map((tpl) => [tpl.id, [...tpl.departmentIds]])));
+    setLocalEmp(Object.fromEntries(templates.map((tpl) => [tpl.id, [...(tpl.employeeIds ?? [])]])));
   }, [templatesKey]);
 
   async function save(templateId: string) {
@@ -33,7 +42,10 @@ export function FormAssignmentsPanel({
       const res = await fetch(`/api/forms/templates/${templateId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ departmentIds: local[templateId] ?? [] }),
+        body: JSON.stringify({
+          departmentIds: local[templateId] ?? [],
+          employeeIds: localEmp[templateId] ?? [],
+        }),
       });
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: unknown };
@@ -52,6 +64,15 @@ export function FormAssignmentsPanel({
       const cur = new Set(prev[templateId] ?? []);
       if (cur.has(departmentId)) cur.delete(departmentId);
       else cur.add(departmentId);
+      return { ...prev, [templateId]: Array.from(cur) };
+    });
+  }
+
+  function toggleEmployee(templateId: string, employeeId: string) {
+    setLocalEmp((prev) => {
+      const cur = new Set(prev[templateId] ?? []);
+      if (cur.has(employeeId)) cur.delete(employeeId);
+      else cur.add(employeeId);
       return { ...prev, [templateId]: Array.from(cur) };
     });
   }
@@ -97,6 +118,30 @@ export function FormAssignmentsPanel({
                 </label>
               ))}
             </div>
+            {employees.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-app-primary mb-1">{t.forms.assignSpecificEmployees}</p>
+                <p className="text-xs text-app-muted mb-2">{t.forms.assignSpecificEmployeesHint}</p>
+                <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 dark:border-ios-dark-separator p-2 space-y-1.5">
+                  {employees.map((e) => (
+                    <label key={e.id} className="flex items-start gap-2 text-sm cursor-pointer py-0.5">
+                      <input
+                        type="checkbox"
+                        checked={(localEmp[tpl.id] ?? []).includes(e.id)}
+                        onChange={() => toggleEmployee(tpl.id, e.id)}
+                        className="rounded border-gray-300 mt-0.5 shrink-0"
+                      />
+                      <span className="text-app-primary min-w-0">
+                        {e.name}
+                        {e.branchName ? (
+                          <span className="text-app-muted font-normal"> — {e.branchName}</span>
+                        ) : null}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"

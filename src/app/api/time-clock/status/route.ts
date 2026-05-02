@@ -10,6 +10,7 @@ import {
   isWeekendSubmissionEmphasis,
   rolesSubjectToWeeklyRating,
 } from '@/lib/weekly-ratings';
+import { isTimeClockGeofenceExempt } from '@/lib/time-clock-geofence-policy';
 
 export async function GET() {
   const session = await requireSession();
@@ -39,6 +40,10 @@ export async function GET() {
   });
 
   const branchOk = statusBranch.latitude != null && statusBranch.longitude != null;
+  const geofenceExempt = isTimeClockGeofenceExempt(
+    { name: emp.name, department: emp.department },
+    session.user.email
+  );
 
   const role = normalizeUserRole(session.user.role);
   let weeklyRating: {
@@ -58,6 +63,7 @@ export async function GET() {
     applicable: true,
     employeeId: emp.id,
     employeeName: emp.name,
+    geofenceExempt,
     displayTimeZone: DEFAULT_APP_TIMEZONE,
     branch: {
       id: statusBranch.id,

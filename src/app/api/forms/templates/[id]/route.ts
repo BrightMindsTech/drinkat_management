@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireOwner, requireSession } from '@/lib/session';
 import { formTemplateFieldsSchema, parseTemplateFields } from '@/lib/formTemplate';
 import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
+import { isZainBadarneh } from '@/lib/named-employee-policy';
 import { z } from 'zod';
 
 const patchSchema = z.object({
@@ -34,6 +35,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       where: { id: session.user.id },
       include: { employee: { include: { department: true } } },
     });
+    if (
+      t.category === 'cash' &&
+      user?.employee &&
+      isZainBadarneh({ name: user.employee.name }, session.user.email)
+    ) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const ctx: FormViewContext = {
       userRole: role,
       employeeDepartmentId: user?.employee?.departmentId ?? null,
@@ -60,6 +68,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     ...t,
     fields,
     departmentIds: t.departmentAssignments.map((a) => a.departmentId),
+    employeeIds: t.employeeAssignments.map((a) => a.employeeId),
   });
 }
 
@@ -130,6 +139,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (parsed.data.employeeIds !== undefined) {
+    if (role === 'owner' && parsed.data.employeeIds.length > 0) {
+      const count = await prisma.employee.count({ where: { id: { in: parsed.data.employeeIds } } });
+      if (count !== parsed.data.employeeIds.length) {
+        return Response.json({ error: 'One or more employees not found' }, { status: 400 });
+      }
+    }
     let allowedEmployeeIds = parsed.data.employeeIds;
     if (role === 'manager') {
       const user = await prisma.user.findUnique({

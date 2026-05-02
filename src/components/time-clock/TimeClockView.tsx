@@ -470,7 +470,7 @@ function ClockActions({
   const [weeklyRatingsGateHref, setWeeklyRatingsGateHref] = useState<string | null>(null);
 
   if (!status.consent?.location) return null;
-  if (!status.branch?.hasGeofence) {
+  if (!status.geofenceExempt && !status.branch?.hasGeofence) {
     return <p className="text-sm text-amber-700 dark:text-amber-400">{t.timeClock.branchPendingCoords}</p>;
   }
 

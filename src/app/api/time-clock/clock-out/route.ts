@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { isTimeClockGeofenceExempt } from '@/lib/time-clock-geofence-policy';
 import {
   getTimeClockEmployee,
   getOpenClockEntry,
@@ -11,6 +12,7 @@ import { isInsideBranchRadius, isNearRecordedFix } from '@/lib/geo';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
 import { DEFAULT_APP_TIMEZONE, localCalendarDayBoundsUtc } from '@/lib/shifts';
 import { isWeeklyRatingGateBlocking, rolesSubjectToWeeklyRating } from '@/lib/weekly-ratings';
+import { isZainBadarneh } from '@/lib/named-employee-policy';
 
 const bodySchema = z.object({
   lat: z.number(),
@@ -64,26 +66,33 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, alreadyClockedOut: true });
   }
 
-  const entryBranch = await prisma.branch.findUnique({ where: { id: open.branchId } });
-  if (!entryBranch || entryBranch.latitude == null || entryBranch.longitude == null) {
-    return Response.json({ error: 'Branch location not configured' }, { status: 400 });
-  }
-
-  // Looser radius + optional match to clock-in fix: GPS often drifts between two requests even when stationary.
-  const insideBranch = isInsideBranchRadius(
-    lat,
-    lng,
-    entryBranch.latitude,
-    entryBranch.longitude,
-    entryBranch.geofenceRadiusM,
-    1.45
+  const geofenceExempt = isTimeClockGeofenceExempt(
+    { name: emp.name, department: emp.department },
+    session.user.email
   );
-  const nearClockIn = isNearRecordedFix(lat, lng, open.clockInLat, open.clockInLng, 120);
-  if (!insideBranch && !nearClockIn) {
-    return Response.json({ error: 'You must be within branch radius to clock out' }, { status: 400 });
+
+  if (!geofenceExempt) {
+    const entryBranch = await prisma.branch.findUnique({ where: { id: open.branchId } });
+    if (!entryBranch || entryBranch.latitude == null || entryBranch.longitude == null) {
+      return Response.json({ error: 'Branch location not configured' }, { status: 400 });
+    }
+
+    // Looser radius + optional match to clock-in fix: GPS often drifts between two requests even when stationary.
+    const insideBranch = isInsideBranchRadius(
+      lat,
+      lng,
+      entryBranch.latitude,
+      entryBranch.longitude,
+      entryBranch.geofenceRadiusM,
+      1.45
+    );
+    const nearClockIn = isNearRecordedFix(lat, lng, open.clockInLat, open.clockInLng, 120);
+    if (!insideBranch && !nearClockIn) {
+      return Response.json({ error: 'You must be within branch radius to clock out' }, { status: 400 });
+    }
   }
 
-  if (role === 'manager') {
+  if (role === 'manager' && !isZainBadarneh(emp, session.user.email)) {
     const applicableCashTemplates = await prisma.managementFormTemplate.findMany({
       where: {
         active: true,

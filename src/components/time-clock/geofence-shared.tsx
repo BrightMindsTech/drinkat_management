@@ -7,6 +7,8 @@ export type TimeClockStatus = {
   applicable: boolean;
   reason?: string;
   employeeName?: string;
+  /** QC dept / named remote: no branch radius for clock in-out; client skips fence watch. */
+  geofenceExempt?: boolean;
   displayTimeZone?: string;
   shift?: {
     id: string;

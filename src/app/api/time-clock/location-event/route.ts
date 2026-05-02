@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
+import { isTimeClockGeofenceExempt } from '@/lib/time-clock-geofence-policy';
 import { getOpenClockEntry, getTimeClockEmployee } from '@/lib/time-clock-helpers';
 import { isInsideBranchRadius } from '@/lib/geo';
 import { sendPushToUser } from '@/lib/push';
@@ -36,6 +37,10 @@ export async function POST(req: Request) {
   });
   if (!user?.locationConsentAt) {
     return Response.json({ error: 'Location consent required' }, { status: 403 });
+  }
+
+  if (isTimeClockGeofenceExempt({ name: emp.name, department: emp.department }, session.user.email)) {
+    return Response.json({ ok: true, action: 'none' as const, inside: true });
   }
 
   if (emp.branch.latitude == null || emp.branch.longitude == null) {

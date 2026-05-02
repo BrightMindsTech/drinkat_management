@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireOwner, requireSession } from '@/lib/session';
 import { formTemplateFieldsSchema } from '@/lib/formTemplate';
 import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
+import { isZainBadarneh } from '@/lib/named-employee-policy';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -65,6 +66,13 @@ export async function GET(req: NextRequest) {
 
   const employeeId = user?.employee?.id ?? null;
   const visible = templates.filter((t) => {
+    if (
+      t.category === 'cash' &&
+      user?.employee &&
+      isZainBadarneh({ name: user.employee.name }, session.user.email)
+    ) {
+      return false;
+    }
     const explicitlyAssigned = !!(employeeId && t.employeeAssignments.some((a) => a.employeeId === employeeId));
     if (explicitlyAssigned) return true;
     return canFillManagementForm(ctx, {

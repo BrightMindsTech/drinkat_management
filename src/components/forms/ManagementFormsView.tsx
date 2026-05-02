@@ -76,6 +76,7 @@ export function ManagementFormsView({
   templatesForFill,
   allTemplatesForOwner,
   departments,
+  assignmentEmployees,
   managerEmployees,
   initialReviewSubmissions,
   initialMySubmissions,
@@ -87,6 +88,8 @@ export function ManagementFormsView({
   templatesForFill: FormsTemplateRow[];
   allTemplatesForOwner?: FormsTemplateRow[];
   departments?: { id: string; name: string }[];
+  /** Owner: all active employees for per-person form assignment (optional). */
+  assignmentEmployees?: { id: string; name: string; branchName: string }[];
   managerEmployees?: { id: string; name: string; role: string }[];
   initialReviewSubmissions: FormsReviewSubmission[];
   initialMySubmissions: FormsMySubmission[];
@@ -620,7 +623,11 @@ export function ManagementFormsView({
             {ownerTemplates.length > 0 && (
               <div>
                 <h3 className="text-base font-semibold text-app-primary mb-3">{t.forms.assignTitle}</h3>
-                <FormAssignmentsPanel templates={ownerTemplates} departments={departments} />
+                <FormAssignmentsPanel
+                  templates={ownerTemplates}
+                  departments={departments}
+                  employees={assignmentEmployees ?? []}
+                />
               </div>
             )}
           </div>

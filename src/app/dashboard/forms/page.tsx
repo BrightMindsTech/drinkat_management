@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { parseTemplateFields } from '@/lib/formTemplate';
 import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
 import { isQcReviewerUser } from '@/lib/qc-reviewer';
+import { isZainBadarneh } from '@/lib/named-employee-policy';
 import {
   ManagementFormsView,
   type FormsMySubmission,
@@ -69,6 +70,14 @@ export default async function FormsPage() {
                   departmentAssignments: t.departmentAssignments,
                 }))
           )
+          .filter(
+            (t) =>
+              !(
+                t.category === 'cash' &&
+                user?.employee &&
+                isZainBadarneh({ name: user.employee.name }, session.user.email)
+              )
+          )
           .map(mapToRow);
 
   const allTemplatesForOwner: FormsTemplateRow[] | undefined =
@@ -77,6 +86,17 @@ export default async function FormsPage() {
   const departments =
     role === 'owner'
       ? await prisma.department.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } })
+      : undefined;
+
+  const assignmentEmployees =
+    role === 'owner'
+      ? (
+          await prisma.employee.findMany({
+            where: { status: { not: 'terminated' } },
+            include: { branch: { select: { name: true } } },
+            orderBy: { name: 'asc' },
+          })
+        ).map((e) => ({ id: e.id, name: e.name, branchName: e.branch.name }))
       : undefined;
 
   const managerEmployees =
@@ -256,6 +276,7 @@ export default async function FormsPage() {
       templatesForFill={templatesForFill}
       allTemplatesForOwner={allTemplatesForOwner}
       departments={departments}
+      assignmentEmployees={assignmentEmployees}
       managerEmployees={managerEmployees}
       initialReviewSubmissions={reviewSubmissions}
       initialMySubmissions={mySubmissions}

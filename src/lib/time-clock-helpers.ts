@@ -12,6 +12,7 @@ export type TimeClockEmployee = Employee & {
     geofenceRadiusM: number;
     shiftProfile: string;
   };
+  department: { id: string; name: string } | null;
   shiftDefinition: { id: string; key: string; startMinute: number; endMinute: number; crossesMidnight: boolean } | null;
 };
 
@@ -22,6 +23,7 @@ export async function getTimeClockEmployee(userId: string, userRole: string): Pr
     where: { userId },
     include: {
       branch: true,
+      department: true,
       shiftDefinition: true,
     },
   });
@@ -41,25 +43,37 @@ export async function resolveClockBranchForEmployee(args: {
   fallbackBranchId: string;
   lat: number;
   lng: number;
+  /** Remote QC / named allowlist: no radius check (still records lat/lng on the entry). */
+  geofenceExempt: boolean;
 }) {
-  const { employmentType, fallbackBranchId, lat, lng } = args;
-  if (employmentType !== 'part_time') {
-    const branch = await prisma.branch.findUnique({ where: { id: fallbackBranchId } });
-    return branch;
+  const { employmentType, fallbackBranchId, lat, lng, geofenceExempt } = args;
+
+  if (geofenceExempt) {
+    return prisma.branch.findUnique({ where: { id: fallbackBranchId } });
   }
 
-  // Part-time can clock in from any configured branch geofence.
-  const branches = await prisma.branch.findMany({
-    where: { latitude: { not: null }, longitude: { not: null } },
-    orderBy: { name: 'asc' },
-  });
-  for (const b of branches) {
-    if (b.latitude == null || b.longitude == null) continue;
-    if (isInsideBranchRadius(lat, lng, b.latitude, b.longitude, b.geofenceRadiusM)) {
-      return b;
+  if (employmentType === 'part_time') {
+    const branches = await prisma.branch.findMany({
+      where: { latitude: { not: null }, longitude: { not: null } },
+      orderBy: { name: 'asc' },
+    });
+    for (const b of branches) {
+      if (b.latitude == null || b.longitude == null) continue;
+      if (isInsideBranchRadius(lat, lng, b.latitude, b.longitude, b.geofenceRadiusM)) {
+        return b;
+      }
     }
+    return null;
   }
-  return null;
+
+  // Full-time: must be inside assigned branch geofence when coordinates are configured.
+  const branch = await prisma.branch.findUnique({ where: { id: fallbackBranchId } });
+  if (!branch) return null;
+  if (branch.latitude == null || branch.longitude == null) return null;
+  if (!isInsideBranchRadius(lat, lng, branch.latitude, branch.longitude, branch.geofenceRadiusM)) {
+    return null;
+  }
+  return branch;
 }
 
 export async function getActiveAwaySession(employeeId: string) {

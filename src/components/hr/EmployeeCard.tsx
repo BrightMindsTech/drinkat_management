@@ -11,10 +11,15 @@ type TransferWithBranches = EmployeeTransfer & { fromBranch: Branch; toBranch: B
 type EmployeeWithRelations = Employee & {
   branch: Branch;
   department?: Department | null;
-  user: { email: string } | null;
+  user: { email: string; role?: string } | null;
   transfers?: TransferWithBranches[];
   documents?: EmployeeDocument[];
 };
+
+function normalizeStaffRoleForEdit(r: string): 'staff' | 'qc' | 'marketing' | 'manager' {
+  if (r === 'staff' || r === 'qc' || r === 'marketing' || r === 'manager') return r;
+  return 'staff';
+}
 
 export function EmployeeCard({
   employee,
@@ -64,6 +69,9 @@ export function EmployeeCard({
   const [draftShiftTimeFrom, setDraftShiftTimeFrom] = useState(parseShiftTime(employee.shiftTime).from);
   const [draftShiftTimeUntil, setDraftShiftTimeUntil] = useState(parseShiftTime(employee.shiftTime).until);
   const [draftDepartmentId, setDraftDepartmentId] = useState(employee.departmentId ?? '');
+  const [draftRole, setDraftRole] = useState<'staff' | 'qc' | 'marketing' | 'manager'>(() =>
+    normalizeStaffRoleForEdit(employee.role)
+  );
   const [draftAdvanceLimit, setDraftAdvanceLimit] = useState(employee.advanceLimit != null ? String(employee.advanceLimit) : '');
 
   const [idCardFrontFile, setIdCardFrontFile] = useState<File | null>(null);
@@ -214,6 +222,7 @@ export function EmployeeCard({
     setDraftShiftTimeFrom(st.from);
     setDraftShiftTimeUntil(st.until);
     setDraftDepartmentId(employee.departmentId ?? '');
+    setDraftRole(normalizeStaffRoleForEdit(employee.role));
     setDraftAdvanceLimit(employee.advanceLimit != null ? String(employee.advanceLimit) : '');
     setIdCardFrontFile(null);
     setIdCardFrontPreviewUrl(null);
@@ -308,6 +317,7 @@ export function EmployeeCard({
           residentialArea: draftResidentialArea.trim() ? draftResidentialArea.trim() : null,
           shiftTime: draftShiftTimeFrom && draftShiftTimeUntil ? `${draftShiftTimeFrom} - ${draftShiftTimeUntil}` : null,
           departmentId: draftDepartmentId || null,
+          role: draftRole,
           advanceLimit: advanceLimitValue,
           ...(newIdCardFrontPhotoPath ? { idCardFrontPhotoPath: newIdCardFrontPhotoPath } : {}),
           ...(newIdCardBackPhotoPath ? { idCardBackPhotoPath: newIdCardBackPhotoPath } : {}),
@@ -622,6 +632,19 @@ export function EmployeeCard({
                 onChange={(e) => setDraftShiftTimeUntil(e.target.value)}
                 className="mt-1 w-full rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1 text-sm"
               />
+            </label>
+            <label className="block text-sm text-app-label">
+              {t.registerStaff.role}
+              <select
+                value={draftRole}
+                onChange={(e) => setDraftRole(e.target.value as 'staff' | 'qc' | 'marketing' | 'manager')}
+                className="mt-1 w-full rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1 text-sm"
+              >
+                <option value="staff">{t.registerStaff.staff}</option>
+                <option value="qc">{t.registerStaff.qc}</option>
+                <option value="marketing">{t.registerStaff.marketing}</option>
+                <option value="manager">{t.registerStaff.manager}</option>
+              </select>
             </label>
             {departments.length > 0 && (
               <label className="block text-sm text-app-label">

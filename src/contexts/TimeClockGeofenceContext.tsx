@@ -113,8 +113,9 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   const branch = status?.branch;
   const locationConsentOk = !!status?.consent?.location;
   const pushConsentOk = !!status?.consent?.push;
-  const geoOk = !!(
+  const geoWatchEnabled = !!(
     status?.applicable &&
+    !status?.geofenceExempt &&
     branch?.hasGeofence &&
     branch.latitude != null &&
     branch.longitude != null &&
@@ -195,7 +196,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   );
 
   useGeofenceWatch({
-    enabled: geoOk,
+    enabled: geoWatchEnabled,
     branchLat: branch?.latitude ?? null,
     branchLng: branch?.longitude ?? null,
     radiusM: branch?.geofenceRadiusM ?? 25,
@@ -206,7 +207,28 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    if (!geoOk || !status?.clock || status.away || forceAwayOpen) {
+    if (!status?.applicable || !status?.geofenceExempt || !locationConsentOk) return;
+    let cancelled = false;
+    function read() {
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          if (cancelled) return;
+          setPos({ lat: p.coords.latitude, lng: p.coords.longitude });
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 120000, timeout: 25000 }
+      );
+    }
+    read();
+    const id = window.setInterval(read, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [status?.applicable, status?.geofenceExempt, locationConsentOk]);
+
+  useEffect(() => {
+    if (!geoWatchEnabled || !status?.clock || status.away || forceAwayOpen) {
       exitCheckRaisedRef.current = false;
       return;
     }
@@ -234,7 +256,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
       );
     }, 3000);
     return () => window.clearInterval(interval);
-  }, [geoOk, status?.clock, status?.away, forceAwayOpen]);
+  }, [geoWatchEnabled, status?.clock, status?.away, forceAwayOpen]);
 
   useEffect(() => {
     if (!pushConsentOk) return;

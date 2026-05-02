@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { parseTemplateFields, validateAnswersAgainstFields } from '@/lib/formTemplate';
 import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
+import { isZainBadarneh } from '@/lib/named-employee-policy';
 import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import {
   createInboxForUsers,
@@ -140,6 +141,10 @@ export async function POST(req: NextRequest) {
   });
   if (!template || !template.active) {
     return Response.json({ error: 'Template not found' }, { status: 404 });
+  }
+
+  if (template.category === 'cash' && isZainBadarneh(emp, session.user.email)) {
+    return Response.json({ error: 'Cash forms are not assigned to your profile' }, { status: 403 });
   }
 
   const ctx: FormViewContext = {
