@@ -3,6 +3,12 @@ import { prisma } from '@/lib/prisma';
 import { requireSession, requireOwner } from '@/lib/session';
 import { createInboxForUsers, getManagerUserIdForEmployee } from '@/lib/time-clock-helpers';
 import { sendPushToUser } from '@/lib/push';
+import {
+  ANNUAL_LEAVE_DAYS_PER_YEAR,
+  annualLeaveDaysByYear,
+  approvedAnnualLeaveDaysByYear,
+  syncEmployeeLeaveBalanceForYear,
+} from '@/lib/leave-balance';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -67,6 +73,25 @@ export async function POST(req: NextRequest) {
   const startDate = new Date(parsed.data.startDate);
   const endDate = new Date(parsed.data.endDate);
   if (endDate < startDate) return Response.json({ error: 'End date must be after start date' }, { status: 400 });
+  if (parsed.data.type === 'annual') {
+    const requestedByYear = annualLeaveDaysByYear(startDate, endDate);
+    const years = [...requestedByYear.keys()];
+    const approvedByYear = await approvedAnnualLeaveDaysByYear(prisma, user.employee.id, years);
+    for (const year of years) {
+      const requestedDays = requestedByYear.get(year) ?? 0;
+      const approvedDays = approvedByYear.get(year) ?? 0;
+      const remaining = Math.max(0, ANNUAL_LEAVE_DAYS_PER_YEAR - approvedDays);
+      if (requestedDays > remaining) {
+        return Response.json(
+          {
+            error: `Annual leave limit exceeded for ${year}. Remaining: ${remaining} day(s), requested: ${requestedDays} day(s).`,
+            code: 'annual_leave_limit_exceeded',
+          },
+          { status: 400 }
+        );
+      }
+    }
+  }
 
   const leaveRequest = await prisma.leaveRequest.create({
     data: {
@@ -106,6 +131,8 @@ export async function POST(req: NextRequest) {
       },
     });
   }
+
+  await syncEmployeeLeaveBalanceForYear(prisma, user.employee.id, new Date().getFullYear());
 
   return Response.json(leaveRequest);
 }

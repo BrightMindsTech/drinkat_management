@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { parseTemplateFields } from '@/lib/formTemplate';
 import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
+import { isQcReviewerUser } from '@/lib/qc-reviewer';
 import {
   ManagementFormsView,
   type FormsMySubmission,
@@ -28,6 +29,8 @@ export default async function FormsPage() {
     where: { id: session.user.id },
     include: { employee: { include: { department: true } } },
   });
+
+  const qcReviewer = isQcReviewerUser(session.user.role, user?.employee ?? null);
 
   const ctx: FormViewContext = {
     userRole: role,
@@ -69,7 +72,7 @@ export default async function FormsPage() {
           .map(mapToRow);
 
   const allTemplatesForOwner: FormsTemplateRow[] | undefined =
-    role === 'owner' || role === 'manager' ? allTemplates.map(mapToRow) : undefined;
+    role === 'owner' || role === 'manager' || role === 'qc' || qcReviewer ? allTemplates.map(mapToRow) : undefined;
 
   const departments =
     role === 'owner'
@@ -90,7 +93,7 @@ export default async function FormsPage() {
       : undefined;
 
   let reviewSubmissions: FormsReviewSubmission[] = [];
-  if (role === 'owner' || role === 'manager') {
+  if (role === 'owner' || role === 'manager' || role === 'qc' || qcReviewer) {
     if (role === 'manager') {
       const userWithEmployee = await prisma.user.findUnique({
         where: { id: session.user.id },
@@ -109,6 +112,7 @@ export default async function FormsPage() {
               departments={undefined}
               managerEmployees={undefined}
               staffEmptyHint={null}
+              qcReviewer={qcReviewer}
             />
           </div>
         );
@@ -256,6 +260,7 @@ export default async function FormsPage() {
       initialReviewSubmissions={reviewSubmissions}
       initialMySubmissions={mySubmissions}
       staffEmptyHint={staffEmptyHint}
+      qcReviewer={qcReviewer}
     />
   );
 }

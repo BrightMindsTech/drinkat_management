@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { parseTemplateFields, validateAnswersAgainstFields } from '@/lib/formTemplate';
 import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
+import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import {
   createInboxForUsers,
   getManagerUserIdForEmployee,
@@ -45,27 +46,6 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  if (role === 'qc') {
-    const where: { branchId?: string } = {};
-    if (branchId) where.branchId = branchId;
-    const list = await prisma.managementFormSubmission.findMany({
-      where,
-      include: {
-        template: true,
-        employee: { include: { branch: true, department: true } },
-        branch: true,
-      },
-      orderBy: { submittedAt: 'desc' },
-    });
-    return Response.json(
-      list.map((s) => ({
-        ...s,
-        answers: JSON.parse(s.answersJson) as Record<string, string>,
-        template: { ...s.template, fields: JSON.parse(s.template.fieldsJson) },
-      }))
-    );
-  }
-
   if (role === 'manager') {
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
@@ -81,6 +61,27 @@ export async function GET(req: NextRequest) {
       include: {
         template: true,
         employee: { include: { branch: true, department: true, reportsToEmployee: { select: { id: true, name: true } } } },
+        branch: true,
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+    return Response.json(
+      list.map((s) => ({
+        ...s,
+        answers: JSON.parse(s.answersJson) as Record<string, string>,
+        template: { ...s.template, fields: JSON.parse(s.template.fieldsJson) },
+      }))
+    );
+  }
+
+  if (role === 'qc' || (role === 'staff' && (await userHasQcReviewerScope(prisma, session)))) {
+    const where: { branchId?: string } = {};
+    if (branchId) where.branchId = branchId;
+    const list = await prisma.managementFormSubmission.findMany({
+      where,
+      include: {
+        template: true,
+        employee: { include: { branch: true, department: true } },
         branch: true,
       },
       orderBy: { submittedAt: 'desc' },

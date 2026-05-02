@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession, requireQc } from '@/lib/session';
+import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { z } from 'zod';
 
@@ -18,7 +19,8 @@ export async function GET(req: NextRequest) {
   const employeeId = searchParams.get('employeeId');
   const checklistId = searchParams.get('checklistId');
 
-  if (role === 'staff' || role === 'qc') {
+  // Own assignments only (QC reviewers use the global list like owner for review/assignment tools).
+  if (role === 'staff' && !(await userHasQcReviewerScope(prisma, session))) {
     const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
     if (!user?.employee) return Response.json([]);
     const myId = user.employee.id;

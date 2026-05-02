@@ -11,6 +11,9 @@ tsconfig.tsbuildinfo
 *.db
 public/uploads
 
+# Local DB exports (may contain sensitive data)
+backups/
+
 # Dependencies & build (do not commit)
 node_modules/
 .next/

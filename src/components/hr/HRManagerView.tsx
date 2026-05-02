@@ -32,6 +32,23 @@ export function HRManagerView({
   const [teamAdvanceList, setTeamAdvanceList] = useState(initialTeamAdvances);
   const [forceClockBusyId, setForceClockBusyId] = useState<string | null>(null);
   const [forceClockNoticeById, setForceClockNoticeById] = useState<Record<string, string>>({});
+  const [hoursMonth, setHoursMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [hoursLoading, setHoursLoading] = useState(false);
+  const [hoursError, setHoursError] = useState<string | null>(null);
+  const [monthlyHoursRows, setMonthlyHoursRows] = useState<
+    {
+      employeeId: string;
+      employeeName: string;
+      branchName: string;
+      employmentType: string;
+      totalHours: number;
+      shiftsCount: number;
+      openShifts: number;
+    }[]
+  >([]);
 
   const sectionClass = 'app-section scroll-mt-28';
   const myApprovedSum = myAdvanceList.filter((a) => a.status === 'approved').reduce((s, a) => s + a.amount, 0);
@@ -62,6 +79,23 @@ export function HRManagerView({
     }, 12000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    setHoursLoading(true);
+    setHoursError(null);
+    const params = new URLSearchParams({ month: hoursMonth });
+    fetch(`/api/time-clock/monthly-hours?${params}`, { cache: 'no-store' })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Failed to load: ${r.status}`);
+        return r.json() as Promise<{ rows: typeof monthlyHoursRows }>;
+      })
+      .then((json) => setMonthlyHoursRows(json.rows ?? []))
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : 'Failed to load';
+        setHoursError(msg);
+      })
+      .finally(() => setHoursLoading(false));
+  }, [hoursMonth]);
 
   async function forceClockOutTeamMember(emp: EmployeeWithBranch) {
     if (!confirm(interpolate(t.hr.forceClockOutConfirm, { name: emp.name }))) return;
@@ -139,6 +173,59 @@ export function HRManagerView({
       <section id="hr-owner-leave" className={sectionClass}>
         <h2 className="text-lg font-semibold text-app-primary mb-4">{t.hr.leaveRequests}</h2>
         <LeaveRequestsSection initialLeaves={initialLeaveRequests} branches={branches} />
+      </section>
+
+      <section id="hr-manager-monthly-hours" className={sectionClass}>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="text-lg font-semibold text-app-primary">Monthly worked hours</h2>
+          <label className="text-sm text-app-secondary">
+            Month
+            <input
+              type="month"
+              value={hoursMonth}
+              onChange={(e) => setHoursMonth(e.target.value)}
+              className="ml-2 rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1"
+            />
+          </label>
+        </div>
+        {hoursError ? <p className="text-sm text-red-600">{hoursError}</p> : null}
+        {hoursLoading ? (
+          <p className="text-sm text-app-muted">{t.common.loading}</p>
+        ) : monthlyHoursRows.length === 0 ? (
+          <p className="text-sm text-app-muted">{t.common.noData}</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated">
+            <table className="w-full text-sm min-w-[680px]">
+              <thead>
+                <tr className="bg-gray-100 dark:bg-ios-dark-elevated-2/50 text-left">
+                  <th className="p-2 font-semibold">Employee</th>
+                  <th className="p-2 font-semibold">Branch</th>
+                  <th className="p-2 font-semibold">Type</th>
+                  <th className="p-2 font-semibold text-right">Hours</th>
+                  <th className="p-2 font-semibold text-right">Shifts</th>
+                  <th className="p-2 font-semibold text-right">Open shifts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyHoursRows.map((row, i) => (
+                  <tr
+                    key={row.employeeId}
+                    className={`border-t border-gray-200 dark:border-ios-dark-separator ${
+                      i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/50 dark:bg-ios-dark-elevated-2/20'
+                    }`}
+                  >
+                    <td className="p-2 font-medium text-app-primary">{row.employeeName}</td>
+                    <td className="p-2">{row.branchName}</td>
+                    <td className="p-2">{row.employmentType === 'part_time' ? 'Part-time' : 'Full-time'}</td>
+                    <td className="p-2 text-right tabular-nums">{row.totalHours.toFixed(2)}</td>
+                    <td className="p-2 text-right tabular-nums">{row.shiftsCount}</td>
+                    <td className="p-2 text-right tabular-nums">{row.openShifts}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section id="hr-manager-team" className={sectionClass}>

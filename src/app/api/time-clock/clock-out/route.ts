@@ -58,23 +58,24 @@ export async function POST(req: Request) {
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
 
   const { lat, lng } = parsed.data;
-  if (emp.branch.latitude == null || emp.branch.longitude == null) {
-    return Response.json({ error: 'Branch location not configured' }, { status: 400 });
-  }
-
   const open = await getOpenClockEntry(emp.id);
   if (!open) {
     // Idempotent success: if user was auto clocked out moments ago, don't surface an error.
     return Response.json({ ok: true, alreadyClockedOut: true });
   }
 
+  const entryBranch = await prisma.branch.findUnique({ where: { id: open.branchId } });
+  if (!entryBranch || entryBranch.latitude == null || entryBranch.longitude == null) {
+    return Response.json({ error: 'Branch location not configured' }, { status: 400 });
+  }
+
   // Looser radius + optional match to clock-in fix: GPS often drifts between two requests even when stationary.
   const insideBranch = isInsideBranchRadius(
     lat,
     lng,
-    emp.branch.latitude,
-    emp.branch.longitude,
-    emp.branch.geofenceRadiusM,
+    entryBranch.latitude,
+    entryBranch.longitude,
+    entryBranch.geofenceRadiusM,
     1.45
   );
   const nearClockIn = isNearRecordedFix(lat, lng, open.clockInLat, open.clockInLng, 120);

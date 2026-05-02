@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import type { Employee } from '@prisma/client';
+import { isInsideBranchRadius } from '@/lib/geo';
 
 export type TimeClockEmployee = Employee & {
   branch: {
@@ -33,6 +34,32 @@ export async function getOpenClockEntry(employeeId: string) {
     where: { employeeId, clockOutAt: null },
     orderBy: { clockInAt: 'desc' },
   });
+}
+
+export async function resolveClockBranchForEmployee(args: {
+  employmentType: string;
+  fallbackBranchId: string;
+  lat: number;
+  lng: number;
+}) {
+  const { employmentType, fallbackBranchId, lat, lng } = args;
+  if (employmentType !== 'part_time') {
+    const branch = await prisma.branch.findUnique({ where: { id: fallbackBranchId } });
+    return branch;
+  }
+
+  // Part-time can clock in from any configured branch geofence.
+  const branches = await prisma.branch.findMany({
+    where: { latitude: { not: null }, longitude: { not: null } },
+    orderBy: { name: 'asc' },
+  });
+  for (const b of branches) {
+    if (b.latitude == null || b.longitude == null) continue;
+    if (isInsideBranchRadius(lat, lng, b.latitude, b.longitude, b.geofenceRadiusM)) {
+      return b;
+    }
+  }
+  return null;
 }
 
 export async function getActiveAwaySession(employeeId: string) {

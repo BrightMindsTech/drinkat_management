@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
-import { getTimeClockEmployee, getOpenClockEntry } from '@/lib/time-clock-helpers';
-import { isInsideBranchRadius } from '@/lib/geo';
+import { getTimeClockEmployee, getOpenClockEntry, resolveClockBranchForEmployee } from '@/lib/time-clock-helpers';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { isWeeklyRatingGateBlocking, rolesSubjectToWeeklyRating } from '@/lib/weekly-ratings';
@@ -53,12 +52,13 @@ export async function POST(req: Request) {
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
 
   const { lat, lng } = parsed.data;
-  if (emp.branch.latitude == null || emp.branch.longitude == null) {
-    return Response.json({ error: 'Branch location not configured yet' }, { status: 400 });
-  }
-
-  const inside = isInsideBranchRadius(lat, lng, emp.branch.latitude, emp.branch.longitude, emp.branch.geofenceRadiusM);
-  if (!inside) {
+  const branchForClock = await resolveClockBranchForEmployee({
+    employmentType: emp.employmentType,
+    fallbackBranchId: emp.branchId,
+    lat,
+    lng,
+  });
+  if (!branchForClock) {
     return Response.json({ error: 'You must be within branch radius to clock in' }, { status: 400 });
   }
 
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     data: {
       id: crypto.randomUUID(),
       employeeId: emp.id,
-      branchId: emp.branchId,
+      branchId: branchForClock.id,
       clockInAt: new Date(),
       clockInLat: lat,
       clockInLng: lng,

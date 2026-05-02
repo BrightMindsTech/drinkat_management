@@ -80,6 +80,7 @@ export function ManagementFormsView({
   initialReviewSubmissions,
   initialMySubmissions,
   staffEmptyHint,
+  qcReviewer,
 }: {
   role: string;
   managerUserId?: string;
@@ -90,6 +91,8 @@ export function ManagementFormsView({
   initialReviewSubmissions: FormsReviewSubmission[];
   initialMySubmissions: FormsMySubmission[];
   staffEmptyHint?: 'noEmployee' | 'noDepartment' | 'noneForDept' | null;
+  /** Login role may be `staff` while HR dept / employee role grants QC review. */
+  qcReviewer?: boolean;
 }) {
   const { t } = useLanguage();
   const router = useRouter();
@@ -452,7 +455,7 @@ export function ManagementFormsView({
 
   const sectionClass = 'app-section scroll-mt-28';
 
-  const showReview = role === 'owner' || role === 'manager';
+  const showReview = role === 'owner' || role === 'manager' || role === 'qc' || !!qcReviewer;
   const showFillSection =
     role === 'staff' || role === 'qc' || role === 'marketing' || (role === 'manager' && templatesForFill.length > 0);
   const managerCanReportForms = role === 'manager' && !!managerUserId;

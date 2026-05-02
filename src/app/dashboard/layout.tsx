@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
 import { authOptions } from '@/lib/auth';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { isQcReviewerUser } from '@/lib/qc-reviewer';
 import { prisma } from '@/lib/prisma';
 import { TimeClockGeofenceProvider } from '@/contexts/TimeClockGeofenceContext';
 import { DashboardLayoutClient } from '@/components/dashboard/DashboardLayoutClient';
@@ -11,6 +12,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session) redirect('/login');
 
   const navRole = normalizeUserRole(session.user.role);
+
+  const userForNav = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    include: { employee: { include: { department: true } } },
+  });
+  /** Staff in QC dept get manager-style nav; owner keeps owner nav (still full QC on `/dashboard/qc`). */
+  const uiRole =
+    navRole === 'staff' && isQcReviewerUser(session.user.role, userForNav?.employee ?? null) ? 'qc' : navRole;
 
   let headcountSummary: string | null = null;
   if (navRole === 'owner') {
@@ -34,7 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <TimeClockGeofenceProvider role={navRole}>
-      <DashboardLayoutClient role={navRole} email={session.user.email ?? ''} headcountSummary={headcountSummary}>
+      <DashboardLayoutClient role={uiRole} email={session.user.email ?? ''} headcountSummary={headcountSummary}>
         {children}
       </DashboardLayoutClient>
     </TimeClockGeofenceProvider>

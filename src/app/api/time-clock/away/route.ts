@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     data: {
       id: crypto.randomUUID(),
       employeeId: emp.id,
-      branchId: emp.branchId,
+      branchId: open.branchId,
       kind: parsed.data.kind,
       otherNote: parsed.data.otherNote?.trim() ?? null,
       endsAt,
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
 
   const managerId = await getManagerUserIdForEmployee({
     reportsToEmployeeId: emp.reportsToEmployeeId,
-    branchId: emp.branchId,
+    branchId: open.branchId,
   });
   const ownerIds = await getOwnerUserIds();
   const targets = [...new Set([...(managerId ? [managerId] : []), ...ownerIds])];

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession, requireOwner } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import { z } from 'zod';
 import * as bcrypt from 'bcryptjs';
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const branchId = searchParams.get('branchId');
 
-  if (role === 'owner') {
+  if (role === 'owner' || role === 'qc') {
     const employees = await prisma.employee.findMany({
       where: { status: { not: 'terminated' }, ...(branchId ? { branchId } : {}) },
       include: { branch: true, department: true, user: { select: { email: true } } },
@@ -57,7 +58,16 @@ export async function GET(req: NextRequest) {
     return Response.json(employees);
   }
 
-  // Staff or QC: get own employee record via user -> employee
+  if (role === 'staff' && (await userHasQcReviewerScope(prisma, session))) {
+    const employees = await prisma.employee.findMany({
+      where: { status: { not: 'terminated' }, ...(branchId ? { branchId } : {}) },
+      include: { branch: true, department: true, user: { select: { email: true } } },
+      orderBy: { name: 'asc' },
+    });
+    return Response.json(employees);
+  }
+
+  // Staff (and similar): get own employee record via user -> employee
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: { employee: { include: { branch: true } } },

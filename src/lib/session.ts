@@ -1,5 +1,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from './auth';
+import { prisma } from './prisma';
+import { userHasQcReviewerScope } from './qc-reviewer';
 import { normalizeUserRole } from './formVisibility';
 
 export async function requireSession() {
@@ -18,8 +20,9 @@ export async function requireOwner() {
 export async function requireQc() {
   const session = await requireSession();
   const r = normalizeUserRole(session.user.role);
-  if (r !== 'qc' && r !== 'owner' && r !== 'manager')
-    throw new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+  if (r === 'owner' || r === 'manager' || r === 'qc') return session;
+  const ok = await userHasQcReviewerScope(prisma, session);
+  if (!ok) throw new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
   return session;
 }
 

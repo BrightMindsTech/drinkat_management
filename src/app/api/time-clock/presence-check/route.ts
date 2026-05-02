@@ -3,6 +3,7 @@ import { requireSession } from '@/lib/session';
 import { getActiveAwaySession, getOpenClockEntry, getTimeClockEmployee } from '@/lib/time-clock-helpers';
 import { isInsideBranchRadius } from '@/lib/geo';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
+import { prisma } from '@/lib/prisma';
 
 const bodySchema = z.object({
   lat: z.number(),
@@ -26,7 +27,8 @@ export async function POST(req: Request) {
   const away = await getActiveAwaySession(emp.id);
   if (away) return Response.json({ triggerAway: false, reason: 'away_already_active' });
 
-  if (emp.branch.latitude == null || emp.branch.longitude == null) {
+  const entryBranch = await prisma.branch.findUnique({ where: { id: open.branchId } });
+  if (!entryBranch || entryBranch.latitude == null || entryBranch.longitude == null) {
     return Response.json({ triggerAway: false, reason: 'branch_geofence_not_configured' });
   }
 
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
 
   const { lat, lng } = parsed.data;
-  const inside = isInsideBranchRadius(lat, lng, emp.branch.latitude, emp.branch.longitude, emp.branch.geofenceRadiusM);
+  const inside = isInsideBranchRadius(lat, lng, entryBranch.latitude, entryBranch.longitude, entryBranch.geofenceRadiusM);
   if (inside) return Response.json({ triggerAway: false, reason: 'inside_radius' });
 
   return Response.json({ triggerAway: true, reason: 'outside_radius_clocked_in' });

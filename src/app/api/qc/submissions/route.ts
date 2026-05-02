@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession, requireQc } from '@/lib/session';
+import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import { runQcPhotoMonthlyCleanupIfDue } from '@/lib/qc-photo-cleanup';
-import { createInboxForUsers, getManagerUserIdForEmployee } from '@/lib/time-clock-helpers';
+import { createInboxForUsers } from '@/lib/time-clock-helpers';
 import { sendPushToUser } from '@/lib/push';
 import { z } from 'zod';
 
@@ -21,38 +22,11 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get('status');
   const assignmentId = searchParams.get('assignmentId');
 
-  if (role === 'qc' || role === 'owner') {
+  if (await userHasQcReviewerScope(prisma, session)) {
     const submissions = await prisma.qcSubmission.findMany({
       where: {
         ...(status ? { status } : {}),
         ...(assignmentId ? { assignmentId } : {}),
-      },
-      include: {
-        assignment: { include: { checklist: { include: { items: true } }, employee: true, branch: true } },
-        employee: { include: { branch: true } },
-        branch: true,
-        photos: true,
-      },
-      orderBy: { submittedAt: 'desc' },
-    });
-    return Response.json(submissions);
-  }
-
-  if (role === 'manager') {
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      include: { employee: true },
-    });
-    if (!user?.employee) return Response.json([]);
-
-    const managerEmployee = user.employee;
-
-    const submissions = await prisma.qcSubmission.findMany({
-      where: {
-        ...(status ? { status } : {}),
-        ...(assignmentId ? { assignmentId } : {}),
-        branchId: managerEmployee.branchId,
-        employee: { reportsToEmployeeId: managerEmployee.id, branchId: managerEmployee.branchId },
       },
       include: {
         assignment: { include: { checklist: { include: { items: true } }, employee: true, branch: true } },
@@ -144,13 +118,17 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  const managerUserId = await getManagerUserIdForEmployee({
-    reportsToEmployeeId: user.employee.reportsToEmployeeId,
-    branchId: user.employee.branchId,
+  const qcReviewerUsers = await prisma.user.findMany({
+    where: {
+      role: 'qc',
+      employee: { is: { status: { in: ['active', 'on_leave'] } } },
+    },
+    select: { id: true },
   });
-  if (managerUserId) {
+  const qcReviewerUserIds = qcReviewerUsers.map((u) => u.id);
+  if (qcReviewerUserIds.length > 0) {
     const href = `/dashboard/qc#qc-review-submission-${submission.id}`;
-    await createInboxForUsers([managerUserId], {
+    await createInboxForUsers(qcReviewerUserIds, {
       category: 'qc_review',
       title: 'QC submission needs review',
       body: `${user.employee.name} submitted ${assignment.checklist.name}.`,
@@ -161,16 +139,22 @@ export async function POST(req: NextRequest) {
         href,
       }),
     });
-    const subs = await prisma.pushSubscription.findMany({ where: { userId: managerUserId } });
-    await sendPushToUser(managerUserId, subs, {
-      title: 'QC submission needs review',
-      body: `${user.employee.name} submitted ${assignment.checklist.name}.`,
-      data: {
-        type: 'qc_submission_pending_review',
-        url: href,
-        submissionId: submission.id,
-      },
-    });
+    const subs = await prisma.pushSubscription.findMany({ where: { userId: { in: qcReviewerUserIds } } });
+    for (const userId of qcReviewerUserIds) {
+      await sendPushToUser(
+        userId,
+        subs.filter((s) => s.userId === userId),
+        {
+          title: 'QC submission needs review',
+          body: `${user.employee.name} submitted ${assignment.checklist.name}.`,
+          data: {
+            type: 'qc_submission_pending_review',
+            url: href,
+            submissionId: submission.id,
+          },
+        }
+      );
+    }
   }
 
   return Response.json(submission);

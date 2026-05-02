@@ -1,13 +1,15 @@
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 
 export async function GET() {
   try {
     const session = await requireSession();
     const role = normalizeUserRole(session.user.role);
+    const qcReviewerScope = await userHasQcReviewerScope(prisma, session);
 
-    if (role === 'staff' || role === 'marketing') {
+    if ((role === 'staff' && !qcReviewerScope) || role === 'marketing') {
       const user = await prisma.user.findUnique({
         where: { id: session.user.id },
         select: { employee: { select: { id: true } } },

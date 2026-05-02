@@ -29,12 +29,16 @@ export async function GET() {
 
   const open = await getOpenClockEntry(emp.id);
   const away = await getActiveAwaySession(emp.id);
+  const activeBranch = open
+    ? await prisma.branch.findUnique({ where: { id: open.branchId } })
+    : null;
+  const statusBranch = activeBranch ?? emp.branch;
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { locationConsentAt: true, pushConsentAt: true },
   });
 
-  const branchOk = emp.branch.latitude != null && emp.branch.longitude != null;
+  const branchOk = statusBranch.latitude != null && statusBranch.longitude != null;
 
   const role = normalizeUserRole(session.user.role);
   let weeklyRating: {
@@ -56,13 +60,13 @@ export async function GET() {
     employeeName: emp.name,
     displayTimeZone: DEFAULT_APP_TIMEZONE,
     branch: {
-      id: emp.branch.id,
-      name: emp.branch.name,
+      id: statusBranch.id,
+      name: statusBranch.name,
       hasGeofence: branchOk,
-      geofenceRadiusM: emp.branch.geofenceRadiusM,
-      latitude: emp.branch.latitude,
-      longitude: emp.branch.longitude,
-      shiftProfile: emp.branch.shiftProfile,
+      geofenceRadiusM: statusBranch.geofenceRadiusM,
+      latitude: statusBranch.latitude,
+      longitude: statusBranch.longitude,
+      shiftProfile: statusBranch.shiftProfile,
     },
     shift: emp.shiftDefinition,
     consent: {

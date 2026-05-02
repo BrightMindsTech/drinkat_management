@@ -36,14 +36,14 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
     if (role === 'staff' || role === 'qc' || role === 'marketing' || role === 'manager') {
       out.push({ id: 'section-forms-my-submissions', labelRef: 'forms.mySubmissions' });
     }
-    if (role === 'owner' || role === 'manager') {
+    if (role === 'owner' || role === 'manager' || role === 'qc') {
       out.push({ id: 'section-forms-review', labelRef: 'forms.reviewQueue' });
     }
     return out;
   }
 
   if (path.startsWith('/dashboard/hr')) {
-    if (role === 'staff' || role === 'marketing') {
+    if (role === 'staff' || role === 'marketing' || role === 'qc') {
       return [
         { id: 'hr-staff-info', labelRef: 'hr.myInfoTitle' },
         { id: 'hr-staff-leave', labelRef: 'hr.myLeave' },

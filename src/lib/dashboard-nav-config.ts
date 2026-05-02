@@ -28,15 +28,6 @@ const ownerItems: DashboardNavItem[] = [
   { href: `${base}/manager-reports`, labelKey: 'managerReports' },
 ];
 
-const qcItems: DashboardNavItem[] = [
-  { href: base, labelKey: 'home' },
-  { href: `${base}/time-clock`, labelKey: 'timeClock' },
-  { href: `${base}/ratings`, labelKey: 'ratings' },
-  { href: `${base}/messages`, labelKey: 'messages' },
-  { href: `${base}/qc`, labelKey: 'qc' },
-  { href: `${base}/forms`, labelKey: 'forms' },
-];
-
 const staffItems: DashboardNavItem[] = [
   { href: base, labelKey: 'home' },
   { href: `${base}/time-clock`, labelKey: 'timeClock' },
@@ -69,7 +60,8 @@ const marketingItems: DashboardNavItem[] = [
 export function getDashboardNavItems(role: string | undefined | null): DashboardNavItem[] {
   const r = normalizeUserRole(role);
   if (r === 'owner') return ownerItems;
-  if (r === 'qc') return qcItems;
+  /** QC: same destinations as managers (HR, QC ops, etc.) while checklist APIs treat QC like owner for branch scope. */
+  if (r === 'qc') return managerItems;
   if (r === 'manager') return managerItems;
   if (r === 'marketing') return marketingItems;
   return staffItems;
