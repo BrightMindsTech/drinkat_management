@@ -37,7 +37,7 @@ export function ManagerAssignmentsSection({
 
   function candidateEmployees(manager: EmployeeWithBranch) {
     return employees
-      .filter((e) => e.id !== manager.id && e.role !== 'manager' && e.branchId === manager.branchId)
+      .filter((e) => e.id !== manager.id && e.role !== 'manager')
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -122,7 +122,10 @@ export function ManagerAssignmentsSection({
                   {reports.map((emp) => (
                     <li key={emp.id} className="flex flex-wrap items-center justify-between gap-2 rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
                       <span className="text-sm text-app-primary">
-                        {emp.name} <span className="text-app-secondary">({emp.role.toUpperCase()})</span>
+                        {emp.name}{' '}
+                        <span className="text-app-secondary">
+                          ({emp.role.toUpperCase()}) · {emp.branch.name}
+                        </span>
                       </span>
                       <button
                         type="button"
@@ -150,7 +153,7 @@ export function ManagerAssignmentsSection({
                     <option value="">{t.hr.chooseEmployee}</option>
                     {candidates.map((emp) => (
                       <option key={emp.id} value={emp.id}>
-                        {emp.name} ({emp.role.toUpperCase()})
+                        {emp.name} ({emp.role.toUpperCase()}) — {emp.branch.name}
                         {emp.reportsToEmployeeId ? ` • ${t.hr.reassignLabel}` : ''}
                       </option>
                     ))}

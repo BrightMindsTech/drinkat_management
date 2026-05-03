@@ -157,14 +157,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         where: {
           id: { in: parsed.data.employeeIds },
           reportsToEmployeeId: managerEmployee.id,
-          branchId: managerEmployee.branchId,
           status: { not: 'terminated' },
         },
         select: { id: true },
       });
       const validSet = new Set(validEmployees.map((e) => e.id));
       if (validSet.size !== parsed.data.employeeIds.length) {
-        return Response.json({ error: 'Managers can only assign forms to direct reports in their branch' }, { status: 403 });
+        return Response.json({ error: 'Managers can only assign forms to their direct reports' }, { status: 403 });
       }
       allowedEmployeeIds = parsed.data.employeeIds.filter((eid) => validSet.has(eid));
     }

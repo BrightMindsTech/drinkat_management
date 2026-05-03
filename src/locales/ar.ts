@@ -92,13 +92,22 @@ export const ar: LocaleMessages = {
     retentionHint:
       'تُحذف الرسائل الأقدم من نحو 24 ساعة تلقائياً عند فتح الدردشات (دون إعداد إضافي).',
     newChat: 'محادثة جديدة',
+    newGroupChat: 'مجموعة جديدة',
     chooseContact: 'اختر جهة اتصال',
+    chooseGroupMembers: 'مجموعة جديدة',
+    groupPickHint: 'اختر شخصين على الأقل. يمكن ضم كل من يستطيعون استخدام المحادثة، بما في ذلك الملاك.',
+    groupNameOptional: 'اسم المجموعة (اختياري)',
+    groupNamePlaceholder: 'مثلاً: وردية الإغلاق · المطار',
+    createGroup: 'إنشاء المجموعة',
+    groupNeedTwoOthers: 'اختر شخصين على الأقل للمجموعة.',
+    groupCreateFailed: 'تعذر إنشاء المجموعة.',
     threads: 'المحادثات',
     noThreads: 'لا توجد محادثات بعد. ابدأ محادثة جديدة.',
     pickThread: 'اختر محادثة أو ابدأ محادثة جديدة.',
     conversation: 'محادثة',
     peerSeen: 'آخر قراءة من الطرف الآخر',
     typing: 'يكتب',
+    senderYou: 'أنت',
     read: 'مقروء',
     messagePlaceholder: 'اكتب رسالة… (Enter للإرسال، Shift+Enter سطر جديد)',
     send: 'إرسال',
@@ -159,9 +168,10 @@ export const ar: LocaleMessages = {
     geoTimedOut: 'انتهت مهلة GPS. أبقِ الصفحة مفتوحة ثم أعد التحميل أو تحقق من إذن الموقع.',
     weeklyRatingRequiredTitle: 'مطلوب تقييمات أسبوعية',
     weeklyRatingRequiredBody:
-      'أكمل التقييمات الأسبوعية المطلوبة (يفضّل السبت–الأحد، أو لاحقاً إذا فاتك الموعد) قبل استخدام بصمة الحضور.',
+      'المديرون: أرسلوا كل تقييمات المرؤوسين المباشرين لهذا الأسبوع المستحق (يفضّل السبت–الأحد أو إكمال لاحقاً)، وتُوقف البصمة حتى يكتمل ذلك. تقييم المديرين بالنسبة للموظفين وفئات مشابهة طوعي.',
     weeklyRatingGoToRatings: 'فتح التقييمات',
-    weeklyRatingBlockingHint: 'أكمل التقييمات الأسبوعية لاستخدام تسجيل الدخول/الخروج.',
+    weeklyRatingBlockingHint:
+      'أكمل تقييمات المرؤوسين المباشرين للأسبوع لتستخدم تسجيل الدخول/الخروج.',
     clockInRequiredTitle: 'يلزم تسجيل الدخول',
     clockInRequiredBody: 'تحتاج إلى تسجيل الدخول (بصمة الحضور) قبل استخدام التطبيق. افتح شاشة بصمة الحضور لتسجيل حضورك.',
     goToClockIn: 'الانتقال لتسجيل الدخول',
@@ -169,7 +179,7 @@ export const ar: LocaleMessages = {
   ratings: {
     pageTitle: 'التقييمات الأسبوعية',
     intro:
-      'كل أسبوع: قيّم مديرك المباشر (إن وُجد) أو كل مرؤوسيك المباشرين (للمدير). الدرجة من 0 إلى 100. إذا كانت أقل من 85 يجب ذكر السبب. تُرسل التقييمات تلقائياً للمالك.',
+      'يجب على المدراء تقييم كل المرؤوسين المباشرين النشِطين أو في إجازة لهذا الأسبوع المستحق (0–100، وإذا كانت أقل من 85 ذكر سبب مختصر). يمكن للموظفين وفئات مشابهة تقييم أي مديرين يختارون ذلك دون أن يكونوا ملزَمين بتقييم كل المدراء.',
     weekDue: 'أسبوع يبدأ يوم الاثنين',
     emphasisWeekend: 'يفضّل الإرسال يوم السبت أو الأحد.',
     catchUp: 'يمكنك الإكمال خلال الأسبوع إذا فاتك نهاية الأسبوع.',
@@ -187,6 +197,20 @@ export const ar: LocaleMessages = {
     blockingClock: 'بصمة الحضور معطّلة حتى تكتمل التقييمات الأسبوعية.',
     thankYouTitle: 'شكراً لتقييمك',
     thankYouBody: 'اكتملت كل التقييمات الأسبوعية المطلوبة لهذا الأسبوع.',
+    optionalIntro:
+      'يمكنك إرسال تقييمات اسبوعية عن أي مديرين تختارهم. لا يوجد تقييم إجباري إلا ما قررت إرساله بنفسك. الدرجة من 0 إلى 100؛ إذا كانت أقل من 85 يجب ذكر السبب. لا تزال التقييمات ظاهرة للمالك كسابقاً.',
+    optionalCatchUp: 'يمكن الإرسال أو التعديل خلال الأسبوع بعد أن تختار من تقيّم.',
+    optionalFootnote:
+      'بصمة الحضور لا تعتمد على هذه التقييمات. لا يزال على المدراء مستلزَم مستقل بتقييم مرؤوسيهم.',
+    optionalStatusNone: 'لم يُرسل تقييم بعد هذا الأسبوع—يمكن إضافة مدير بالأسفل إن أردت.',
+    optionalSavedCount: 'تم إرسال {count} تقييم(ات) لهذا الأسبوع.',
+    optionalNoEligibleManagers: 'لا يوجد مديرون في النظام لتقييمهم حالياً.',
+    optionalPickManagerHint:
+      'اختر مديراً من القائمة أدناه عندما ترغب بإرسال تقييم (ويُمكنك تجاهل ذلك بالكامل).',
+    addAnotherManager: 'إضافة تقييم آخر',
+    addManagerPlaceholder: 'اختر مديراً…',
+    addManagerButton: 'إضافة',
+    updateRating: 'تحديث التقييم',
   },
   managerReports: {
     pageTitle: 'تقارير المديرين',
@@ -276,7 +300,7 @@ export const ar: LocaleMessages = {
     chooseEmployee: 'اختر موظفًا...',
     noManagersFound: 'لا يوجد مديرون. أنشئ موظفًا بقسم "Manager" أولاً.',
     noDirectReports: 'لا يوجد مرؤوسون مباشرين بعد.',
-    noEmployeesForBranch: 'لا يوجد موظفو Staff/QC متاحون في هذا الفرع.',
+    noEmployeesForBranch: 'لا يوجد موظفو Staff/QC متاحون للتعيين (الجميع مديرون أو القائمة فارغة).',
     directReportsLabel: 'مرؤوسون مباشرون',
     unassign: 'إلغاء التعيين',
     reassignLabel: 'مُعيّن حاليًا',
@@ -375,6 +399,7 @@ export const ar: LocaleMessages = {
     employmentFullTime: 'دوام كامل',
     employmentPartTime: 'دوام جزئي',
     partTimeMinDaysHint: 'الدوام الجزئي: يُتوقع 15 يومًا مميزًا على الأقل بتسجيل دخول في كل شهر تقويمي.',
+    partTimeSalaryDailyHint: 'مبلغ الراتب هنا يُعد أجر اليوم الواحد (الأجر = عدد أيام العمل بالشهر × هذا المبلغ).',
   },
   reviews: {
     title: 'تقييمات الأداء',
@@ -397,6 +422,8 @@ export const ar: LocaleMessages = {
     fullTime: 'دوام كامل',
     partTime: 'دوام جزئي',
     partTimeScheduleHint: 'الدوام الجزئي: يُتوقع 15 يومًا مميزًا على الأقل بتسجيل دخول في كل شهر تقويمي.',
+    partTimeSalaryDailyHint:
+      'استخدم الحقل كأجر اليوم الواحد (دينار). يُحسب إجمالي الشهر آلياً من الحضور (أيام مميزة بتسجيل دخول).',
     branch: 'الفرع',
     department: 'القسم',
     advanceLimit: 'حد السلفة (د.أ)',
@@ -428,6 +455,8 @@ export const ar: LocaleMessages = {
     periodMonth: 'الفترة (الشهر)',
     uploadCsv: 'رفع CSV (أعمدة: employeeId أو البريد، المبلغ)',
     manualEntry: 'إدخال يدوي (المبلغ لكل موظف)',
+    manualSalaryFullTimeHint:
+      'نسخ الراتب الشهري تنطبق على دوام كامل فقط. أجر جزئي = أيام البصمة المميزة × أجر اليوم من كل ملف.',
     saveSalaryCopy: 'حفظ نسخة الراتب',
     saving: 'جاري الحفظ…',
     viewDeductionReport: 'عرض تقرير الخصومات',
@@ -593,13 +622,13 @@ export const ar: LocaleMessages = {
     leaveSection: 'الإجازات',
     attendanceSection: 'الحضور (بصمة)',
     attendanceIntro:
-      'أيام حضور أيام العمل = من الإثنين إلى الجمعة مع تسجيل دخول واحد على الأقل. أيام الغياب = أيام العمل المتوقعة في الفترة (بعد استبعاد أيام الإجازة المعتمدة) ناقص أيام الحضور. أيام التسجيل المميزة = أي يوم تقويمي به تسجيل دخول.',
+      'أيام حضور أيام العمل = من الأحد إلى الخميس مع تسجيل دخول واحد على الأقل. تُحسب الأيام المتوقعة فقط من تاريخ انضمام الموظف ضمن الفترة المختارة. أيام غياب أيام العمل = أيام العمل المتوقعة (بعد استبعاد الإجازات المعتمدة في تلك الأيام) ناقص أيام الحضور. أيام التسجيل المميزة = أي يوم تقويمي به تسجيل دخول.',
     attendancePartTimeMonthNote:
       'للموظفين بدوام جزئي، يُفترض أن يشمل الشهر التقويمي الكامل 15 يومًا مميزًا على الأقل بتسجيل دخول.',
     attendanceShortPeriodNote:
       'الحد الأدنى الشهري لدوام جزئي (15 يومًا) يُقيَّم عندما تكون الفترة «شهري».',
-    attendancePresentWeekdays: 'حضور (أيام عمل)',
-    attendanceAbsenceDays: 'غياب أيام العمل',
+    attendancePresentWeekdays: 'حضور (أحد–خميس)',
+    attendanceAbsenceDays: 'غياب (أحد–خميس)',
     attendanceDistinctDays: 'أيام تسجيل دخول مميزة',
     attendanceEmploymentType: 'الدوام',
     employmentFullTime: 'دوام كامل',
@@ -609,6 +638,10 @@ export const ar: LocaleMessages = {
     partTimeComplianceShort: 'أقل من الحد',
     salarySection: 'الرواتب',
     salaryDeductions: 'خصومات الرواتب',
+    salaryDeductionExplanation:
+      'دوام كامل: الإجمالي من «نسخة الراتب» للشهر (يدوي/تلقائي). دوام جزئي: الإجمالي محسوب حضوراً (أيام تقويمية مميزة بتسجيل دخول في ذلك الشهر × أجر اليوم من ملف الموظف).',
+    salaryPaidDaysColumn: 'أيام العمل المدفوعة',
+    salaryDailyRateColumn: 'أجر اليوم',
     salaryMonth: 'شهر الراتب',
     exportCsv: 'تصدير CSV',
     exportSalary: 'تصدير تقرير الرواتب',

@@ -8,8 +8,13 @@ import { attachPullToRefresh } from '@/lib/attach-pull-to-refresh';
 type ThreadRow = {
   id: string;
   updatedAt: string;
-  otherUserId: string;
-  otherDisplayName: string;
+  kind: 'direct' | 'group';
+  otherUserId: string | null;
+  otherDisplayName: string | null;
+  title: string | null;
+  groupSubtitle: string | null;
+  threadLabel: string;
+  members: { userId: string; displayName: string }[];
   lastMessageBody: string | null;
   lastMessageAt: string | null;
   unreadCount: number;
@@ -21,12 +26,34 @@ type MessageRow = {
   createdAt: string;
   senderUserId: string;
   readByPeer: boolean;
+  /** Set for group chats; clients show above others' bubbles. */
+  senderDisplayName?: string | null;
 };
 
 type PeerUser = { id: string; displayName: string; role: string };
 
-const POLL_MS = 4000;
+const POLL_MS = 8000;
+const TYPING_POLL_MS = 4500;
 const TYPING_DEBOUNCE_MS = 600;
+
+function threadListFingerprint(rows: ThreadRow[]): string {
+  return rows
+    .map(
+      (t) =>
+        `${t.id}:${t.unreadCount}:${t.lastMessageAt ?? ''}:${t.updatedAt}:${t.lastMessageBody ?? ''}:${t.threadLabel}`
+    )
+    .join('|');
+}
+
+function messagesPayloadFingerprint(
+  batch: MessageRow[],
+  peerLastReadAt: string | null,
+  chatMode: 'direct' | 'group' | undefined
+): string {
+  const mode = chatMode === 'group' ? 'g' : 'd';
+  const msgPart = batch.map((m) => `${m.id}:${m.readByPeer ? 1 : 0}`).join(',');
+  return `${mode}:${peerLastReadAt ?? ''}:${msgPart}`;
+}
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -59,6 +86,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [activeChatMode, setActiveChatMode] = useState<'direct' | 'group'>('direct');
   const [peerLastReadAt, setPeerLastReadAt] = useState<string | null>(null);
   const [messagesErr, setMessagesErr] = useState<string | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -66,18 +94,39 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
   const [draft, setDraft] = useState('');
   const [typingNames, setTypingNames] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const typingTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const typingTimerRef = useRef<number | undefined>(undefined);
   const listEndRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
   const threadListScrollRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const activeThreadIdRef = useRef<string | null>(null);
+  const messagesAbortRef = useRef<AbortController | null>(null);
+  const messagesPollFpRef = useRef<string>('');
+  const typingMembersRef = useRef<{ userId: string; displayName: string }[]>([]);
   const [, startTransition] = useTransition();
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [peersErr, setPeersErr] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [groupPeers, setGroupPeers] = useState<PeerUser[]>([]);
+  const [groupPeersLoading, setGroupPeersLoading] = useState(false);
+  const [groupSelectedIds, setGroupSelectedIds] = useState<Set<string>>(() => new Set());
+  const [groupTitleDraft, setGroupTitleDraft] = useState('');
+  const [groupSearch, setGroupSearch] = useState('');
+  const [groupErr, setGroupErr] = useState<string | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+
   const activeThreadId = selectedId ?? threadFromUrl;
+
+  useEffect(() => {
+    activeThreadIdRef.current = activeThreadId;
+  }, [activeThreadId]);
+
+  useEffect(() => {
+    typingMembersRef.current = threads.find((x) => x.id === activeThreadId)?.members ?? [];
+  }, [activeThreadId, threads]);
 
   const loadThreads = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -90,14 +139,18 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
           return;
         }
         setThreadsErr(null);
-        setThreads(j.threads ?? []);
+        const next = j.threads ?? [];
+        const applyThreads = () =>
+          setThreads((prev) => (threadListFingerprint(prev) === threadListFingerprint(next) ? prev : next));
+        if (opts?.silent) startTransition(applyThreads);
+        else applyThreads();
       } catch {
         setThreadsErr(c.loadThreadsFailed);
       } finally {
         setLoadingThreads(false);
       }
     },
-    [c.loadThreadsFailed]
+    [c.loadThreadsFailed, startTransition]
   );
 
   const loadContacts = useCallback(async () => {
@@ -114,6 +167,9 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
     async (threadId: string, opts?: { silent?: boolean }) => {
       if (!threadId) return;
       const silent = !!opts?.silent;
+      messagesAbortRef.current?.abort();
+      const ac = new AbortController();
+      messagesAbortRef.current = ac;
       if (!silent) {
         setLoadingMessages(true);
         setMessagesErr(null);
@@ -121,24 +177,37 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
       try {
         const res = await fetch(`/api/chat/threads/${encodeURIComponent(threadId)}/messages`, {
           credentials: 'include',
+          signal: ac.signal,
         });
         const j = (await res.json().catch(() => ({}))) as {
           messages?: MessageRow[];
           peerLastReadAt?: string | null;
+          chatMode?: 'direct' | 'group';
           error?: string;
         };
         if (!res.ok) {
           if (!silent) setMessagesErr(j.error ?? c.loadMessagesFailed);
           return;
         }
-        setMessages(j.messages ?? []);
-        setPeerLastReadAt(j.peerLastReadAt ?? null);
+        if (threadId !== activeThreadIdRef.current) return;
+
+        const nextMsgs = j.messages ?? [];
+        const nextPeerRead = j.peerLastReadAt ?? null;
+        const fp = messagesPayloadFingerprint(nextMsgs, nextPeerRead, j.chatMode);
+        if (silent && fp === messagesPollFpRef.current) return;
+        messagesPollFpRef.current = fp;
+
+        setMessages(nextMsgs);
+        setPeerLastReadAt(nextPeerRead);
+        setActiveChatMode(j.chatMode === 'group' ? 'group' : 'direct');
         await fetch(`/api/chat/threads/${encodeURIComponent(threadId)}/read`, {
           method: 'POST',
           credentials: 'include',
+          signal: ac.signal,
         }).catch(() => {});
-        void loadThreads({ silent: true });
-      } catch {
+        if (!silent) void loadThreads({ silent: true });
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') return;
         if (!silent) setMessagesErr(c.loadMessagesFailed);
       } finally {
         if (!silent) setLoadingMessages(false);
@@ -162,9 +231,14 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
   useEffect(() => {
     if (!activeThreadId) {
       setMessages([]);
+      setActiveChatMode('direct');
       lastMessageIdRef.current = null;
+      messagesPollFpRef.current = '';
+      messagesAbortRef.current?.abort();
       return;
     }
+    messagesPollFpRef.current = '';
+    lastMessageIdRef.current = null;
     void loadMessages(activeThreadId, { silent: false });
   }, [activeThreadId, loadMessages]);
 
@@ -188,23 +262,22 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
         });
         const j = (await res.json().catch(() => ({}))) as { typingUserIds?: string[] };
         const ids = j.typingUserIds ?? [];
-        const names = ids
-          .map((uid) => threads.find((x) => x.otherUserId === uid)?.otherDisplayName)
-          .filter((x): x is string => !!x);
+        const meta = typingMembersRef.current;
+        const names = ids.map((uid) => meta.find((m) => m.userId === uid)?.displayName).filter((x): x is string => !!x);
         setTypingNames(names);
       } catch {
         /* ignore */
       }
-    }, 2500);
+    }, TYPING_POLL_MS);
     return () => window.clearInterval(id);
-  }, [activeThreadId, threads]);
+  }, [activeThreadId]);
 
   const lastMsgId = messages.length ? messages[messages.length - 1]!.id : null;
   useEffect(() => {
     if (!lastMsgId || lastMsgId === lastMessageIdRef.current) return;
     lastMessageIdRef.current = lastMsgId;
     requestAnimationFrame(() => {
-      listEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      listEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
     });
   }, [lastMsgId]);
 
@@ -228,6 +301,74 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
     setPickerOpen(true);
     setPeersErr(null);
     await loadContacts();
+  }
+
+  async function openGroupPicker() {
+    setGroupModalOpen(true);
+    setGroupErr(null);
+    setGroupTitleDraft('');
+    setGroupSearch('');
+    setGroupSelectedIds(new Set());
+    setGroupPeersLoading(true);
+    try {
+      const res = await fetch('/api/chat/users?scope=group', { credentials: 'include' });
+      const j = (await res.json().catch(() => ({}))) as { users?: PeerUser[]; error?: string };
+      if (!res.ok) {
+        setGroupErr(j.error ?? c.loadPeersFailed);
+        setGroupPeers([]);
+        return;
+      }
+      setGroupPeers(j.users ?? []);
+    } catch {
+      setGroupErr(c.loadPeersFailed);
+      setGroupPeers([]);
+    } finally {
+      setGroupPeersLoading(false);
+    }
+  }
+
+  function toggleGroupMember(userId: string) {
+    setGroupSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  async function createGroupChat() {
+    if (groupSelectedIds.size < 2) {
+      setGroupErr(c.groupNeedTwoOthers);
+      return;
+    }
+    setCreatingGroup(true);
+    setGroupErr(null);
+    try {
+      const res = await fetch('/api/chat/threads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          kind: 'group',
+          participantIds: [...groupSelectedIds],
+          ...(groupTitleDraft.trim() ? { title: groupTitleDraft.trim() } : {}),
+        }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { threadId?: string; error?: string };
+      if (!res.ok || !j.threadId) {
+        setGroupErr(j.error ?? c.groupCreateFailed);
+        return;
+      }
+      setGroupModalOpen(false);
+      setSelectedId(j.threadId);
+      setThreadInUrl(j.threadId);
+      await loadThreads({ silent: true });
+      await loadMessages(j.threadId, { silent: false });
+    } catch {
+      setGroupErr(c.groupCreateFailed);
+    } finally {
+      setCreatingGroup(false);
+    }
   }
 
   async function startWithUser(otherUserId: string) {
@@ -269,13 +410,25 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
         credentials: 'include',
         body: JSON.stringify({ body: text }),
       });
-      const j = (await res.json().catch(() => ({}))) as { message?: MessageRow; error?: string };
+      const j = (await res.json().catch(() => ({}))) as {
+        message?: MessageRow;
+        chatMode?: 'direct' | 'group';
+        error?: string;
+      };
       if (!res.ok) {
         setMessagesErr(j.error ?? c.sendFailed);
         return;
       }
+      if (j.chatMode === 'group' || j.chatMode === 'direct') setActiveChatMode(j.chatMode);
       setDraft('');
-      if (j.message) setMessages((prev) => [...prev, j.message!]);
+      if (j.message) {
+        lastMessageIdRef.current = j.message.id;
+        setMessages((prev) => [...prev, j.message!]);
+        messagesPollFpRef.current = '';
+        requestAnimationFrame(() => {
+          listEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        });
+      }
       void loadThreads({ silent: true });
     } catch {
       setMessagesErr(c.sendFailed);
@@ -286,7 +439,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
 
   function touchTyping(active: boolean) {
     if (!activeThreadId) return;
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    if (typingTimerRef.current != null) window.clearTimeout(typingTimerRef.current);
     if (!active) return;
     typingTimerRef.current = window.setTimeout(() => {
       void fetch(`/api/chat/threads/${encodeURIComponent(activeThreadId)}/typing`, {
@@ -298,29 +451,53 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
 
   const activeTitle = useMemo(() => {
     if (!activeThreadId) return '';
-    return threads.find((x) => x.id === activeThreadId)?.otherDisplayName ?? c.conversation;
+    return threads.find((x) => x.id === activeThreadId)?.threadLabel ?? c.conversation;
   }, [activeThreadId, threads, c.conversation]);
 
-  const threadPeerIds = useMemo(() => new Set(threads.map((th) => th.otherUserId)), [threads]);
+  const activeSubtitle = useMemo(() => {
+    if (!activeThreadId) return null;
+    const th = threads.find((x) => x.id === activeThreadId);
+    if (th?.kind === 'group' && th.groupSubtitle) return th.groupSubtitle;
+    return null;
+  }, [activeThreadId, threads]);
+
+  const dmPeerIds = useMemo(
+    () =>
+      new Set(
+        threads
+          .filter((th) => th.kind === 'direct' && th.otherUserId)
+          .map((th) => th.otherUserId as string)
+      ),
+    [threads]
+  );
 
   const contactsNotInThread = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return contacts.filter((p) => {
-      if (threadPeerIds.has(p.id)) return false;
+      if (dmPeerIds.has(p.id)) return false;
       if (!q) return true;
       return p.displayName.toLowerCase().includes(q) || p.role.toLowerCase().includes(q);
     });
-  }, [contacts, threadPeerIds, searchQuery]);
+  }, [contacts, dmPeerIds, searchQuery]);
 
   const filteredThreads = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return threads;
     return threads.filter(
       (th) =>
-        th.otherDisplayName.toLowerCase().includes(q) ||
+        th.threadLabel.toLowerCase().includes(q) ||
         (th.lastMessageBody?.toLowerCase().includes(q) ?? false)
     );
   }, [threads, searchQuery]);
+
+  const filteredGroupPeers = useMemo(() => {
+    const q = groupSearch.trim().toLowerCase();
+    if (!q) return groupPeers;
+    return groupPeers.filter(
+      (p) =>
+        p.displayName.toLowerCase().includes(q) || p.role.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
+    );
+  }, [groupPeers, groupSearch]);
 
   const sortedThreads = useMemo(() => {
     return [...filteredThreads].sort((a, b) => {
@@ -377,16 +554,30 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
           <div className="shrink-0 px-4 pt-3 pb-2 border-b border-gray-200/90 dark:border-ios-dark-separator bg-[#f0f2f5] dark:bg-ios-dark-elevated-2/80">
             <div className="flex items-center justify-between gap-2 mb-3">
               <h1 className="text-lg font-bold tracking-tight text-gray-900 dark:text-ios-dark-label">{c.chatsTitle}</h1>
-              <button
-                type="button"
-                onClick={() => void openPeerPicker()}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-ios-blue text-white shadow-md hover:opacity-90 active:scale-95 transition"
-                aria-label={c.newChat}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5" aria-hidden>
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void openGroupPicker()}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-teal-700 shadow ring-1 ring-teal-200 hover:bg-teal-50 dark:bg-ios-dark-fill dark:text-teal-300 dark:ring-teal-800 active:scale-95 transition"
+                  aria-label={c.newGroupChat}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5" aria-hidden>
+                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openPeerPicker()}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-ios-blue text-white shadow-md hover:opacity-90 active:scale-95 transition"
+                  aria-label={c.newChat}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5" aria-hidden>
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <label className="sr-only" htmlFor="msg-search">
               {c.searchPeople}
@@ -454,13 +645,11 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                             }`}
                           >
                             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-300 text-sm font-semibold text-gray-700 dark:bg-zinc-600 dark:text-zinc-100">
-                              {initials(th.otherDisplayName)}
+                              {initials(th.threadLabel)}
                             </span>
                             <span className="min-w-0 flex-1">
                               <span className="flex items-baseline justify-between gap-2">
-                                <span className="truncate font-medium text-gray-900 dark:text-ios-dark-label">
-                                  {th.otherDisplayName}
-                                </span>
+                                <span className="truncate font-medium text-gray-900 dark:text-ios-dark-label">{th.threadLabel}</span>
                                 <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-zinc-400">
                                   {formatListTime(th.lastMessageAt ?? th.updatedAt)}
                                 </span>
@@ -541,6 +730,9 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate font-semibold text-gray-900 dark:text-ios-dark-label">{activeTitle}</h2>
+                {activeSubtitle ? (
+                  <p className="truncate text-[11px] text-gray-500 dark:text-zinc-400">{activeSubtitle}</p>
+                ) : null}
                 {typingNames.length > 0 ? (
                   <p className="truncate text-xs text-teal-700 dark:text-teal-400">{c.typing}: {typingNames.join(', ')}</p>
                 ) : peerLastReadAt ? (
@@ -554,7 +746,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
             <div
               ref={messagesScrollRef}
               className="relative min-h-0 flex-1 overflow-y-hidden px-2 py-3 md:overflow-y-auto"
-              style={{ touchAction: 'none' }}
+              style={{ touchAction: 'pan-y' }}
             >
               {loadingMessages && messages.length === 0 ? (
                 <div className="flex h-full items-center justify-center">
@@ -567,15 +759,31 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
               <div className="space-y-1.5 pb-2">
                 {messages.map((m) => {
                   const mine = m.senderUserId === currentUserId;
+                  const isGroup = activeChatMode === 'group';
+                  const showPeerName = isGroup && !mine && !!(m.senderDisplayName?.trim());
+                  const showYouLabel = isGroup && mine;
                   return (
                     <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                       <div
-                        className={`max-w-[min(85%,20rem)] rounded-lg px-2.5 py-1.5 text-[15px] leading-snug shadow-sm ${
-                          mine
-                            ? 'rounded-br-sm bg-[#dcf8c6] text-gray-900 dark:bg-teal-900/50 dark:text-zinc-100'
-                            : 'rounded-bl-sm bg-white text-gray-900 dark:bg-zinc-800 dark:text-zinc-100'
-                        }`}
+                        className={`flex max-w-[min(85%,20rem)] flex-col ${mine ? 'items-end' : 'items-start'} gap-0.5`}
                       >
+                        {showPeerName ? (
+                          <span className="max-w-full truncate px-1 text-[11px] font-semibold text-teal-800 dark:text-teal-300">
+                            {m.senderDisplayName}
+                          </span>
+                        ) : null}
+                        {showYouLabel ? (
+                          <span className="max-w-full truncate px-1 text-[11px] font-medium text-gray-600 dark:text-zinc-400">
+                            {c.senderYou}
+                          </span>
+                        ) : null}
+                        <div
+                          className={`w-full rounded-lg px-2.5 py-1.5 text-[15px] leading-snug shadow-sm ${
+                            mine
+                              ? 'rounded-br-sm bg-[#dcf8c6] text-gray-900 dark:bg-teal-900/50 dark:text-zinc-100'
+                              : 'rounded-bl-sm bg-white text-gray-900 dark:bg-zinc-800 dark:text-zinc-100'
+                          }`}
+                        >
                         <p className="whitespace-pre-wrap break-words">{m.body}</p>
                         <div
                           className={`mt-0.5 flex items-center justify-end gap-1 text-[11px] tabular-nums ${
@@ -584,6 +792,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                         >
                           <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
                           {mine && m.readByPeer ? <span className="text-teal-700 dark:text-teal-400">✓ {c.read}</span> : null}
+                        </div>
                         </div>
                       </div>
                     </div>
@@ -669,6 +878,107 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+      ) : null}
+
+      {groupModalOpen ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4"
+          role="dialog"
+          aria-modal
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !creatingGroup) setGroupModalOpen(false);
+          }}
+        >
+          <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl bg-white shadow-2xl dark:bg-ios-dark-elevated sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-ios-dark-separator">
+              <h2 className="text-base font-semibold">{c.chooseGroupMembers}</h2>
+              <button
+                type="button"
+                className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-ios-dark-fill"
+                disabled={creatingGroup}
+                onClick={() => setGroupModalOpen(false)}
+              >
+                {t.common.close}
+              </button>
+            </div>
+            <p className="px-4 py-2 text-xs text-gray-600 dark:text-zinc-400 border-b border-gray-50 dark:border-ios-dark-separator/60">
+              {c.groupPickHint}
+            </p>
+            <label className="px-4 pt-3 block">
+              <span className="sr-only">{c.groupNameOptional}</span>
+              <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-zinc-400">{c.groupNameOptional}</span>
+              <input
+                type="text"
+                value={groupTitleDraft}
+                onChange={(e) => setGroupTitleDraft(e.target.value)}
+                maxLength={120}
+                placeholder={c.groupNamePlaceholder}
+                disabled={creatingGroup}
+                className="w-full rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-fill px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="px-4 pt-3 block">
+              <span className="sr-only">{c.searchPeople}</span>
+              <input
+                type="search"
+                value={groupSearch}
+                onChange={(e) => setGroupSearch(e.target.value)}
+                placeholder={c.searchPeople}
+                disabled={creatingGroup}
+                className="w-full rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-fill px-3 py-2 text-sm"
+              />
+            </label>
+            {groupErr ? <p className="px-4 py-2 text-sm text-red-600">{groupErr}</p> : null}
+            <div className="flex-1 min-h-0 overflow-y-auto p-2">
+              {groupPeersLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
+                </div>
+              ) : (
+                <ul>
+                  {filteredGroupPeers.map((u) => {
+                    const sel = groupSelectedIds.has(u.id);
+                    return (
+                      <li key={u.id}>
+                        <button
+                          type="button"
+                          disabled={creatingGroup}
+                          onClick={() => toggleGroupMember(u.id)}
+                          className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors disabled:opacity-50 ${
+                            sel ? 'bg-teal-50 dark:bg-teal-950/30' : 'hover:bg-gray-50 dark:hover:bg-ios-dark-fill'
+                          }`}
+                        >
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-300 dark:border-zinc-600">
+                            {sel ? (
+                              <span className="text-teal-600 dark:text-teal-400 text-xs font-bold">✓</span>
+                            ) : null}
+                          </span>
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-teal-600/15 text-sm font-semibold text-teal-900 dark:text-teal-200">
+                            {initials(u.displayName)}
+                          </span>
+                          <span>
+                            <span className="font-medium text-gray-900 dark:text-ios-dark-label">{u.displayName}</span>
+                            <span className="ms-2 text-xs text-gray-500">{u.role}</span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            <div className="flex gap-2 border-t border-gray-100 p-4 dark:border-ios-dark-separator">
+              <button
+                type="button"
+                disabled={creatingGroup || groupPeersLoading || groupSelectedIds.size < 2}
+                onClick={() => void createGroupChat()}
+                className="flex-1 rounded-xl bg-teal-600 py-3 text-center text-sm font-semibold text-white disabled:opacity-40"
+              >
+                {creatingGroup ? c.sending : c.createGroup}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

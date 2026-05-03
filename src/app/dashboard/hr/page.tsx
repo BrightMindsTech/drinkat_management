@@ -65,7 +65,7 @@ export default async function HRPage() {
     const [teamAdvances, myAdvances, leaveRequests, teamEmployees, branches] = await Promise.all([
       prisma.advance.findMany({
         where: {
-          employee: { reportsToEmployeeId: managerEmployee.id, branchId: managerEmployee.branchId },
+          employee: { reportsToEmployeeId: managerEmployee.id },
         },
         include: { employee: { include: { branch: true } } },
         orderBy: { requestedAt: 'desc' },
@@ -77,7 +77,7 @@ export default async function HRPage() {
       }),
       prisma.leaveRequest.findMany({
         where: {
-          employee: { reportsToEmployeeId: managerEmployee.id, branchId: managerEmployee.branchId },
+          employee: { reportsToEmployeeId: managerEmployee.id },
         },
         include: { employee: { include: { branch: true } } },
         orderBy: { createdAt: 'desc' },
@@ -85,13 +85,12 @@ export default async function HRPage() {
       prisma.employee.findMany({
         where: {
           reportsToEmployeeId: managerEmployee.id,
-          branchId: managerEmployee.branchId,
           status: { in: ['active', 'on_leave'] },
         },
         include: { branch: true },
         orderBy: { name: 'asc' },
       }),
-      prisma.branch.findMany({ where: { id: managerEmployee.branchId } }),
+      prisma.branch.findMany({ orderBy: { name: 'asc' } }),
     ]);
 
     const teamIds = teamEmployees.map((e) => e.id);

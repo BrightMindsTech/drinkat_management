@@ -41,7 +41,7 @@ export async function GET() {
 
   const branchOk = statusBranch.latitude != null && statusBranch.longitude != null;
   const geofenceExempt = isTimeClockGeofenceExempt(
-    { name: emp.name, department: emp.department },
+    { name: emp.name, role: emp.role, department: emp.department },
     session.user.email
   );
 

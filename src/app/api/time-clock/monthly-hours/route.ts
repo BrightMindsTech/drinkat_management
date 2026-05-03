@@ -51,7 +51,6 @@ export async function GET(req: NextRequest) {
     }
     employeeWhere = {
       ...employeeWhere,
-      branchId: managerUser.employee.branchId,
       reportsToEmployeeId: managerUser.employee.id,
     };
   }

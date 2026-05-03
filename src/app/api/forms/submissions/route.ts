@@ -56,8 +56,7 @@ export async function GET(req: NextRequest) {
     const mgr = user.employee;
     const list = await prisma.managementFormSubmission.findMany({
       where: {
-        branchId: mgr.branchId,
-        employee: { reportsToEmployeeId: mgr.id, branchId: mgr.branchId },
+        employee: { reportsToEmployeeId: mgr.id },
       },
       include: {
         template: true,

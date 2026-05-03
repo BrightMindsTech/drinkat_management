@@ -145,7 +145,17 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     };
     salary: {
       periodMonth: string;
-      rows: { periodMonth?: string; employeeName: string; branchName: string; salary: number; deduction: number; net: number }[];
+      rows: {
+        periodMonth?: string;
+        employeeName: string;
+        branchName: string;
+        salary: number;
+        deduction: number;
+        net: number;
+        employmentType?: 'full_time' | 'part_time';
+        daysWorked?: number | null;
+        dailyRate?: number | null;
+      }[];
       totals: { salary: number; deduction: number; net: number };
     };
     forms: {
@@ -364,7 +374,16 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   async function exportSalaryCsv() {
     const rows = data!.salary.rows;
     if (!rows.length) return;
-    const header = [t.reports.month, t.common.employee, t.common.branch, t.salary.salary, t.salary.deduction, t.salary.net]
+    const header = [
+      t.reports.month,
+      t.common.employee,
+      t.common.branch,
+      t.reports.salaryPaidDaysColumn,
+      t.reports.salaryDailyRateColumn,
+      t.salary.salary,
+      t.salary.deduction,
+      t.salary.net,
+    ]
       .map(toCsvCell)
       .join(',');
     const grouped = rows.reduce(
@@ -379,7 +398,16 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     const orderedMonths = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
     const bodyLines = orderedMonths.flatMap((monthKey) =>
       grouped[monthKey].map((r) =>
-        [monthLabelFromKey(monthKey), r.employeeName, r.branchName, r.salary.toFixed(2), r.deduction.toFixed(2), r.net.toFixed(2)]
+        [
+          monthLabelFromKey(monthKey),
+          r.employeeName,
+          r.branchName,
+          r.employmentType === 'part_time' && r.daysWorked != null ? String(r.daysWorked) : '—',
+          r.employmentType === 'part_time' && r.dailyRate != null ? r.dailyRate.toFixed(2) : '—',
+          r.salary.toFixed(2),
+          r.deduction.toFixed(2),
+          r.net.toFixed(2),
+        ]
           .map(toCsvCell)
           .join(',')
       )
@@ -1451,13 +1479,15 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
           <h2 className={sectionTitleClass}>
             {t.reports.salaryDeductions} ({new Date(data.salary.periodMonth + '-01').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })})
           </h2>
-          <p className="text-sm text-app-muted mb-6">Salary and deductions by employee</p>
+          <p className="text-sm text-app-muted mb-2">{t.reports.salaryDeductionExplanation}</p>
           <div className="rounded-lg border border-gray-200 dark:border-ios-dark-separator overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-100 dark:bg-ios-dark-elevated-2/50">
                   <th className="text-left p-2">{t.common.employee}</th>
                   <th className="text-left p-2">{t.common.branch}</th>
+                  <th className="text-right p-2 tabular-nums">{t.reports.salaryPaidDaysColumn}</th>
+                  <th className="text-right p-2 tabular-nums">{t.reports.salaryDailyRateColumn}</th>
                   <th className="text-right p-2">{t.salary.salary}</th>
                   <th className="text-right p-2">{t.salary.deduction}</th>
                   <th className="text-right p-2">{t.salary.net}</th>
@@ -1468,6 +1498,12 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                   <tr key={i} className={`border-t border-gray-200 dark:border-ios-dark-separator ${i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/50 dark:bg-ios-dark-elevated-2/20'}`}>
                     <td className="p-2">{r.employeeName}</td>
                     <td className="p-2">{r.branchName}</td>
+                    <td className="p-2 text-right tabular-nums text-app-muted">
+                      {r.employmentType === 'part_time' && r.daysWorked != null ? r.daysWorked : '—'}
+                    </td>
+                    <td className="p-2 text-right tabular-nums text-app-muted">
+                      {r.employmentType === 'part_time' && r.dailyRate != null ? r.dailyRate.toFixed(2) : '—'}
+                    </td>
                     <td className="p-2 text-right">{r.salary.toFixed(2)}</td>
                     <td className="p-2 text-right">{r.deduction.toFixed(2)}</td>
                     <td className="p-2 text-right">{r.net.toFixed(2)}</td>
@@ -1476,7 +1512,9 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               </tbody>
               <tfoot>
                 <tr className="border-t border-gray-200 dark:border-ios-dark-separator font-medium bg-gray-100 dark:bg-ios-dark-elevated-2/30">
-                  <td className="p-2" colSpan={2}>{t.common.total}</td>
+                  <td className="p-2" colSpan={4}>
+                    {t.common.total}
+                  </td>
                   <td className="p-2 text-right">{data.salary.totals.salary.toFixed(2)}</td>
                   <td className="p-2 text-right">{data.salary.totals.deduction.toFixed(2)}</td>
                   <td className="p-2 text-right">{data.salary.totals.net.toFixed(2)}</td>

@@ -91,10 +91,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const managerIsManagerRole = managerEmployee.role === 'manager' || managerEmployee.user?.role === 'manager';
       if (!managerIsManagerRole) return Response.json({ error: 'Target employee is not a manager' }, { status: 403 });
 
-      // Enforce same-branch constraint.
-      if (managerEmployee.branchId !== existing.branchId) {
-        return Response.json({ error: 'Manager and employee must be in the same branch' }, { status: 403 });
-      }
+      // Direct reports may be in any branch (owner assigns reporting line in HR).
     }
   }
 

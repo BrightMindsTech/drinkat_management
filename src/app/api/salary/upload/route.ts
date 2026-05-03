@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
   for (const { employeeId, amount } of valid) {
     const emp = await prisma.employee.findUnique({ where: { id: employeeId } });
-    if (!emp) continue;
+    if (!emp || emp.employmentType === 'part_time') continue;
     await prisma.salaryCopy.upsert({
       where: { employeeId_periodMonth: { employeeId, periodMonth } },
       update: { amount, source: 'upload' },

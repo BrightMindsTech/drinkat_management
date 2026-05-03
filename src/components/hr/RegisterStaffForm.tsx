@@ -166,6 +166,9 @@ export function RegisterStaffForm({
             onChange={(e) => setSalaryAmount(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2"
           />
+          {employmentType === 'part_time' ? (
+            <p className="text-xs text-app-muted mt-1">{t.registerStaff.partTimeSalaryDailyHint}</p>
+          ) : null}
         </div>
         <div>
           <label className="block text-sm text-app-label mb-1">{t.common.residentialArea}</label>

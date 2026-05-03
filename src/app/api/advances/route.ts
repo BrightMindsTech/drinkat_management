@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   if (role === 'manager' && team) {
     const teamAdvances = await prisma.advance.findMany({
       where: {
-        employee: { reportsToEmployeeId: user.employee.id, branchId: user.employee.branchId },
+        employee: { reportsToEmployeeId: user.employee.id },
       },
       include: { employee: { include: { branch: true } } },
       orderBy: { requestedAt: 'desc' },

@@ -4,7 +4,13 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { roleMayUseChat } from '@/lib/chat-policy';
-import { loadThreadWithTwoParticipants, touchThreadUpdatedAt, userParticipatesInThread } from '@/lib/chat-thread';
+import {
+  chatThreadIsDirect,
+  loadThreadWithParticipants,
+  senderDisplayNameInThread,
+  touchThreadUpdatedAt,
+  userParticipatesInThread,
+} from '@/lib/chat-thread';
 import { sendPushToUser } from '@/lib/push';
 
 const postSchema = z.object({
@@ -34,12 +40,19 @@ export async function GET(req: Request, ctx: RouteCtx) {
     const ok = await userParticipatesInThread(prisma, threadId, session.user.id);
     if (!ok) return Response.json({ error: 'Not found' }, { status: 404 });
 
-    const thread = await loadThreadWithTwoParticipants(prisma, threadId);
-    if (!thread || thread.participants.length !== 2) {
+    const thread = await loadThreadWithParticipants(prisma, threadId);
+    if (!thread) {
       return Response.json({ error: 'Not found' }, { status: 404 });
     }
-    const other = thread.participants.find((p) => p.userId !== session.user.id);
-    const peerLastReadAt = other?.lastReadAt?.toISOString() ?? null;
+    const pc = thread.participants.length;
+    if (pc < 2) {
+      return Response.json({ error: 'Not found' }, { status: 404 });
+    }
+    const isDirect = chatThreadIsDirect(thread);
+
+    const others = thread.participants.filter((p) => p.userId !== session.user.id);
+    const peerLastReadAt =
+      isDirect && others[0]?.lastReadAt ? others[0].lastReadAt.toISOString() : null;
 
     const url = new URL(req.url);
     const cursor = url.searchParams.get('cursor');
@@ -59,20 +72,37 @@ export async function GET(req: Request, ctx: RouteCtx) {
     const chronological = [...rows].reverse();
     const messages = chronological.map((m) => {
       const mine = m.senderUserId === session.user.id;
-      const readByPeer =
-        mine && other?.lastReadAt != null && m.createdAt.getTime() <= other.lastReadAt.getTime();
+      let readByPeer = false;
+      if (mine && others.length > 0) {
+        const tMs = m.createdAt.getTime();
+        if (isDirect) {
+          const peer = others[0];
+          readByPeer =
+            !!(peer?.lastReadAt && peer.lastReadAt.getTime() >= tMs);
+        } else {
+          readByPeer = others.every(
+            (o) => o.lastReadAt != null && o.lastReadAt.getTime() >= tMs
+          );
+        }
+      }
       return {
         id: m.id,
         body: m.body,
         createdAt: m.createdAt.toISOString(),
         senderUserId: m.senderUserId,
         readByPeer,
+        senderDisplayName: isDirect ? null : senderDisplayNameInThread(thread, m.senderUserId),
       };
     });
 
     const nextCursor = rows.length === PAGE ? rows[rows.length - 1]?.id : null;
 
-    return Response.json({ messages, peerLastReadAt, nextCursor });
+    return Response.json({
+      messages,
+      peerLastReadAt,
+      nextCursor,
+      chatMode: isDirect ? 'direct' : 'group',
+    });
   } catch (e) {
     if (e instanceof Response) return e;
     console.error('[chat/messages GET]', e);
@@ -112,13 +142,13 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
     await touchThreadUpdatedAt(prisma, threadId);
 
-    const thread = await loadThreadWithTwoParticipants(prisma, threadId);
+    const thread = await loadThreadWithParticipants(prisma, threadId);
+    const isDirectPost = thread ? chatThreadIsDirect(thread) : true;
     const recipientIds =
       thread?.participants.filter((p) => p.userId !== session.user.id).map((p) => p.userId) ?? [];
     const origin = originFromRequest(req);
     const deepLink = `${origin}/dashboard/messages?thread=${encodeURIComponent(threadId)}`;
 
-    // Use after() so Cloudflare Workers keep the isolate alive (waitUntil); fire-and-forget promises are often cut off when the response is sent.
     after(async () => {
       try {
         for (const uid of recipientIds) {
@@ -142,7 +172,10 @@ export async function POST(req: Request, ctx: RouteCtx) {
         createdAt: msg.createdAt.toISOString(),
         senderUserId: msg.senderUserId,
         readByPeer: false,
+        senderDisplayName:
+          thread && !isDirectPost ? senderDisplayNameInThread(thread, msg.senderUserId) : null,
       },
+      chatMode: isDirectPost ? 'direct' : 'group',
     });
   } catch (e) {
     if (e instanceof Response) return e;

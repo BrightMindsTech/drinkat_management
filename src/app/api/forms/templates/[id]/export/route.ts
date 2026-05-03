@@ -80,8 +80,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     list = await prisma.managementFormSubmission.findMany({
       where: {
         ...whereBase,
-        branchId: mgr.branchId,
-        employee: { reportsToEmployeeId: mgr.id, branchId: mgr.branchId },
+        employee: { reportsToEmployeeId: mgr.id },
       },
       include: {
         employee: {

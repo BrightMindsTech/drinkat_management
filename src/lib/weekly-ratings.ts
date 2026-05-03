@@ -74,7 +74,6 @@ export async function getExpectedRatingTargetIds(
   const emp = await prisma.employee.findUnique({
     where: { id: raterEmployeeId },
     select: {
-      reportsToEmployeeId: true,
       directReports: { where: { status: { in: ['active', 'on_leave'] } }, select: { id: true } },
     },
   });
@@ -84,8 +83,23 @@ export async function getExpectedRatingTargetIds(
     return emp.directReports.map((d) => d.id);
   }
 
-  if (emp.reportsToEmployeeId) return [emp.reportsToEmployeeId];
   return [];
+}
+
+/** Managers an employee may rate voluntarily (no obligation to rate all). Excludes self. */
+export async function getEligibleWeeklyRatingManagerTargets(
+  prisma: PrismaClient,
+  excludeEmployeeId: string
+): Promise<{ id: string; name: string }[]> {
+  return prisma.employee.findMany({
+    where: {
+      role: 'manager',
+      status: { in: ['active', 'on_leave'] },
+      NOT: { id: excludeEmployeeId },
+    },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
 }
 
 export async function isWeeklyRatingGateBlocking(
@@ -94,6 +108,8 @@ export async function isWeeklyRatingGateBlocking(
   role: AppUserRole
 ): Promise<boolean> {
   if (!rolesSubjectToWeeklyRating(role)) return false;
+  // Only managers are required to submit for every direct report. Staff/QC/marketing ratings are voluntary.
+  if (role !== 'manager') return false;
 
   const weekKey = getObligationWeekStartKey();
   const expected = await getExpectedRatingTargetIds(prisma, raterEmployeeId, role);
@@ -113,6 +129,31 @@ export async function assertTargetAllowedForRater(
   targetEmployeeId: string,
   role: AppUserRole
 ): Promise<boolean> {
-  const expected = await getExpectedRatingTargetIds(prisma, raterEmployeeId, role);
-  return expected.includes(targetEmployeeId);
+  const weekStartKey = getObligationWeekStartKey();
+
+  if (role === 'manager') {
+    const expected = await getExpectedRatingTargetIds(prisma, raterEmployeeId, role);
+    return expected.includes(targetEmployeeId);
+  }
+  if (role !== 'staff' && role !== 'qc' && role !== 'marketing') return false;
+
+  const existingThisWeek = await prisma.weeklyRating.findUnique({
+    where: {
+      raterEmployeeId_targetEmployeeId_weekStartKey: {
+        raterEmployeeId,
+        targetEmployeeId,
+        weekStartKey,
+      },
+    },
+    select: { id: true },
+  });
+  if (existingThisWeek) return true;
+
+  const target = await prisma.employee.findUnique({
+    where: { id: targetEmployeeId },
+    select: { id: true, role: true, status: true },
+  });
+  if (!target || target.id === raterEmployeeId) return false;
+  if (target.role !== 'manager') return false;
+  return target.status === 'active' || target.status === 'on_leave';
 }

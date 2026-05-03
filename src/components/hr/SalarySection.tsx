@@ -18,7 +18,16 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
   const [staffSearch, setStaffSearch] = useState('');
   const [deductionReport, setDeductionReport] = useState<{
     periodMonth: string;
-    rows: { employeeName: string; branchName: string; salary: number; deduction: number; net: number }[];
+    rows: {
+      employeeName: string;
+      branchName: string;
+      salary: number;
+      deduction: number;
+      net: number;
+      employmentType?: 'full_time' | 'part_time';
+      daysWorked?: number | null;
+      dailyRate?: number | null;
+    }[];
     totals: { salary: number; deduction: number; net: number };
   } | null>(null);
 
@@ -82,9 +91,7 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
   }
 
   async function loadDeductionReport() {
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const res = await fetch(`/api/salary/deductions?periodMonth=${currentMonth}`);
+    const res = await fetch(`/api/salary/deductions?periodMonth=${encodeURIComponent(periodMonth)}`);
     const data = await res.json();
     if (res.ok) setDeductionReport(data);
     else setDeductionReport(null);
@@ -132,6 +139,7 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
       <div className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated overflow-hidden">
         <div className="p-3 border-b border-gray-200 dark:border-ios-dark-separator bg-gray-50/70 dark:bg-ios-dark-elevated-2/30">
           <p className="text-sm font-medium text-app-primary">{t.salary.manualEntry}</p>
+          <p className="text-xs text-app-muted mt-1">{t.salary.manualSalaryFullTimeHint}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <input
               type="search"
@@ -236,6 +244,7 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
                   year: 'numeric',
                 })}
               </p>
+              <p className="text-xs text-app-muted mt-1">{t.reports.salaryDeductionExplanation}</p>
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs">
                 <div className="rounded-md border border-gray-200 dark:border-ios-dark-separator bg-white/80 dark:bg-ios-dark-elevated px-2.5 py-2">
                   <p className="text-app-muted">{t.salary.salary}</p>
@@ -256,6 +265,8 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
                 <tr className="bg-gray-100 dark:bg-ios-dark-elevated-2/50">
                   <th className="text-left p-2">{t.common.employee}</th>
                   <th className="text-left p-2">{t.common.branch}</th>
+                  <th className="text-right p-2">{t.reports.salaryPaidDaysColumn}</th>
+                  <th className="text-right p-2">{t.reports.salaryDailyRateColumn}</th>
                   <th className="text-right p-2">{t.salary.salary}</th>
                   <th className="text-right p-2">{t.salary.deduction}</th>
                   <th className="text-right p-2">{t.salary.net}</th>
@@ -264,7 +275,7 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
               <tbody>
                 {deductionReport.rows.length === 0 && (
                   <tr className="border-t">
-                    <td className="p-3 text-center text-app-muted" colSpan={5}>
+                    <td className="p-3 text-center text-app-muted" colSpan={7}>
                       {t.common.noData}
                     </td>
                   </tr>
@@ -276,6 +287,12 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
                   >
                     <td className="p-2">{r.employeeName}</td>
                     <td className="p-2">{r.branchName}</td>
+                    <td className="p-2 text-right tabular-nums text-app-muted">
+                      {r.employmentType === 'part_time' && r.daysWorked != null ? r.daysWorked : '—'}
+                    </td>
+                    <td className="p-2 text-right tabular-nums text-app-muted">
+                      {r.employmentType === 'part_time' && r.dailyRate != null ? r.dailyRate.toFixed(2) : '—'}
+                    </td>
                     <td className="p-2 text-right tabular-nums">{formatMoney(r.salary)}</td>
                     <td className="p-2 text-right tabular-nums text-red-600 dark:text-red-400">{formatMoney(r.deduction)}</td>
                     <td className="p-2 text-right tabular-nums font-medium text-emerald-700 dark:text-emerald-300">{formatMoney(r.net)}</td>
@@ -284,7 +301,7 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-gray-300 dark:border-ios-dark-separator font-semibold bg-gray-100 dark:bg-ios-dark-elevated-2/30">
-                  <td className="p-2" colSpan={2}>{t.common.total}</td>
+                  <td className="p-2" colSpan={4}>{t.common.total}</td>
                   <td className="p-2 text-right tabular-nums">{formatMoney(deductionReport.totals.salary)}</td>
                   <td className="p-2 text-right tabular-nums text-red-600 dark:text-red-400">{formatMoney(deductionReport.totals.deduction)}</td>
                   <td className="p-2 text-right tabular-nums text-emerald-700 dark:text-emerald-300">{formatMoney(deductionReport.totals.net)}</td>

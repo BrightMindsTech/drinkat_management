@@ -17,7 +17,7 @@ export async function POST(_req: Request, ctx: Ctx) {
 
   const mgr = await prisma.employee.findUnique({
     where: { userId: session.user.id },
-    select: { id: true, branchId: true },
+    select: { id: true },
   });
   if (!mgr) {
     return Response.json({ error: 'No employee record for manager' }, { status: 403 });
@@ -26,7 +26,7 @@ export async function POST(_req: Request, ctx: Ctx) {
   const submission = await prisma.managementFormSubmission.findUnique({
     where: { id: submissionId },
     include: {
-      employee: { select: { id: true, name: true, branchId: true, reportsToEmployeeId: true } },
+      employee: { select: { id: true, name: true, reportsToEmployeeId: true } },
       template: { select: { id: true, title: true, category: true } },
       branch: { select: { name: true } },
     },
@@ -35,9 +35,7 @@ export async function POST(_req: Request, ctx: Ctx) {
     return Response.json({ error: 'Submission not found' }, { status: 404 });
   }
 
-  const okTeam =
-    submission.employee.reportsToEmployeeId === mgr.id &&
-    submission.employee.branchId === mgr.branchId;
+  const okTeam = submission.employee.reportsToEmployeeId === mgr.id;
   if (!okTeam) {
     return Response.json({ error: 'You can only report submissions from your direct reports' }, { status: 403 });
   }

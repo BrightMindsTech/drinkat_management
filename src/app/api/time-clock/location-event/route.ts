@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Location consent required' }, { status: 403 });
   }
 
-  if (isTimeClockGeofenceExempt({ name: emp.name, department: emp.department }, session.user.email)) {
+  if (isTimeClockGeofenceExempt({ name: emp.name, role: emp.role, department: emp.department }, session.user.email)) {
     return Response.json({ ok: true, action: 'none' as const, inside: true });
   }
 

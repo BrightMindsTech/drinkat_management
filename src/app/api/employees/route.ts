@@ -50,7 +50,6 @@ export async function GET(req: NextRequest) {
       where: {
         status: { not: 'terminated' },
         reportsToEmployeeId: managerEmployee.id,
-        branchId: managerEmployee.branchId,
       },
       include: { branch: true, department: true, user: { select: { email: true } } },
       orderBy: { name: 'asc' },

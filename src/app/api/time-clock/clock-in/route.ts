@@ -54,7 +54,7 @@ export async function POST(req: Request) {
 
   const { lat, lng } = parsed.data;
   const geofenceExempt = isTimeClockGeofenceExempt(
-    { name: emp.name, department: emp.department },
+    { name: emp.name, role: emp.role, department: emp.department },
     session.user.email
   );
   const branchForClock = await resolveClockBranchForEmployee({

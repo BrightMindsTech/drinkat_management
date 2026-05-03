@@ -50,8 +50,9 @@ export async function purgeExpiredChat(prisma: PrismaClient): Promise<{
     where: { updatedAt: { lt: cutoff } },
   });
 
+  /** Direct threads with no messages are removed; group threads persist even when empty/inactive. */
   const emptyThreads = await prisma.chatThread.findMany({
-    where: { messages: { none: {} } },
+    where: { messages: { none: {} }, kind: 'direct' },
     select: { id: true },
   });
   const emptyIds = emptyThreads.map((t) => t.id);

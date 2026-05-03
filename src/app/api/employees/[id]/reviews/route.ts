@@ -23,10 +23,7 @@ async function assertCanReadEmployeeReviews(session: { user: { id: string; role:
   if (role === 'manager') {
     const target = await prisma.employee.findUnique({ where: { id: employeeId } });
     if (!target) return new Response(null, { status: 404 });
-    if (
-      target.reportsToEmployeeId === user.employee.id &&
-      target.branchId === user.employee.branchId
-    ) {
+    if (target.reportsToEmployeeId === user.employee.id) {
       return null;
     }
   }
@@ -63,10 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
     if (!user?.employee) return Response.json({ error: 'Forbidden' }, { status: 403 });
     const mgr = user.employee;
-    if (
-      employee.reportsToEmployeeId !== mgr.id ||
-      employee.branchId !== mgr.branchId
-    ) {
+    if (employee.reportsToEmployeeId !== mgr.id) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
   }

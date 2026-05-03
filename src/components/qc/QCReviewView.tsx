@@ -637,7 +637,10 @@ function AssignForm({
       className="mb-4 rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 flex flex-wrap gap-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (employee) onSave(checklistId, employeeId, employee.branchId, needsDueDate ? dueDate : undefined);
+        if (employee && selectedChecklist) {
+          const assignmentBranchId = selectedChecklist.branchId ?? employee.branchId;
+          onSave(checklistId, employeeId, assignmentBranchId, needsDueDate ? dueDate : undefined);
+        }
       }}
     >
       <select value={checklistId} onChange={(e) => setChecklistId(e.target.value)} className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2" required>

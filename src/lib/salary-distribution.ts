@@ -7,8 +7,9 @@ function monthKeyUtc(d: Date): string {
 }
 
 /**
- * Auto-distribute monthly salaries on/after day 5.
- * Uses Employee.salaryAmount as base and upserts SalaryCopy for current month.
+ * Auto-distribute monthly salaries on/after day 5 (full-time only).
+ * Uses Employee.salaryAmount as monthly base and upserts SalaryCopy for current month.
+ * Part-time pay is attendance-based elsewhere; skipped here.
  */
 export async function runSalaryDistributionIfDue(now: Date = new Date()) {
   if (now.getUTCDate() < 5) return;
@@ -19,6 +20,7 @@ export async function runSalaryDistributionIfDue(now: Date = new Date()) {
   const employees = await prisma.employee.findMany({
     where: {
       status: { in: ['active', 'on_leave'] },
+      employmentType: 'full_time',
       salaryAmount: { not: null },
     },
     select: {

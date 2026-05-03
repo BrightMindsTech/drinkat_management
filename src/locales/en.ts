@@ -90,13 +90,22 @@ export const en = {
     retentionHint:
       'Messages older than ~24h are removed automatically when Chats is opened (no extra setup).',
     newChat: 'New chat',
+    newGroupChat: 'New group',
     chooseContact: 'Choose a contact',
+    chooseGroupMembers: 'New group',
+    groupPickHint: 'Select at least two people. Anyone who can use chat can be included, including owners.',
+    groupNameOptional: 'Group name (optional)',
+    groupNamePlaceholder: 'e.g. Closing shift · Airport',
+    createGroup: 'Create group',
+    groupNeedTwoOthers: 'Select at least two people for a group.',
+    groupCreateFailed: 'Could not create group.',
     threads: 'Conversations',
     noThreads: 'No conversations yet. Start a new chat.',
     pickThread: 'Select a conversation or start a new chat.',
     conversation: 'Conversation',
     peerSeen: 'Last seen by them',
     typing: 'Typing',
+    senderYou: 'You',
     read: 'Read',
     messagePlaceholder: 'Write a message… (Enter to send, Shift+Enter for new line)',
     send: 'Send',
@@ -157,9 +166,9 @@ export const en = {
     geoTimedOut: 'GPS timed out. Keep the page open, then try reloading or toggling location permission.',
     weeklyRatingRequiredTitle: 'Weekly ratings required',
     weeklyRatingRequiredBody:
-      'Submit your required weekly ratings (Saturday–Sunday window, or catch up if overdue) before using the time clock.',
+      'Managers: submit every required weekly rating for direct reports for the due week (Saturday–Sunday preferred, or catch up during the week). The clock is blocked until that is complete. Rating managers is optional for staff and similar roles.',
     weeklyRatingGoToRatings: 'Open ratings',
-    weeklyRatingBlockingHint: 'Complete your weekly ratings to use clock in/out.',
+    weeklyRatingBlockingHint: 'Complete weekly ratings for all direct reports to use clock in/out.',
     clockInRequiredTitle: 'Clock in required',
     clockInRequiredBody: 'You need to clock in before using the app. Open the time clock to register your attendance.',
     goToClockIn: 'Go to clock in',
@@ -167,7 +176,7 @@ export const en = {
   ratings: {
     pageTitle: 'Weekly ratings',
     intro:
-      'Each week, rate your assigned manager (if you have one) or each of your direct reports (managers). Scores are 0–100. Below 85, you must give a short reason. Ratings are sent to the owner automatically.',
+      'Managers must rate each active/on-leave direct report once per due week (scores 0–100; below 85 requires a short reason). Staff and similar roles may optionally rate whichever managers they choose—they are never required to rate everyone.',
     weekDue: 'Week starting (Monday)',
     emphasisWeekend: 'Preferred submission: Saturday or Sunday.',
     catchUp: 'You can still submit during the week if you missed the weekend.',
@@ -185,6 +194,22 @@ export const en = {
     blockingClock: 'Time clock is blocked until weekly ratings are complete.',
     thankYouTitle: 'Thank you for rating',
     thankYouBody: 'Your weekly ratings for this week are complete.',
+    optionalIntro:
+      'You may submit weekly ratings for any managers you choose. Nothing is mandatory beyond what you decide to submit. Scores are 0–100; below 85 requires a short reason. Ratings are visible to owners as before.',
+    optionalCatchUp:
+      'You may submit or update ratings during the week once you have picked someone to rate.',
+    optionalFootnote:
+      'Time clock access does not depend on submitting these ratings. Managers still have separate requirements for their direct reports.',
+    optionalStatusNone:
+      'No ratings submitted yet for this week—you can add a manager below if you want to.',
+    optionalSavedCount: '{count} rating(s) submitted this week.',
+    optionalNoEligibleManagers: 'There are no managers on file to rate right now.',
+    optionalPickManagerHint:
+      'Pick a manager from the dropdown below whenever you want to submit a rating (you can skip this entirely).',
+    addAnotherManager: 'Add another rating',
+    addManagerPlaceholder: 'Choose a manager…',
+    addManagerButton: 'Add',
+    updateRating: 'Save changes',
   },
   managerReports: {
     pageTitle: 'Manager reports',
@@ -274,7 +299,7 @@ export const en = {
     chooseEmployee: 'Choose employee...',
     noManagersFound: 'No managers found. Create an employee in the "Manager" department first.',
     noDirectReports: 'No direct reports yet.',
-    noEmployeesForBranch: 'No staff/QC employees available in this branch.',
+    noEmployeesForBranch: 'No staff or QC employees available to assign (everyone may be a manager, or the list is empty).',
     directReportsLabel: 'Direct reports',
     unassign: 'Unassign',
     reassignLabel: 'currently assigned',
@@ -373,6 +398,7 @@ export const en = {
     employmentFullTime: 'Full time',
     employmentPartTime: 'Part time',
     partTimeMinDaysHint: 'Part-time: expected at least 15 distinct clock-in days per calendar month.',
+    partTimeSalaryDailyHint: 'Salary amount is the daily rate (pay = days worked in the month × this rate).',
   },
   reviews: {
     title: 'Performance reviews',
@@ -395,6 +421,8 @@ export const en = {
     fullTime: 'Full time',
     partTime: 'Part time',
     partTimeScheduleHint: 'Part-time: expected at least 15 distinct clock-in days per calendar month.',
+    partTimeSalaryDailyHint:
+      'Use “Salary” as the daily rate in JOD. Monthly gross is computed from attendance (distinct days with clock-in).',
     branch: 'Branch',
     department: 'Department',
     advanceLimit: 'Advance limit (JOD)',
@@ -426,6 +454,8 @@ export const en = {
     periodMonth: 'Period (month)',
     uploadCsv: 'Upload CSV (columns: employeeId or email, amount)',
     manualEntry: 'Manual entry (amount per employee)',
+    manualSalaryFullTimeHint:
+      'Monthly salary copies apply to full-time staff only. Part-time pay uses time-clock days × daily rate from each profile.',
     saveSalaryCopy: 'Save salary copy',
     saving: 'Saving…',
     viewDeductionReport: 'View deduction report',
@@ -591,13 +621,13 @@ export const en = {
     leaveSection: 'Leave',
     attendanceSection: 'Attendance (time clock)',
     attendanceIntro:
-      'Present weekdays = Mon–Fri with at least one clock-in. Absent weekdays = expected workdays in range (weekdays minus approved leave) minus present weekdays. Distinct clock-in days = any calendar day with a clock-in.',
+      'Present workdays = Sun–Thu with at least one clock-in. Expected days count only after the employee’s join date in the selected range. Absent workdays = expected workdays (minus approved leave on those days) minus present workdays. Distinct clock-in days = any calendar day with a clock-in.',
     attendancePartTimeMonthNote:
       'For part-time employees, a full calendar month should include at least 15 distinct days with a clock-in.',
     attendanceShortPeriodNote:
       'The part-time monthly minimum (15 distinct clock-in days) applies when Period is Monthly.',
-    attendancePresentWeekdays: 'Present (weekdays)',
-    attendanceAbsenceDays: 'Absent weekdays',
+    attendancePresentWeekdays: 'Present (Sun–Thu)',
+    attendanceAbsenceDays: 'Absent (Sun–Thu)',
     attendanceDistinctDays: 'Distinct clock-in days',
     attendanceEmploymentType: 'Schedule',
     employmentFullTime: 'Full time',
@@ -607,6 +637,10 @@ export const en = {
     partTimeComplianceShort: 'Below minimum',
     salarySection: 'Salary',
     salaryDeductions: 'Salary deductions',
+    salaryDeductionExplanation:
+      'Full-time gross uses the salary copy for the month (manual upload/auto). Part-time gross is attendance-based: distinct clock-in days in that calendar month × the employee’s daily rate (salary amount on their profile).',
+    salaryPaidDaysColumn: 'Days worked',
+    salaryDailyRateColumn: 'Daily rate',
     salaryMonth: 'Salary month',
     exportCsv: 'Export CSV',
     exportSalary: 'Export salary report',

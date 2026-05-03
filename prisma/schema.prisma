@@ -69,11 +69,14 @@ model AppCronWatermark {
   lastRunAt DateTime
 }
 
-/// Direct 1:1 thread (exactly two participants). Messages older than 24h are purged automatically (throttled).
+/// Direct 1:1 (`kind=direct`, two participants) or group (`kind=group`, multiple members). Messages older than ~24h are purged (throttled); empty direct threads are removed; empty group threads are kept.
 model ChatThread {
   id           String              @id @default(cuid())
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
+  /// `direct` | `group`
+  kind         String              @default("direct")
+  title        String?
   participants ChatParticipant[]
   messages     ChatMessage[]
   typingStates ChatTypingState[]

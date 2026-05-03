@@ -57,17 +57,15 @@ export async function GET() {
     if (role === 'manager') {
       const user = await prisma.user.findUnique({
         where: { id: session.user.id },
-        select: { employee: { select: { id: true, branchId: true } } },
+        select: { employee: { select: { id: true } } },
       });
       if (!user?.employee) return Response.json({ total: 0, items: [] });
 
       const managerEmployeeId = user.employee.id;
-      const managerBranchId = user.employee.branchId;
 
       pendingQcPromise = prisma.qcSubmission.findMany({
       where: {
         status: 'pending',
-        branchId: managerBranchId,
         employee: { reportsToEmployeeId: managerEmployeeId },
       },
       select: {
@@ -81,7 +79,7 @@ export async function GET() {
       pendingLeavePromise = prisma.leaveRequest.findMany({
       where: {
         status: 'pending',
-        employee: { reportsToEmployeeId: managerEmployeeId, branchId: managerBranchId },
+        employee: { reportsToEmployeeId: managerEmployeeId },
       },
       select: { id: true, employee: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
@@ -90,7 +88,7 @@ export async function GET() {
       pendingAdvancesPromise = prisma.advance.findMany({
       where: {
         status: 'pending',
-        employee: { reportsToEmployeeId: managerEmployeeId, branchId: managerBranchId },
+        employee: { reportsToEmployeeId: managerEmployeeId },
       },
       select: { id: true, employee: { select: { name: true } }, amount: true },
       orderBy: { requestedAt: 'desc' },

@@ -104,7 +104,6 @@ export default async function FormsPage() {
       ? await prisma.employee.findMany({
           where: {
             reportsToEmployeeId: user.employee.id,
-            branchId: user.employee.branchId,
             status: { in: ['active', 'on_leave'] },
           },
           select: { id: true, name: true, role: true },
@@ -141,8 +140,7 @@ export default async function FormsPage() {
       const managerEmployee = userWithEmployee.employee;
       const list = await prisma.managementFormSubmission.findMany({
         where: {
-          branchId: managerEmployee.branchId,
-          employee: { reportsToEmployeeId: managerEmployee.id, branchId: managerEmployee.branchId },
+          employee: { reportsToEmployeeId: managerEmployee.id },
         },
         include: {
           template: { include: { departmentAssignments: true } },

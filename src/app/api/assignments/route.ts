@@ -43,8 +43,7 @@ export async function GET(req: NextRequest) {
       where: {
         ...(employeeId ? { employeeId } : {}),
         ...(checklistId ? { checklistId } : {}),
-        branchId: managerEmployee.branchId,
-        employee: { reportsToEmployeeId: managerEmployee.id, branchId: managerEmployee.branchId },
+        employee: { reportsToEmployeeId: managerEmployee.id },
       },
       include: {
         checklist: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
@@ -86,16 +85,21 @@ export async function POST(req: NextRequest) {
   if (!employee) return Response.json({ error: 'Employee not found' }, { status: 404 });
   if (employee.status === 'terminated') return Response.json({ error: 'Cannot assign to terminated employee' }, { status: 400 });
 
-  // Manager can assign only within own branch and only to direct reports.
+  // Manager: direct reports only; for branch-scoped checklists, assignment branch must match the checklist's branch.
   if (role === 'manager') {
     const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
     if (!user?.employee) return Response.json({ error: 'Forbidden' }, { status: 403 });
     const managerEmployee = user.employee;
     const okReport = employee.reportsToEmployeeId === managerEmployee.id;
-    const okBranch = employee.branchId === managerEmployee.branchId && parsed.data.branchId === managerEmployee.branchId;
-    const okChecklistBranch = !checklist.branchId || checklist.branchId === managerEmployee.branchId;
-    if (!okReport || !okBranch || !okChecklistBranch) {
-      return Response.json({ error: 'Managers can only assign branch checklists to direct reports in the same branch' }, { status: 403 });
+    const okChecklistBranch = !checklist.branchId || checklist.branchId === parsed.data.branchId;
+    if (!okReport || !okChecklistBranch) {
+      return Response.json(
+        {
+          error:
+            'Managers can only assign to their direct reports. For a branch-specific checklist, pick that branch for the assignment.',
+        },
+        { status: 403 }
+      );
     }
   }
 

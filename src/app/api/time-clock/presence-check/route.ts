@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   const away = await getActiveAwaySession(emp.id);
   if (away) return Response.json({ triggerAway: false, reason: 'away_already_active' });
 
-  if (isTimeClockGeofenceExempt({ name: emp.name, department: emp.department }, session.user.email)) {
+  if (isTimeClockGeofenceExempt({ name: emp.name, role: emp.role, department: emp.department }, session.user.email)) {
     return Response.json({ triggerAway: false, reason: 'geofence_exempt' });
   }
 

@@ -118,7 +118,6 @@ export default async function TimeClockPage() {
       const team = await prisma.employee.findMany({
         where: {
           reportsToEmployeeId: user.employee.id,
-          branchId: user.employee.branchId,
           status: { in: ['active', 'on_leave'] },
         },
         select: { id: true },

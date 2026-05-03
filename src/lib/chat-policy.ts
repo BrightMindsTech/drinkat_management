@@ -70,6 +70,69 @@ export type ChatUserListRow = {
   role: AppUserRole;
 };
 
+/** Everyone who may appear in a new group chat (no same-branch rule). Creator still must use chat themselves. */
+export async function listGroupChatEligibleUsers(
+  prisma: PrismaClient,
+  sessionUserId: string,
+  sessionRole: string
+): Promise<ChatUserListRow[]> {
+  if (!roleMayUseChat(sessionRole)) return [];
+
+  const me = await prisma.user.findUnique({ where: { id: sessionUserId }, select: { id: true } });
+  if (!me) return [];
+
+  const others = await prisma.user.findMany({
+    where: { id: { not: sessionUserId } },
+    select: {
+      id: true,
+      role: true,
+      email: true,
+      employee: { select: { name: true, status: true } },
+    },
+    orderBy: { email: 'asc' },
+    take: 500,
+  });
+
+  const rows: ChatUserListRow[] = [];
+  for (const u of others) {
+    if (u.employee?.status === 'terminated') continue;
+    const r = normalizeUserRole(u.role);
+    if (!roleMayUseChat(u.role)) continue;
+    const displayName = u.employee?.name?.trim() || u.email.split('@')[0] || u.id;
+    rows.push({ id: u.id, displayName, role: r });
+  }
+  return rows;
+}
+
+/** Group threads: creator + members must exist, use chat roles, no terminated linked employees; no pairwise branch gate. */
+export async function validateGroupParticipants(
+  prisma: PrismaClient,
+  creatorUserId: string,
+  participantIds: string[]
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const uniqueOthers = [...new Set(participantIds)].filter((id) => id && id !== creatorUserId);
+  if (uniqueOthers.length < 2) {
+    return { ok: false, error: 'Select at least two people besides yourself for a group chat' };
+  }
+  const allIds = [...uniqueOthers, creatorUserId];
+  const users = await prisma.user.findMany({
+    where: { id: { in: allIds } },
+    select: {
+      id: true,
+      role: true,
+      employee: { select: { status: true } },
+    },
+  });
+  if (users.length !== allIds.length) {
+    return { ok: false, error: 'One or more users were not found' };
+  }
+  for (const u of users) {
+    if (!roleMayUseChat(u.role)) return { ok: false, error: 'A selected user cannot use chat' };
+    if (u.employee?.status === 'terminated') return { ok: false, error: 'A selected user is not active' };
+  }
+  return { ok: true };
+}
+
 export async function listChatEligiblePeers(
   prisma: PrismaClient,
   sessionUserId: string,

@@ -446,7 +446,12 @@ export function EmployeeCard({
             {employee.salaryAmount != null && (
               <>
                 <dt className="text-app-muted">{t.common.salaryAmount}</dt>
-                <dd className="text-app-primary tabular-nums">{employee.salaryAmount.toFixed(2)}</dd>
+                <dd className="text-app-primary tabular-nums">
+                  <span>{employee.salaryAmount.toFixed(2)}</span>
+                  {employee.employmentType === 'part_time' ? (
+                    <span className="block text-xs text-app-muted font-normal mt-0.5">{t.employeeCard.partTimeSalaryDailyHint}</span>
+                  ) : null}
+                </dd>
               </>
             )}
             {employee.advanceLimit != null && (
@@ -605,6 +610,9 @@ export function EmployeeCard({
                 onChange={(e) => setDraftSalaryAmount(e.target.value)}
                 className="mt-1 w-full rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1 text-sm"
               />
+              {employee.employmentType === 'part_time' ? (
+                <span className="block text-xs text-app-muted mt-1">{t.employeeCard.partTimeSalaryDailyHint}</span>
+              ) : null}
             </label>
             <label className="block text-sm text-app-label">
               {t.common.residentialArea}

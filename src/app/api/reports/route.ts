@@ -5,6 +5,7 @@ import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, format } from 'date-fns';
 import { DEFAULT_APP_TIMEZONE } from '@/lib/shifts';
 import { weekStartKeysBetweenRange, weekStartKeysOverlappingMonth } from '@/lib/weekly-ratings';
+import { getSalaryDeductionReport } from '@/lib/salary-deduction-report';
 
 export async function GET(req: NextRequest) {
   await requireOwner();
@@ -75,7 +76,11 @@ export async function GET(req: NextRequest) {
         photos: { select: { id: true, filePath: true } },
       },
     }),
-    getSalaryDeductionRows(salaryMonthParam || undefined, branchId),
+    getSalaryDeductionReport(
+      prisma,
+      salaryMonthParam && /^\d{4}-\d{2}$/.test(salaryMonthParam) ? salaryMonthParam : format(refDate, 'yyyy-MM'),
+      branchId
+    ),
     getNewHires(start, end, branchId),
     getHeadcountOverTime(branchId),
     getBranchOverview(branchId, start, end),
@@ -556,9 +561,10 @@ function getQcByChecklist(
 
 const PART_TIME_MIN_DAYS_MONTH = 15;
 
-function isWeekday(d: Date): boolean {
+/** Scheduled workdays in app locales (Jordan): Sun (0) through Thu (4). Fri–Sat weekend. */
+function isWorkdaySunThu(d: Date): boolean {
   const wd = d.getDay();
-  return wd !== 0 && wd !== 6;
+  return wd !== 5 && wd !== 6;
 }
 
 function formatYmd(d: Date): string {
@@ -577,10 +583,22 @@ function eachCalendarDay(start: Date, end: Date): Date[] {
   return out;
 }
 
-function weekdayKeysInPeriod(start: Date, end: Date): Set<string> {
+function effectiveEmployedStart(periodStart: Date, joinDate: Date | null): Date {
+  const ps = startOfDay(periodStart);
+  if (!joinDate) return ps;
+  const jd = startOfDay(joinDate);
+  return jd.getTime() > ps.getTime() ? jd : ps;
+}
+
+/** Sun–Thu dates in [periodStart, periodEnd] on or after the employee’s hire date (date-only bounds). */
+function workdayKeysForEmployee(joinDate: Date | null, periodStart: Date, periodEnd: Date): Set<string> {
+  const eff = effectiveEmployedStart(periodStart, joinDate);
+  const last = new Date(periodEnd.getFullYear(), periodEnd.getMonth(), periodEnd.getDate());
+  if (eff.getTime() > last.getTime()) return new Set();
+
   const set = new Set<string>();
-  for (const d of eachCalendarDay(start, end)) {
-    if (isWeekday(d)) set.add(formatYmd(d));
+  for (const d of eachCalendarDay(eff, last)) {
+    if (isWorkdaySunThu(d)) set.add(formatYmd(d));
   }
   return set;
 }
@@ -590,6 +608,7 @@ async function getAttendanceReport(
     id: string;
     branchId: string;
     name: string;
+    joinDate: Date | null;
     employmentType: string;
     branch: { name: string };
   }[],
@@ -629,25 +648,25 @@ async function getAttendanceReport(
     const ovStart = l.startDate > start ? new Date(l.startDate) : new Date(start);
     const ovEnd = l.endDate < end ? new Date(l.endDate) : new Date(end);
     for (const d of eachCalendarDay(ovStart, ovEnd)) {
-      if (!isWeekday(d)) continue;
+      if (!isWorkdaySunThu(d)) continue;
       const key = formatYmd(d);
       if (!leaveWeekdays.has(l.employeeId)) leaveWeekdays.set(l.employeeId, new Set());
       leaveWeekdays.get(l.employeeId)!.add(key);
     }
   }
 
-  const allWeekdayKeys = weekdayKeysInPeriod(start, end);
   const isMonthView = period === 'month';
 
   const rows = employees.map((emp) => {
     const presentAll = presentAllDays.get(emp.id) ?? new Set<string>();
     const leaveSet = leaveWeekdays.get(emp.id) ?? new Set<string>();
+    const empWorkdays = workdayKeysForEmployee(emp.joinDate, start, end);
     let presentWeekdays = 0;
     for (const day of presentAll) {
-      if (allWeekdayKeys.has(day)) presentWeekdays++;
+      if (empWorkdays.has(day)) presentWeekdays++;
     }
     let expectedWeekdays = 0;
-    for (const wk of allWeekdayKeys) {
+    for (const wk of empWorkdays) {
       if (!leaveSet.has(wk)) expectedWeekdays++;
     }
     const absenceDays = Math.max(0, expectedWeekdays - presentWeekdays);
@@ -825,38 +844,3 @@ async function getBranchOverview(
   });
 }
 
-async function getSalaryDeductionRows(salaryMonth: string | undefined, branchId: string) {
-  const now = new Date();
-  const periodMonth = salaryMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-  const salaryCopies = await prisma.salaryCopy.findMany({
-    where: { periodMonth, ...(branchId ? { branchId } : {}) },
-    include: { employee: { include: { branch: true } } },
-  });
-
-  const allApproved = await prisma.advance.findMany({
-    where: { status: 'approved', ...(branchId ? { employee: { branchId } } : {}) },
-    select: { employeeId: true, amount: true },
-  });
-  const deductionByEmployee = new Map<string, number>();
-  for (const a of allApproved) {
-    deductionByEmployee.set(a.employeeId, (deductionByEmployee.get(a.employeeId) ?? 0) + a.amount);
-  }
-
-  const rows = salaryCopies.map((sc) => {
-    const deduction = deductionByEmployee.get(sc.employeeId) ?? 0;
-    return {
-      periodMonth: sc.periodMonth,
-      employeeName: sc.employee.name,
-      branchName: sc.employee.branch.name,
-      salary: sc.amount,
-      deduction,
-      net: Math.max(0, sc.amount - deduction),
-    };
-  });
-  const totals = rows.reduce(
-    (acc, r) => ({ salary: acc.salary + r.salary, deduction: acc.deduction + r.deduction, net: acc.net + r.net }),
-    { salary: 0, deduction: 0, net: 0 }
-  );
-  return { periodMonth, rows, totals };
-}

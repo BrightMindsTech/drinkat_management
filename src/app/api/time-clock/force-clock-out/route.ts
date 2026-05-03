@@ -44,15 +44,13 @@ export async function POST(req: Request) {
   if (role === 'manager') {
     const me = await prisma.employee.findUnique({
       where: { userId: session.user.id },
-      select: { id: true, branchId: true },
+      select: { id: true },
     });
     if (!me) return Response.json({ error: 'No employee record for manager' }, { status: 403 });
     const okTeam =
-      target.reportsToEmployeeId === me.id &&
-      target.branchId === me.branchId &&
-      (target.status === 'active' || target.status === 'on_leave');
+      target.reportsToEmployeeId === me.id && (target.status === 'active' || target.status === 'on_leave');
     if (!okTeam) {
-      return Response.json({ error: 'You can only force clock-out for your direct reports in your branch' }, { status: 403 });
+      return Response.json({ error: 'You can only force clock-out for your direct reports' }, { status: 403 });
     }
   }
 

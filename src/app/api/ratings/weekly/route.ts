@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/session';
 import { normalizeUserRole, type AppUserRole } from '@/lib/formVisibility';
 import {
   getExpectedRatingTargetIds,
+  getEligibleWeeklyRatingManagerTargets,
   getObligationWeekStartKey,
   isWeeklyRatingGateBlocking,
   isWeekendSubmissionEmphasis,
@@ -39,32 +40,73 @@ export async function GET() {
   }
 
   const weekStartKey = getObligationWeekStartKey();
-  const expectedIds = await getExpectedRatingTargetIds(prisma, emp.id, role as AppUserRole);
-  const targets =
-    expectedIds.length === 0
-      ? []
-      : await prisma.employee.findMany({
-          where: { id: { in: expectedIds } },
-          select: { id: true, name: true },
-        });
 
-  const existing = await prisma.weeklyRating.findMany({
+  if (role === 'manager') {
+    const expectedIds = await getExpectedRatingTargetIds(prisma, emp.id, 'manager');
+    const targets =
+      expectedIds.length === 0
+        ? []
+        : await prisma.employee.findMany({
+            where: { id: { in: expectedIds } },
+            select: { id: true, name: true },
+          });
+
+    const existing = await prisma.weeklyRating.findMany({
+      where: { raterEmployeeId: emp.id, weekStartKey },
+      select: { targetEmployeeId: true, score: true, reason: true, updatedAt: true },
+    });
+
+    const blocking = await isWeeklyRatingGateBlocking(prisma, emp.id, 'manager');
+
+    return Response.json({
+      ratingStyle: 'required_all_targets' as const,
+      weekStartKey,
+      emphasisWeekend: isWeekendSubmissionEmphasis(),
+      expectedTargets: targets.map((t) => ({
+        id: t.id,
+        name: t.name,
+        existing: existing.find((e) => e.targetEmployeeId === t.id) ?? null,
+      })),
+      complete: expectedIds.length === 0 ? true : expectedIds.every((id) => existing.some((e) => e.targetEmployeeId === id)),
+      blockingClock: blocking,
+    });
+  }
+
+  const existingAll = await prisma.weeklyRating.findMany({
     where: { raterEmployeeId: emp.id, weekStartKey },
     select: { targetEmployeeId: true, score: true, reason: true, updatedAt: true },
   });
+  const ratedByTarget = new Map(existingAll.map((e) => [e.targetEmployeeId, e]));
 
-  const blocking = await isWeeklyRatingGateBlocking(prisma, emp.id, role as AppUserRole);
+  const allManagers = await getEligibleWeeklyRatingManagerTargets(prisma, emp.id);
+  const eligibleManagers = allManagers.filter((m) => !ratedByTarget.has(m.id));
+
+  const ratedIds = [...ratedByTarget.keys()];
+  const nameRows =
+    ratedIds.length === 0
+      ? []
+      : await prisma.employee.findMany({
+          where: { id: { in: ratedIds } },
+          select: { id: true, name: true },
+        });
+  const nameById = new Map(nameRows.map((r) => [r.id, r.name]));
+
+  const expectedTargets = ratedIds
+    .sort((a, b) => (nameById.get(a) ?? '').localeCompare(nameById.get(b) ?? ''))
+    .map((id) => ({
+      id,
+      name: nameById.get(id) ?? 'Unknown',
+      existing: ratedByTarget.get(id) ?? null,
+    }));
 
   return Response.json({
+    ratingStyle: 'optional_managers' as const,
     weekStartKey,
     emphasisWeekend: isWeekendSubmissionEmphasis(),
-    expectedTargets: targets.map((t) => ({
-      id: t.id,
-      name: t.name,
-      existing: existing.find((e) => e.targetEmployeeId === t.id) ?? null,
-    })),
-    complete: expectedIds.length === 0 ? true : expectedIds.every((id) => existing.some((e) => e.targetEmployeeId === id)),
-    blockingClock: blocking,
+    expectedTargets,
+    eligibleManagers,
+    complete: true,
+    blockingClock: false,
   });
 }
 

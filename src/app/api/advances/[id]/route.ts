@@ -24,8 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
     if (!user?.employee) return Response.json({ error: 'Forbidden' }, { status: 403 });
     const managerEmployee = user.employee;
-    const ok =
-      advance.employee.reportsToEmployeeId === managerEmployee.id && advance.employee.branchId === managerEmployee.branchId;
+    const ok = advance.employee.reportsToEmployeeId === managerEmployee.id;
     if (!ok) return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 

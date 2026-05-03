@@ -30,6 +30,8 @@
     "db:d1:migrate:watermark:remote": "wrangler d1 execute drinkat-management --remote --file=./prisma/migrations/0009_app_cron_watermark.sql",
     "db:d1:migrate:employment-type:local": "wrangler d1 execute drinkat-management --local --file=./prisma/migrations/0010_employee_employment_type.sql",
     "db:d1:migrate:employment-type:remote": "wrangler d1 execute drinkat-management --remote --file=./prisma/migrations/0010_employee_employment_type.sql",
+    "db:d1:migrate:chat-group:local": "wrangler d1 execute drinkat-management --local --file=./prisma/migrations/0012_chat_thread_kind_group.sql",
+    "db:d1:migrate:chat-group:remote": "wrangler d1 execute drinkat-management --remote --file=./prisma/migrations/0012_chat_thread_kind_group.sql",
     "db:d1:migrate:time-clock:all:remote": "npm run db:d1:migrate:time-clock:remote && npm run db:d1:migrate:shift-profile:remote",
     "db:d1:migrate:time-clock:all:local": "npm run db:d1:migrate:time-clock:local && npm run db:d1:migrate:shift-profile:local",
     "db:migrate:sql": "prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script --output prisma/migrations/0001_init.sql",

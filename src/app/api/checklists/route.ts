@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireQc } from '@/lib/session';
-import { normalizeUserRole } from '@/lib/formVisibility';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -13,17 +12,13 @@ const createSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const session = await requireQc();
-  const role = normalizeUserRole(session.user.role);
+  await requireQc();
   const { searchParams } = new URL(req.url);
   const branchId = searchParams.get('branchId');
 
-  let where: { OR?: { branchId: string | null }[] } | undefined = branchId ? { OR: [{ branchId }, { branchId: null }] } : undefined;
-  if (role === 'manager') {
-    const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
-    if (!user?.employee) return Response.json([]);
-    where = { OR: [{ branchId: user.employee.branchId }, { branchId: null }] };
-  }
+  const where: { OR?: { branchId: string | null }[] } | undefined = branchId
+    ? { OR: [{ branchId }, { branchId: null }] }
+    : undefined;
 
   const checklists = await prisma.checklist.findMany({
     where,
@@ -35,21 +30,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await requireQc();
-  const role = normalizeUserRole(session.user.role);
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
 
-  let branchId = parsed.data.branchId ?? null;
-  if (role === 'manager') {
-    const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
-    if (!user?.employee) return Response.json({ error: 'Forbidden' }, { status: 403 });
-    const managerBranchId = user.employee.branchId;
-    if (branchId && branchId !== managerBranchId) {
-      return Response.json({ error: 'Managers can only create checklists in their own branch' }, { status: 403 });
-    }
-    if (!branchId) branchId = managerBranchId;
-  }
+  const branchId = parsed.data.branchId ?? null;
 
   const checklist = await prisma.checklist.create({
     data: {
