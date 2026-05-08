@@ -7,6 +7,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import type { FormFieldDef } from '@/lib/formTemplate';
 import { scrollIntoViewById } from '@/lib/scrollIntoViewDeferred';
 import { downloadSubmissionReportCsv, type SubmissionReportCsvInput } from '@/lib/formSubmissionCsv';
+import {
+  buildQcScoreReport,
+  type QcScoreReport,
+} from '@/lib/qc-form-score-report';
+import { QcScoreReportModal } from '@/components/qc/QcScoreReportModal';
 import { FormAssignmentsPanel } from './FormAssignmentsPanel';
 import { CreateFormPanel } from './CreateFormPanel';
 import { FormEmployeeAssignmentsPanel } from './FormEmployeeAssignmentsPanel';
@@ -66,7 +71,7 @@ export type FormsMySubmission = {
   status: string;
   submittedAt: Date | string;
   answers: Record<string, string>;
-  template: Pick<FormsTemplateRow, 'id' | 'title' | 'category'>;
+  template: Pick<FormsTemplateRow, 'id' | 'title' | 'category' | 'fields'>;
   branch: { name: string };
 };
 
@@ -110,6 +115,7 @@ export function ManagementFormsView({
   const [importingDefaults, setImportingDefaults] = useState(false);
   const [reportingFormSubmissionId, setReportingFormSubmissionId] = useState<string | null>(null);
   const [reportedFormSubmissionIds, setReportedFormSubmissionIds] = useState<Set<string>>(new Set());
+  const [qcReportModal, setQcReportModal] = useState<QcScoreReport | null>(null);
 
   useEffect(() => {
     if (!managerUserId) {
@@ -181,11 +187,24 @@ export function ManagementFormsView({
           status: data.status,
           submittedAt: new Date(data.submittedAt),
           answers: data.answers,
-          template: { id: data.template.id, title: data.template.title, category: data.template.category },
+          template: {
+            id: data.template.id,
+            title: data.template.title,
+            category: data.template.category,
+            fields: template.fields,
+          },
           branch: { name: data.branch.name },
         },
         ...prev,
       ]);
+      if (template.category === 'qc') {
+        setQcReportModal(
+          buildQcScoreReport(data.answers, {
+            branchName: data.branch?.name,
+            qcOfficer: data.answers?.evaluator_name,
+          })
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -458,7 +477,7 @@ export function ManagementFormsView({
 
   const sectionClass = 'app-section scroll-mt-28';
 
-  const showReview = role === 'owner' || role === 'manager' || role === 'qc' || !!qcReviewer;
+  const showReview = role === 'owner' || role === 'manager';
   const showFillSection =
     role === 'staff' || role === 'qc' || role === 'marketing' || (role === 'manager' && templatesForFill.length > 0);
   const managerCanReportForms = role === 'manager' && !!managerUserId;
@@ -755,6 +774,21 @@ export function ManagementFormsView({
                 >
                   {t.status[s.status as keyof typeof t.status] ?? s.status}
                 </span>
+                {s.template.category === 'qc' && (
+                  <button
+                    type="button"
+                    className="rounded-md border border-ios-blue/40 px-2 py-1 text-xs font-medium text-ios-blue"
+                    onClick={() =>
+                      setQcReportModal(
+                        buildQcScoreReport(s.answers, {
+                          branchName: s.branch.name,
+                        })
+                      )
+                    }
+                  >
+                    View Scoring Evaluation
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -773,7 +807,8 @@ export function ManagementFormsView({
             <p className="text-sm text-app-muted">{t.common.noData}</p>
           ) : (
             <ul className="space-y-5">
-              {reviewList.map((s) => (
+              {reviewList.map((s) => {
+                return (
               <li
                 id={`forms-review-submission-${s.id}`}
                 key={s.id}
@@ -810,6 +845,22 @@ export function ManagementFormsView({
                           className="rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated px-2.5 py-1.5 text-xs font-medium text-app-primary hover:bg-gray-50 dark:hover:bg-ios-dark-fill"
                         >
                           {t.forms.exportSubmissionCsv}
+                        </button>
+                      )}
+                      {s.template.category === 'qc' && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setQcReportModal(
+                              buildQcScoreReport(s.answers, {
+                                branchName: s.branch.name,
+                                qcOfficer: s.employee.name,
+                              })
+                            )
+                          }
+                          className="rounded-lg border border-ios-blue/40 px-2.5 py-1.5 text-xs font-medium text-ios-blue"
+                        >
+                          View Scoring Evaluation
                         </button>
                       )}
                     </div>
@@ -891,11 +942,13 @@ export function ManagementFormsView({
                   </div>
                 )}
               </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </section>
       )}
+      <QcScoreReportModal open={qcReportModal != null} report={qcReportModal} onClose={() => setQcReportModal(null)} />
     </div>
   );
 }

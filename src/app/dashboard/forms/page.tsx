@@ -32,6 +32,9 @@ export default async function FormsPage() {
   });
 
   const qcReviewer = isQcReviewerUser(session.user.role, user?.employee ?? null);
+  const canSubmitQcForms =
+    normalizeUserRole(session.user.role) === 'qc' ||
+    user?.employee?.role.trim().toLowerCase() === 'qc';
 
   const ctx: FormViewContext = {
     userRole: role,
@@ -64,6 +67,7 @@ export default async function FormsPage() {
           .filter(
             (t) =>
               t.active &&
+              (t.category !== 'qc' || canSubmitQcForms) &&
               (t.employeeAssignments.some((a) => a.employeeId === user?.employee?.id) ||
                 canFillManagementForm(ctx, {
                   category: t.category,
@@ -81,7 +85,7 @@ export default async function FormsPage() {
           .map(mapToRow);
 
   const allTemplatesForOwner: FormsTemplateRow[] | undefined =
-    role === 'owner' || role === 'manager' || role === 'qc' || qcReviewer ? allTemplates.map(mapToRow) : undefined;
+    role === 'owner' || role === 'manager' ? allTemplates.map(mapToRow) : undefined;
 
   const departments =
     role === 'owner'
@@ -112,7 +116,7 @@ export default async function FormsPage() {
       : undefined;
 
   let reviewSubmissions: FormsReviewSubmission[] = [];
-  if (role === 'owner' || role === 'manager' || role === 'qc' || qcReviewer) {
+  if (role === 'owner' || role === 'manager') {
     if (role === 'manager') {
       const userWithEmployee = await prisma.user.findUnique({
         where: { id: session.user.id },
@@ -254,6 +258,13 @@ export default async function FormsPage() {
           id: s.template.id,
           title: s.template.title,
           category: s.template.category,
+          fields: (() => {
+            try {
+              return parseTemplateFields(s.template.fieldsJson);
+            } catch {
+              return [];
+            }
+          })(),
         },
         branch: { name: s.branch.name },
       }));

@@ -19,6 +19,8 @@ import {
 } from 'recharts';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { downloadCsvWithMobileFallback } from '@/lib/client-download';
+import { buildQcScoreReport, type QcScoreReport } from '@/lib/qc-form-score-report';
+import { QcScoreReportModal } from '@/components/qc/QcScoreReportModal';
 
 const COLORS = ['#007AFF', '#5856D6', '#34C759', '#FF9500', '#FF3B30'];
 
@@ -63,6 +65,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   const [qcLogsMinimized, setQcLogsMinimized] = useState(false);
   const [qcArchiveFrom, setQcArchiveFrom] = useState('');
   const [qcArchiveTo, setQcArchiveTo] = useState('');
+  const [qcReportModal, setQcReportModal] = useState<QcScoreReport | null>(null);
 
 
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +144,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       ratingDistribution: Record<number, number>;
       trend: { date: string; total: number; approved: number }[];
       byChecklist: { name: string; total: number; approved: number; rate: number }[];
-      byBranch: Record<string, { total: number; approved: number; late?: number }>;
+      byBranch: Record<string, { total: number; approved: number; late?: number; qcFormAvgScore?: number | null; evaluationScore?: number }>;
     };
     salary: {
       periodMonth: string;
@@ -168,7 +171,15 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       byBranch: Record<string, number>;
       byCategory: Record<string, number>;
       trend: { date: string; total: number; approved: number; filed: number }[];
-      recent: { id: string; status: string; submittedAt: string; employee: { name: string }; branch: { name: string }; template: { title: string; category: string } }[];
+      recent: {
+        id: string;
+        status: string;
+        submittedAt: string;
+        employee: { name: string };
+        branch: { name: string };
+        template: { title: string; category: string };
+        answers?: Record<string, string>;
+      }[];
     };
     managerReports: {
       managerId: string;
@@ -198,7 +209,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       reviews: { total: number; averageRating: number | null; recent: { id: string; reviewedAt: string; rating: number; employee: { name: string; branch: { name: string } } }[] };
       documents: { total: number; recent: { id: string; createdAt: string; title: string; employee: { name: string; branch: { name: string } } }[] };
     };
-    branchOverview: { id: string; name: string; headcount: number; advancesSum: number; qcTotal: number; qcApproved: number; qcRate: number; totalSalary: number }[];
+    branchOverview: { id: string; name: string; headcount: number; advancesSum: number; qcTotal: number; qcApproved: number; qcRate: number; qcFormAvgScore?: number | null; totalSalary: number }[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -292,6 +303,8 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     total: v.total,
     approved: v.approved,
     rate: v.total ? Math.round((v.approved / v.total) * 100) : 0,
+    evaluationScore: v.evaluationScore ?? (v.total ? Math.round((v.approved / v.total) * 100) : 0),
+    qcFormAvgScore: v.qcFormAvgScore ?? null,
   }));
   const ratingDistData = [1, 2, 3, 4, 5].map((r) => ({
     rating: String(r),
@@ -582,7 +595,10 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                   <dt className="text-app-muted">{t.reports.advancesThisPeriod}</dt>
                   <dd className="font-semibold text-app-primary">{b.advancesSum.toFixed(2)} JOD</dd>
                   <dt className="text-app-muted">{t.reports.qcSubmissionsByBranch}</dt>
-                  <dd className="font-semibold text-app-primary">{b.qcApproved}/{b.qcTotal} ({b.qcRate}%)</dd>
+                  <dd className="font-semibold text-app-primary">
+                    {b.qcApproved}/{b.qcTotal} ({b.qcRate}%)
+                    {b.qcFormAvgScore != null ? ` · QC score avg ${b.qcFormAvgScore}%` : ''}
+                  </dd>
                   <dt className="text-app-muted">{t.salary.salary}</dt>
                   <dd className="font-semibold text-app-primary">{b.totalSalary.toFixed(2)} JOD</dd>
                 </dl>
@@ -958,6 +974,16 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                 </span>
                 {data.qc.averageRating != null && ` | ${t.reports.avgRating} ${data.qc.averageRating.toFixed(1)}`}
               </p>
+              {qcByBranchData.length > 0 && (
+                <ul className="mt-3 space-y-1 text-xs text-app-secondary">
+                  {qcByBranchData.map((row) => (
+                    <li key={`${row.name}-eval`}>
+                      {row.name}: evaluation {row.evaluationScore}%
+                      {row.qcFormAvgScore != null ? ` (qc form score ${row.qcFormAvgScore}%)` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4">
               <p className="text-sm font-medium text-app-secondary mb-2">{t.reports.ratingDistribution}</p>
@@ -1259,6 +1285,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                     <th className="text-left p-2">{t.forms.createFormCategory}</th>
                     <th className="text-left p-2">{t.common.status}</th>
                     <th className="text-left p-2">{t.common.date}</th>
+                    <th className="text-left p-2">Scoring</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1270,6 +1297,26 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                       <td className="p-2">{row.template.category}</td>
                       <td className="p-2 capitalize">{row.status}</td>
                       <td className="p-2">{new Date(row.submittedAt).toLocaleDateString()}</td>
+                      <td className="p-2">
+                        {row.template.category === 'qc' && row.answers ? (
+                          <button
+                            type="button"
+                            className="rounded-md border border-ios-blue/40 px-2 py-1 text-xs font-medium text-ios-blue"
+                            onClick={() =>
+                              setQcReportModal(
+                                buildQcScoreReport(row.answers ?? {}, {
+                                  branchName: row.branch?.name,
+                                  qcOfficer: row.employee?.name,
+                                })
+                              )
+                            }
+                          >
+                            View Scoring Evaluation
+                          </button>
+                        ) : (
+                          <span className="text-xs text-app-muted">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1552,6 +1599,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
           </div>
         </section>
       </div>
+      <QcScoreReportModal open={qcReportModal != null} report={qcReportModal} onClose={() => setQcReportModal(null)} />
     </div>
   );
 }

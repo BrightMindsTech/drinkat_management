@@ -4,7 +4,6 @@ import { requireSession } from '@/lib/session';
 import { parseTemplateFields, validateAnswersAgainstFields } from '@/lib/formTemplate';
 import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
 import { isZainBadarneh } from '@/lib/named-employee-policy';
-import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import {
   createInboxForUsers,
   getManagerUserIdForEmployee,
@@ -74,27 +73,6 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  if (role === 'qc' || (role === 'staff' && (await userHasQcReviewerScope(prisma, session)))) {
-    const where: { branchId?: string } = {};
-    if (branchId) where.branchId = branchId;
-    const list = await prisma.managementFormSubmission.findMany({
-      where,
-      include: {
-        template: true,
-        employee: { include: { branch: true, department: true } },
-        branch: true,
-      },
-      orderBy: { submittedAt: 'desc' },
-    });
-    return Response.json(
-      list.map((s) => ({
-        ...s,
-        answers: JSON.parse(s.answersJson) as Record<string, string>,
-        template: { ...s.template, fields: JSON.parse(s.template.fieldsJson) },
-      }))
-    );
-  }
-
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: { employee: true },
@@ -151,6 +129,12 @@ export async function POST(req: NextRequest) {
     employeeDepartmentId: emp.departmentId,
     employeeDepartmentName: emp.department?.name ?? null,
   };
+  const normalizedRole = normalizeUserRole(session.user.role);
+  const isQcEmployee = normalizedRole === 'qc' || emp.role.trim().toLowerCase() === 'qc';
+
+  if (template.category === 'qc' && !isQcEmployee) {
+    return Response.json({ error: 'Only QC employees can submit quality control forms' }, { status: 403 });
+  }
 
   const explicitlyAssigned = template.employeeAssignments.some((a) => a.employeeId === emp.id);
   if (!explicitlyAssigned && !canFillManagementForm(ctx, template)) {

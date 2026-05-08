@@ -23,17 +23,7 @@ export async function POST() {
 
   for (const [index, tpl] of DEFAULT_FORM_TEMPLATES.entries()) {
     const existing = await prisma.managementFormTemplate.findFirst({
-      where:
-        tpl.category === 'qc'
-          ? {
-              category: 'qc',
-              OR: [
-                { title: tpl.title },
-                { title: 'Quality Control (Kitchen)' },
-                { title: 'Quality Control' },
-              ],
-            }
-          : { title: tpl.title, category: tpl.category },
+      where: { title: tpl.title, category: tpl.category },
       select: { id: true },
     });
 

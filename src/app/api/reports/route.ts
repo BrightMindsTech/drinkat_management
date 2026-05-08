@@ -6,6 +6,7 @@ import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
 import { DEFAULT_APP_TIMEZONE } from '@/lib/shifts';
 import { weekStartKeysBetweenRange, weekStartKeysOverlappingMonth } from '@/lib/weekly-ratings';
 import { getSalaryDeductionReport } from '@/lib/salary-deduction-report';
+import { buildQcScoreReport, isQcScoreableFormAnswers } from '@/lib/qc-form-score-report';
 
 export async function GET(req: NextRequest) {
   await requireOwner();
@@ -227,6 +228,39 @@ export async function GET(req: NextRequest) {
     return acc;
   }, {} as Record<string, number>);
   const formsTrend = getFormsTrend(formSubmissions, start, end);
+  const qcFormScoresByBranch = formSubmissions.reduce(
+    (acc, submission) => {
+      if (submission.template.category !== 'qc') return acc;
+      let answers: Record<string, string> = {};
+      try {
+        answers = JSON.parse(submission.answersJson) as Record<string, string>;
+      } catch {
+        return acc;
+      }
+      if (!isQcScoreableFormAnswers(answers)) return acc;
+      const score = buildQcScoreReport(answers, {
+        branchName: submission.branch.name,
+        qcOfficer: submission.employee.name,
+      }).finalScore;
+      if (!acc[submission.branchId]) acc[submission.branchId] = { sum: 0, count: 0 };
+      acc[submission.branchId].sum += score;
+      acc[submission.branchId].count += 1;
+      return acc;
+    },
+    {} as Record<string, { sum: number; count: number }>
+  );
+  const branchOverviewWithScores = branchOverview.map((row) => {
+    const formScores = qcFormScoresByBranch[row.id];
+    const qcFormAvgScore = formScores && formScores.count > 0 ? Math.round(formScores.sum / formScores.count) : null;
+    const approvalRate = row.qcTotal > 0 ? Math.round((row.qcApproved / row.qcTotal) * 100) : 0;
+    const combinedEvaluationScore =
+      qcFormAvgScore == null ? approvalRate : Math.round((approvalRate + qcFormAvgScore) / 2);
+    return {
+      ...row,
+      qcFormAvgScore,
+      qcRate: combinedEvaluationScore,
+    };
+  });
   const qcLogs = submissions
     .slice()
     .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
@@ -445,18 +479,25 @@ export async function GET(req: NextRequest) {
       byBranch: submissions.reduce(
         (acc, s) => {
           const id = s.branchId;
+          const formScores = qcFormScoresByBranch[id];
+          const formAvg = formScores && formScores.count > 0 ? Math.round(formScores.sum / formScores.count) : null;
+          const nextTotal = (acc[id]?.total ?? 0) + 1;
+          const nextApproved = (acc[id]?.approved ?? 0) + (s.status === 'approved' ? 1 : 0);
+          const approvalRate = nextTotal > 0 ? Math.round((nextApproved / nextTotal) * 100) : 0;
           acc[id] = {
-            total: (acc[id]?.total ?? 0) + 1,
-            approved: (acc[id]?.approved ?? 0) + (s.status === 'approved' ? 1 : 0),
+            total: nextTotal,
+            approved: nextApproved,
             late: (acc[id]?.late ?? 0) + (s.isLate ? 1 : 0),
+            qcFormAvgScore: formAvg,
+            evaluationScore: formAvg == null ? approvalRate : Math.round((approvalRate + formAvg) / 2),
           };
           return acc;
         },
-        {} as Record<string, { total: number; approved: number; late: number }>
+        {} as Record<string, { total: number; approved: number; late: number; qcFormAvgScore: number | null; evaluationScore: number }>
       ),
     },
     salary: salaryRows,
-    branchOverview,
+    branchOverview: branchOverviewWithScores,
     forms: {
       total: formsTotal,
       filed: formsFiled,
@@ -467,7 +508,21 @@ export async function GET(req: NextRequest) {
       byBranch: formsByBranch,
       byCategory: formsByCategory,
       trend: formsTrend,
-      recent: formSubmissions.slice(0, 20),
+      recent: formSubmissions.slice(0, 20).map((s) => ({
+        id: s.id,
+        status: s.status,
+        submittedAt: s.submittedAt,
+        employee: s.employee,
+        branch: s.branch,
+        template: s.template,
+        answers: (() => {
+          try {
+            return JSON.parse(s.answersJson) as Record<string, string>;
+          } catch {
+            return {};
+          }
+        })(),
+      })),
     },
     managerReports,
     weeklyRatings: {

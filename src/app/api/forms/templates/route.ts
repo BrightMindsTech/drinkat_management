@@ -65,7 +65,10 @@ export async function GET(req: NextRequest) {
   };
 
   const employeeId = user?.employee?.id ?? null;
+  const isQcEmployee =
+    role === 'qc' || user?.employee?.role.trim().toLowerCase() === 'qc';
   const visible = templates.filter((t) => {
+    if (t.category === 'qc' && !isQcEmployee) return false;
     if (
       t.category === 'cash' &&
       user?.employee &&

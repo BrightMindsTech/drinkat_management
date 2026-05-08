@@ -7,6 +7,37 @@ type DefaultTemplate = {
   fields: FormFieldDef[];
 };
 
+const QC_BASE_FIELDS: FormFieldDef[] = [
+  { key: 'evaluator_name', label: 'Evaluator Name', type: 'text', required: true },
+  { key: 'branch_name', label: 'Branch Name', type: 'text', required: true },
+  { key: 'visit_date', label: 'Visit Date', type: 'date', required: true },
+  { key: 'shift_time', label: 'Shift Time', type: 'text', required: true },
+  { key: 'manager_name', label: 'Manager on Duty', type: 'text', required: false },
+  yn('هل التزام الفريق بالزي والنظافة الشخصية صحيح', 'team_uniform_hygiene_ok'),
+  yn('هل جميع درجة حرارة الثلاجات صحيحة', 'kitchen_fridge_temp_ok'),
+  yn('هل المطبخ ومعداته نظيفة', 'kitchen_clean'),
+  yn('هل تم حفظ المواد الغذائية بشكل سليم', 'food_storage_ok'),
+  yn('هل تواريخ الصلاحية واضحة ومحدثة', 'expiry_labels_ok'),
+  yn('هل جميع المصارف نظيفة', 'drains_clean'),
+  yn('هل منطقة التحضير مرتبة وآمنة', 'prep_area_safe'),
+  yn('هل منطقة التسليم نظيفة ومرتبة', 'delivery_area_clean'),
+  yn('هل أدوات السلامة متوفرة (قفازات/مطهر/طفاية)', 'safety_tools_available'),
+  {
+    key: 'customer_service_rating',
+    label: 'Customer Service Rating',
+    type: 'select',
+    required: true,
+    options: ['Excellent', 'Good', 'Average', 'Needs improvement'],
+  },
+  { key: 'critical_issue', label: 'Critical issue found?', type: 'checkbox', required: false },
+  { key: 'critical_issue_note', label: 'Critical issue note', type: 'textarea', required: false },
+  { key: 'evidence_photo_1', label: 'Evidence photo 1', type: 'photo', required: false },
+  { key: 'evidence_photo_2', label: 'Evidence photo 2', type: 'photo', required: false },
+  { key: 'weaknesses', label: 'Weaknesses (نقاط الضعف)', type: 'textarea', required: false },
+  { key: 'recommendations', label: 'Recommendations (توصيات للتحسين)', type: 'textarea', required: false },
+  { key: 'follow_up_required', label: 'Follow-up required in next visit', type: 'checkbox', required: false },
+];
+
 function yn(label: string, key: string): FormFieldDef {
   return {
     key,
@@ -30,38 +61,21 @@ function mark(label: string, key: string): FormFieldDef {
 export const DEFAULT_FORM_TEMPLATES: DefaultTemplate[] = [
   {
     category: 'qc',
-    title: 'Quality Control',
-    description: 'Comprehensive QC shift audit for kitchen, service, and hygiene.',
-    fields: [
-      { key: 'evaluator_name', label: 'Evaluator Name', type: 'text', required: true },
-      { key: 'branch_name', label: 'Branch Name', type: 'text', required: true },
-      { key: 'visit_date', label: 'Visit Date', type: 'date', required: true },
-      { key: 'shift_time', label: 'Shift Time', type: 'text', required: true },
-      { key: 'manager_name', label: 'Manager on Duty', type: 'text', required: false },
-      yn('هل التزام الفريق بالزي والنظافة الشخصية صحيح', 'team_uniform_hygiene_ok'),
-      yn('هل جميع درجة حرارة الثلاجات صحيحة', 'kitchen_fridge_temp_ok'),
-      yn('هل المطبخ ومعداته نظيفة', 'kitchen_clean'),
-      yn('هل تم حفظ المواد الغذائية بشكل سليم', 'food_storage_ok'),
-      yn('هل تواريخ الصلاحية واضحة ومحدثة', 'expiry_labels_ok'),
-      yn('هل جميع المصارف نظيفة', 'drains_clean'),
-      yn('هل منطقة التحضير مرتبة وآمنة', 'prep_area_safe'),
-      yn('هل منطقة التسليم نظيفة ومرتبة', 'delivery_area_clean'),
-      yn('هل أدوات السلامة متوفرة (قفازات/مطهر/طفاية)', 'safety_tools_available'),
-      {
-        key: 'customer_service_rating',
-        label: 'Customer Service Rating',
-        type: 'select',
-        required: true,
-        options: ['Excellent', 'Good', 'Average', 'Needs improvement'],
-      },
-      { key: 'critical_issue', label: 'Critical issue found?', type: 'checkbox', required: false },
-      { key: 'critical_issue_note', label: 'Critical issue note', type: 'textarea', required: false },
-      { key: 'evidence_photo_1', label: 'Evidence photo 1', type: 'photo', required: false },
-      { key: 'evidence_photo_2', label: 'Evidence photo 2', type: 'photo', required: false },
-      { key: 'weaknesses', label: 'Weaknesses (نقاط الضعف)', type: 'textarea', required: false },
-      { key: 'recommendations', label: 'Recommendations (توصيات للتحسين)', type: 'textarea', required: false },
-      { key: 'follow_up_required', label: 'Follow-up required in next visit', type: 'checkbox', required: false },
-    ],
+    title: 'Quality Control Visit Report - MEU',
+    description: 'Comprehensive QC shift audit for kitchen, service, and hygiene (MEU).',
+    fields: QC_BASE_FIELDS,
+  },
+  {
+    category: 'qc',
+    title: 'Quality Control Visit Report - HU',
+    description: 'Comprehensive QC shift audit for kitchen, service, and hygiene (HU).',
+    fields: QC_BASE_FIELDS,
+  },
+  {
+    category: 'qc',
+    title: 'Quality Control Visit Report - Airport Street',
+    description: 'Comprehensive QC shift audit for kitchen, service, and hygiene (Airport Street).',
+    fields: QC_BASE_FIELDS,
   },
   {
     category: 'marketing',
