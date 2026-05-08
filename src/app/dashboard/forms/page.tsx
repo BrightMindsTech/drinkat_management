@@ -6,6 +6,7 @@ import { parseTemplateFields } from '@/lib/formTemplate';
 import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
 import { isQcReviewerUser } from '@/lib/qc-reviewer';
 import { isZainBadarneh } from '@/lib/named-employee-policy';
+import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
 import {
   ManagementFormsView,
   type FormsMySubmission,
@@ -16,6 +17,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 export default async function FormsPage() {
+  await maybePurgeOldManagementFormSubmissions(prisma);
   const session = await getServerSession(authOptions);
   if (!session) redirect('/login');
   const role = normalizeUserRole(session.user.role);
@@ -127,7 +129,6 @@ export default async function FormsPage() {
           <div>
             <ManagementFormsView
               role={role}
-              managerUserId={undefined}
               templatesForFill={[]}
               initialReviewSubmissions={[]}
               initialMySubmissions={[]}
@@ -281,7 +282,6 @@ export default async function FormsPage() {
   return (
     <ManagementFormsView
       role={role}
-      managerUserId={role === 'manager' ? session.user.id : undefined}
       templatesForFill={templatesForFill}
       allTemplatesForOwner={allTemplatesForOwner}
       departments={departments}

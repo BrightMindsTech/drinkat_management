@@ -6,6 +6,7 @@ import { getOpenClockEntry, getTimeClockEmployee } from '@/lib/time-clock-helper
 import { isInsideBranchRadius } from '@/lib/geo';
 import { sendPushToUser } from '@/lib/push';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
+import { createInboxForUsers, getOwnerUserIds } from '@/lib/time-clock-helpers';
 
 const bodySchema = z.object({
   kind: z.enum(['enter', 'exit']),
@@ -78,6 +79,37 @@ export async function POST(req: Request) {
       type: 'time_clock_destination',
       url: `${deepLink}?forceAway=1`,
     });
+
+    // Owner receives this alert immediately; no manager escalation required.
+    const ownerIds = await getOwnerUserIds();
+    if (ownerIds.length > 0) {
+      await createInboxForUsers(ownerIds, {
+        category: 'time_clock',
+        title: 'Time clock alert: employee left branch',
+        body: `${emp.name} exited ${emp.branch.name} while still clocked in.`,
+        dataJson: JSON.stringify({
+          type: 'time_clock_destination_required',
+          employeeId: emp.id,
+          employeeName: emp.name,
+          branchId: emp.branch.id,
+          branchName: emp.branch.name,
+          href: '/dashboard/time-clock',
+        }),
+      });
+      const ownerSubs = await prisma.pushSubscription.findMany({ where: { userId: { in: ownerIds } } });
+      for (const ownerId of ownerIds) {
+        const subsForOwner = ownerSubs.filter((s) => s.userId === ownerId);
+        await sendPushToUser(ownerId, subsForOwner, {
+          title: 'Time clock alert: employee left branch',
+          body: `${emp.name} exited ${emp.branch.name} while still clocked in.`,
+          data: {
+            type: 'time_clock_destination_required',
+            url: '/dashboard/time-clock',
+            employeeId: emp.id,
+          },
+        });
+      }
+    }
   }
 
   return Response.json({ ok: true, action, inside });

@@ -6,10 +6,10 @@ import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '
 import { isZainBadarneh } from '@/lib/named-employee-policy';
 import {
   createInboxForUsers,
-  getManagerUserIdForEmployee,
   getOwnerUserIds,
 } from '@/lib/time-clock-helpers';
 import { sendPushToUser } from '@/lib/push';
+import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -18,6 +18,7 @@ const createSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
+  await maybePurgeOldManagementFormSubmissions(prisma);
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
   const { searchParams } = new URL(req.url);
@@ -98,6 +99,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  await maybePurgeOldManagementFormSubmissions(prisma);
   const session = await requireSession();
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -171,13 +173,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Manager-first line notifications; manager cash forms also go to owners (clock-out requires owner copy).
-  const roleNorm = normalizeUserRole(session.user.role);
-  const isManagerCashSubmission = roleNorm === 'manager' && template.category === 'cash';
-  const managerUserId = await getManagerUserIdForEmployee({
-    reportsToEmployeeId: emp.reportsToEmployeeId,
-    branchId: emp.branchId,
-  });
+  // Notify owners immediately for every submission.
   const ownerIds = await getOwnerUserIds();
 
   const inboxTitle = `New form submission: ${template.title}`;
@@ -190,28 +186,11 @@ export async function POST(req: NextRequest) {
   });
 
   const notifiedUserIds = new Set<string>();
-
-  if (managerUserId) {
-    await createInboxForUsers([managerUserId], {
-      category: 'forms_submission_manager',
-      title: inboxTitle,
-      body: inboxBody,
-      dataJson: inboxData,
-    });
-    notifiedUserIds.add(managerUserId);
-  }
-
-  if (isManagerCashSubmission && ownerIds.length > 0) {
+  if (ownerIds.length > 0) {
+    const ownerCategory =
+      template.category === 'cash' ? 'forms_cash_submitted_to_owner' : 'forms_submission_owner_direct';
     await createInboxForUsers(ownerIds, {
-      category: 'forms_cash_submitted_to_owner',
-      title: inboxTitle,
-      body: inboxBody,
-      dataJson: inboxData,
-    });
-    for (const id of ownerIds) notifiedUserIds.add(id);
-  } else if (!managerUserId && ownerIds.length > 0) {
-    await createInboxForUsers(ownerIds, {
-      category: 'forms_submission_owner_fallback',
+      category: ownerCategory,
       title: inboxTitle,
       body: inboxBody,
       dataJson: inboxData,

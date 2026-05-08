@@ -66,6 +66,8 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   const [qcArchiveFrom, setQcArchiveFrom] = useState('');
   const [qcArchiveTo, setQcArchiveTo] = useState('');
   const [qcReportModal, setQcReportModal] = useState<QcScoreReport | null>(null);
+  const [showDetailedAnalytics, setShowDetailedAnalytics] = useState(false);
+  const [hideTimeClockAlerts, setHideTimeClockAlerts] = useState(true);
 
 
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +106,15 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
           partTimeMinimumRequired: number | null;
         }[];
       };
+      timeClockAlerts?: {
+        id: string;
+        title: string;
+        body: string;
+        createdAt: string;
+        employeeName: string;
+        branchName: string;
+        type: string;
+      }[];
       leave?: {
         byBranch: Record<string, { pending: number; approved: number; denied: number; daysApproved: number }>;
         totalPending: number;
@@ -209,7 +220,26 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       reviews: { total: number; averageRating: number | null; recent: { id: string; reviewedAt: string; rating: number; employee: { name: string; branch: { name: string } } }[] };
       documents: { total: number; recent: { id: string; createdAt: string; title: string; employee: { name: string; branch: { name: string } } }[] };
     };
-    branchOverview: { id: string; name: string; headcount: number; advancesSum: number; qcTotal: number; qcApproved: number; qcRate: number; qcFormAvgScore?: number | null; totalSalary: number }[];
+    branchOverview: {
+      id: string;
+      name: string;
+      headcount: number;
+      advancesSum: number;
+      qcTotal: number;
+      qcApproved: number;
+      qcRate: number;
+      qcFormAvgScore?: number | null;
+      totalSalary: number;
+      branchScore?: number;
+      branchScoreComponents?: {
+        attendanceScore: number;
+        weeklyRatingScore: number;
+        qcEvaluationScore: number;
+        timeClockAlertsScore: number;
+        punctualityScore: number;
+        alertCount: number;
+      };
+    }[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -384,6 +414,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   }
 
+
   async function exportSalaryCsv() {
     const rows = data!.salary.rows;
     if (!rows.length) return;
@@ -498,6 +529,11 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   const reportCardClass = 'app-section';
   const sectionTitleClass = 'text-xl font-semibold text-app-primary mb-2';
   const labelClass = 'text-sm font-medium text-app-secondary';
+  const branchRankedByEvaluation = [...(data.branchOverview ?? [])].sort((a, b) => b.qcRate - a.qcRate);
+  const bestBranch = branchRankedByEvaluation[0];
+  const weakestBranch = branchRankedByEvaluation[branchRankedByEvaluation.length - 1];
+  const ownerPriorityCount =
+    data.qc.pending + data.forms.filed + data.hr.advances.pending + (data.hr.leave?.totalPending ?? 0);
 
   return (
     <div className="flex flex-col lg:flex-row gap-8 min-w-0">
@@ -579,7 +615,49 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            onClick={() => setShowDetailedAnalytics((v) => !v)}
+            className="rounded-ios border border-gray-300 dark:border-ios-dark-separator px-3 py-1.5 text-sm font-medium text-app-primary hover:bg-gray-100 dark:hover:bg-ios-dark-elevated-2"
+          >
+            {showDetailedAnalytics ? 'Hide detailed analytics' : 'Show detailed analytics'}
+          </button>
         </div>
+
+        <section id="owner-summary" className={`scroll-mt-6 ${reportCardClass}`}>
+          <h2 className={sectionTitleClass}>Owner Snapshot</h2>
+          <p className="text-sm text-app-muted mb-5">Fast overview of what needs attention now.</p>
+          <div className="grid gap-4 md:grid-cols-4 mb-5">
+            <div className="rounded-lg border border-ios-blue/30 bg-ios-blue/5 p-4">
+              <p className="text-xs text-ios-blue">Open priorities</p>
+              <p className="text-2xl font-semibold text-app-primary">{ownerPriorityCount}</p>
+            </div>
+            <div className="rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-gray-50/70 dark:bg-ios-dark-elevated-2/30 p-4">
+              <p className="text-xs text-app-muted">Staff headcount</p>
+              <p className="text-2xl font-semibold text-app-primary">{data.hr.totalHeadcount}</p>
+            </div>
+            <div className="rounded-lg border border-emerald-300/60 dark:border-emerald-700/40 bg-emerald-50/60 dark:bg-emerald-900/20 p-4">
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">Best branch</p>
+              <p className="text-base font-semibold text-app-primary">{bestBranch?.name ?? '—'}</p>
+              <p className="text-xs text-app-muted mt-1">{bestBranch ? `${bestBranch.qcRate}% evaluation` : 'No data'}</p>
+            </div>
+            <div className="rounded-lg border border-red-300/60 dark:border-red-700/40 bg-red-50/60 dark:bg-red-900/20 p-4">
+              <p className="text-xs text-red-700 dark:text-red-300">Needs support</p>
+              <p className="text-base font-semibold text-app-primary">{weakestBranch?.name ?? '—'}</p>
+              <p className="text-xs text-app-muted mt-1">{weakestBranch ? `${weakestBranch.qcRate}% evaluation` : 'No data'}</p>
+            </div>
+          </div>
+          <div className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4">
+            <p className="text-sm font-semibold text-app-primary mb-2">Priority actions</p>
+            <ul className="space-y-1.5 text-sm text-app-secondary">
+              <li>• QC pending reviews: <span className="font-semibold text-app-primary">{data.qc.pending}</span></li>
+              <li>• Forms awaiting review: <span className="font-semibold text-app-primary">{data.forms.filed}</span></li>
+              <li>• Pending leave requests: <span className="font-semibold text-app-primary">{data.hr.leave?.totalPending ?? 0}</span></li>
+              <li>• Pending advance requests: <span className="font-semibold text-app-primary">{data.hr.advances.pending}</span></li>
+              <li>• Late QC submissions: <span className="font-semibold text-app-primary">{data.qc.lateCount}</span></li>
+            </ul>
+          </div>
+        </section>
 
         {/* Branch Overview */}
         <section id="branch-overview" className={`scroll-mt-6 ${reportCardClass}`}>
@@ -589,6 +667,18 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
             {(data.branchOverview ?? []).map((b) => (
               <div key={b.id} className="rounded-lg border border-gray-200 dark:border-ios-dark-separator bg-gray-50/50 dark:bg-ios-dark-elevated-2/30 p-5">
                 <h3 className="font-semibold text-lg text-app-primary mb-4 pb-2 border-b border-gray-200 dark:border-ios-dark-separator">{b.name}</h3>
+                <div className="mb-4 rounded-lg border border-ios-blue/30 bg-ios-blue/5 px-3 py-3">
+                  <p className="text-xs text-ios-blue font-semibold uppercase tracking-wide">Branch Score</p>
+                  <p className="text-3xl font-bold text-app-primary leading-none mt-1">
+                    {b.branchScore ?? b.qcRate}%
+                  </p>
+                  <p className="text-xs text-app-secondary mt-2">
+                    Attendance {b.branchScoreComponents?.attendanceScore ?? '—'}% · Weekly ratings {b.branchScoreComponents?.weeklyRatingScore ?? '—'}% · QC eval {b.branchScoreComponents?.qcEvaluationScore ?? '—'}%
+                  </p>
+                  <p className="text-xs text-app-secondary">
+                    Time clock alerts score {b.branchScoreComponents?.timeClockAlertsScore ?? '—'}% ({b.branchScoreComponents?.alertCount ?? 0} alerts) · Punctuality {b.branchScoreComponents?.punctualityScore ?? '—'}%
+                  </p>
+                </div>
                 <dl className="grid grid-cols-2 gap-3 text-sm">
                   <dt className="text-app-muted">{t.reports.headcountByBranch}</dt>
                   <dd className="font-semibold text-app-primary">{b.headcount}</dd>
@@ -658,6 +748,51 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               </ul>
             </div>
           ) : null}
+
+        <div className="mt-4 rounded-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated overflow-x-auto">
+          <div className="p-4 border-b border-gray-200 dark:border-ios-dark-separator flex items-center justify-between gap-3">
+            <p className={labelClass}>Time clock alerts</p>
+            <button
+              type="button"
+              onClick={() => setHideTimeClockAlerts((v) => !v)}
+              className="rounded-md border border-gray-300 dark:border-ios-dark-separator px-2.5 py-1 text-xs font-medium text-app-secondary hover:bg-gray-100 dark:hover:bg-ios-dark-elevated-2"
+            >
+              {hideTimeClockAlerts ? t.common.show : t.common.hide}
+            </button>
+          </div>
+          {!hideTimeClockAlerts &&
+            (data.hr.timeClockAlerts && data.hr.timeClockAlerts.length > 0 ? (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-100 dark:bg-ios-dark-elevated-2/50">
+                    <th className="text-left p-2">Time</th>
+                    <th className="text-left p-2">{t.common.employee}</th>
+                    <th className="text-left p-2">{t.common.branch}</th>
+                    <th className="text-left p-2">Alert</th>
+                    <th className="text-left p-2">Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.hr.timeClockAlerts.map((row, i) => (
+                    <tr
+                      key={row.id}
+                      className={`border-t border-gray-200 dark:border-ios-dark-separator ${
+                        i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/50 dark:bg-ios-dark-elevated-2/20'
+                      }`}
+                    >
+                      <td className="p-2 text-xs tabular-nums">{new Date(row.createdAt).toLocaleString()}</td>
+                      <td className="p-2 font-semibold text-app-primary">{row.employeeName}</td>
+                      <td className="p-2">{row.branchName}</td>
+                      <td className="p-2">{row.title}</td>
+                      <td className="p-2 text-app-secondary">{row.body}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="p-4 text-sm text-app-muted">{t.common.noData}</p>
+            ))}
+        </div>
         </section>
 
         {/* Leave Section */}
@@ -1051,7 +1186,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               <p className="mt-4 text-sm text-app-muted">{t.reports.noLateSubmissions}</p>
             )
           )}
-          {data.qc.logs?.length ? (
+          {showDetailedAnalytics && data.qc.logs?.length ? (
             <div className="mt-4 rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated overflow-x-auto">
               <div className="p-4 border-b border-gray-200 dark:border-ios-dark-separator flex items-center justify-between gap-3">
                 <p className={labelClass}>{t.reports.qcLogs}</p>
@@ -1092,6 +1227,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
             </div>
           ) : null}
 
+          {showDetailedAnalytics && (
           <div className="mt-4 rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <p className="text-sm font-medium text-app-secondary">{t.reports.qcArchiveTitle}</p>
@@ -1161,6 +1297,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               </div>
             )}
           </div>
+          )}
         </section>
 
         {/* Forms Section */}
@@ -1244,7 +1381,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               </ResponsiveContainer>
             </div>
           ) : null}
-          {data.forms.byTemplate?.length ? (
+          {showDetailedAnalytics && data.forms.byTemplate?.length ? (
             <div className="mt-4 rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 overflow-x-auto">
               <p className="text-sm font-medium text-app-secondary mb-2">{t.reports.formsByTemplate}</p>
               <table className="w-full text-sm">
@@ -1273,7 +1410,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               </table>
             </div>
           ) : null}
-          {data.forms.recent?.length ? (
+          {showDetailedAnalytics && data.forms.recent?.length ? (
             <div className="mt-4 rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 overflow-x-auto">
               <p className="text-sm font-medium text-app-secondary mb-2">{t.reports.formsLogs}</p>
               <table className="w-full text-sm">
@@ -1326,6 +1463,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         </section>
 
         {/* Weekly ratings leaderboards */}
+        {showDetailedAnalytics && (
         <section id="weekly-ratings" className={`scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.weeklyRatingsLeaderboard}</h2>
           <p className="text-sm text-app-muted mb-2">
@@ -1422,6 +1560,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
             </div>
           )}
         </section>
+        )}
 
         {/* Manager Reports Section */}
         <section id="manager-reports" className={`scroll-mt-6 ${reportCardClass}`}>
@@ -1499,6 +1638,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         </section>
 
         {/* Activity Section */}
+        {showDetailedAnalytics && (
         <section id="activity" className={`scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.activitySection}</h2>
           <p className="text-sm text-app-muted mb-6">{t.reports.activityOverview}</p>
@@ -1520,6 +1660,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
             </div>
           </div>
         </section>
+        )}
 
         {/* Salary Section */}
         <section id="salary" className={`scroll-mt-6 ${reportCardClass}`}>

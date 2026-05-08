@@ -38,6 +38,7 @@ export function QCReviewView({
   const [editingChecklistId, setEditingChecklistId] = useState<string | null>(null);
   const [historyFrom, setHistoryFrom] = useState('');
   const [historyTo, setHistoryTo] = useState('');
+  const [expandedSubmissionDetails, setExpandedSubmissionDetails] = useState<Record<string, boolean>>({});
 
   async function createChecklist(name: string, branchId: string | null, repeatsDaily: boolean, deadlineTime: string, items: { title: string }[]) {
     const res = await fetch('/api/checklists', {
@@ -315,19 +316,35 @@ export function QCReviewView({
               </p>
               <p className="text-sm text-app-muted">{new Date(s.submittedAt).toLocaleString()}</p>
               {s.lateNote && <p className="text-sm text-amber-600 dark:text-amber-400 mt-0.5">{s.lateNote}</p>}
-              <div className="mt-2 flex flex-wrap gap-2">
-                {s.photos.map((p) => (
-                  <a
-                    key={p.id}
-                    href={p.filePath}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block"
-                  >
-                    <img src={p.filePath} alt="QC" className="h-24 w-24 object-cover rounded border" />
-                  </a>
-                ))}
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs rounded-full px-2 py-0.5 bg-ios-blue/10 text-ios-blue font-semibold">
+                  {s.photos.length} photo(s)
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedSubmissionDetails((prev) => ({ ...prev, [s.id]: !prev[s.id] }))
+                  }
+                  className="rounded-md border border-gray-300 dark:border-ios-dark-separator px-2 py-1 text-xs font-medium text-app-primary"
+                >
+                  {expandedSubmissionDetails[s.id] ? 'Hide photos' : 'Show photos'}
+                </button>
               </div>
+              {expandedSubmissionDetails[s.id] && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {s.photos.map((p) => (
+                    <a
+                      key={p.id}
+                      href={p.filePath}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block"
+                    >
+                      <img src={p.filePath} alt="QC" className="h-24 w-24 object-cover rounded border" />
+                    </a>
+                  ))}
+                </div>
+              )}
               <ReviewForm
                 submissionId={s.id}
                 onReview={reviewSubmission}
@@ -681,6 +698,7 @@ function ReviewForm({
   const { t } = useLanguage();
   const [rating, setRating] = useState(3);
   const [comments, setComments] = useState('');
+  const [quickDecision, setQuickDecision] = useState<'approved' | 'denied' | null>(null);
 
   return (
     <div className="mt-4 rounded-xl border-2 border-ios-blue/25 bg-ios-blue/5 dark:bg-ios-blue/10 dark:border-ios-blue/40 p-4 space-y-4">
@@ -712,9 +730,42 @@ function ReviewForm({
           type="text"
           value={comments}
           onChange={(e) => setComments(e.target.value)}
+          placeholder="Optional note for reviewer context"
           className="mt-1.5 w-full rounded-ios border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated px-3 py-2.5 text-sm text-app-primary"
         />
       </label>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setQuickDecision('approved');
+            setRating(5);
+            if (!comments) setComments('Looks good and meets checklist standards.');
+          }}
+          className={`rounded-md px-3 py-1.5 text-xs font-semibold border ${
+            quickDecision === 'approved'
+              ? 'bg-green-600 text-white border-green-600'
+              : 'bg-green-50 text-green-800 border-green-300'
+          }`}
+        >
+          Quick approve
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setQuickDecision('denied');
+            setRating(2);
+            if (!comments) setComments('Needs fixes before approval.');
+          }}
+          className={`rounded-md px-3 py-1.5 text-xs font-semibold border ${
+            quickDecision === 'denied'
+              ? 'bg-red-600 text-white border-red-600'
+              : 'bg-red-50 text-red-800 border-red-300'
+          }`}
+        >
+          Quick deny
+        </button>
+      </div>
       <div className="flex flex-wrap gap-3 pt-1">
         <button
           type="button"

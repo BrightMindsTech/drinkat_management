@@ -16,31 +16,6 @@ import { FormAssignmentsPanel } from './FormAssignmentsPanel';
 import { CreateFormPanel } from './CreateFormPanel';
 import { FormEmployeeAssignmentsPanel } from './FormEmployeeAssignmentsPanel';
 
-function reportedFormsStorageKey(managerUserId: string) {
-  return `drinkat:forms-reported-to-owner:${managerUserId}`;
-}
-
-function readReportedFormIds(managerUserId: string): Set<string> {
-  if (typeof window === 'undefined') return new Set();
-  try {
-    const raw = window.localStorage.getItem(reportedFormsStorageKey(managerUserId));
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw) as unknown;
-    if (!Array.isArray(arr)) return new Set();
-    return new Set(arr.filter((x): x is string => typeof x === 'string'));
-  } catch {
-    return new Set();
-  }
-}
-
-function writeReportedFormIds(managerUserId: string, ids: Set<string>) {
-  try {
-    window.localStorage.setItem(reportedFormsStorageKey(managerUserId), JSON.stringify([...ids]));
-  } catch {
-    /* quota */
-  }
-}
-
 export type FormsTemplateRow = {
   id: string;
   category: string;
@@ -77,7 +52,6 @@ export type FormsMySubmission = {
 
 export function ManagementFormsView({
   role,
-  managerUserId,
   templatesForFill,
   allTemplatesForOwner,
   departments,
@@ -89,7 +63,6 @@ export function ManagementFormsView({
   qcReviewer,
 }: {
   role: string;
-  managerUserId?: string;
   templatesForFill: FormsTemplateRow[];
   allTemplatesForOwner?: FormsTemplateRow[];
   departments?: { id: string; name: string }[];
@@ -113,17 +86,10 @@ export function ManagementFormsView({
   const [ownerEditId, setOwnerEditId] = useState<string | null>(null);
   const [ownerSaving, setOwnerSaving] = useState(false);
   const [importingDefaults, setImportingDefaults] = useState(false);
-  const [reportingFormSubmissionId, setReportingFormSubmissionId] = useState<string | null>(null);
-  const [reportedFormSubmissionIds, setReportedFormSubmissionIds] = useState<Set<string>>(new Set());
   const [qcReportModal, setQcReportModal] = useState<QcScoreReport | null>(null);
-
-  useEffect(() => {
-    if (!managerUserId) {
-      setReportedFormSubmissionIds(new Set());
-      return;
-    }
-    setReportedFormSubmissionIds(readReportedFormIds(managerUserId));
-  }, [managerUserId]);
+  const [expandedReviewAnswers, setExpandedReviewAnswers] = useState<Record<string, boolean>>({});
+  const [reviewRange, setReviewRange] = useState<'today' | 'week' | 'month'>('week');
+  const [myRange, setMyRange] = useState<'today' | 'week' | 'month'>('week');
 
   useLayoutEffect(() => {
     if (!ownerEditId) return;
@@ -152,6 +118,26 @@ export function ManagementFormsView({
   const [ownerFields, setOwnerFields] = useState<
     { key: string; label: string; type: FormFieldDef['type']; required: boolean; optionsText: string }[]
   >([]);
+
+  function isWithinRange(dateLike: Date | string, range: 'today' | 'week' | 'month'): boolean {
+    const date = new Date(dateLike);
+    if (Number.isNaN(date.getTime())) return false;
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (range === 'today') return date >= startOfToday;
+    const days = range === 'week' ? 7 : 30;
+    const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    return date >= cutoff;
+  }
+
+  const filteredReviewList = useMemo(
+    () => reviewList.filter((s) => isWithinRange(s.submittedAt, reviewRange)),
+    [reviewList, reviewRange]
+  );
+  const filteredMyList = useMemo(
+    () => myList.filter((s) => isWithinRange(s.submittedAt, myRange)),
+    [myList, myRange]
+  );
 
   function categoryTitle(cat: string): string {
     const c = t.forms.categories as Record<string, string>;
@@ -480,7 +466,6 @@ export function ManagementFormsView({
   const showReview = role === 'owner' || role === 'manager';
   const showFillSection =
     role === 'staff' || role === 'qc' || role === 'marketing' || (role === 'manager' && templatesForFill.length > 0);
-  const managerCanReportForms = role === 'manager' && !!managerUserId;
 
   return (
     <div className="app-page">
@@ -749,11 +734,25 @@ export function ManagementFormsView({
         </section>
       )}
 
-      {(role === 'staff' || role === 'qc' || role === 'marketing' || role === 'manager') && myList.length > 0 && (
+      {(role === 'staff' || role === 'qc' || role === 'marketing' || role === 'manager') && (
         <section id="section-forms-my-submissions" className={sectionClass}>
-          <h2 className="text-lg font-semibold text-app-primary mb-4">{t.forms.mySubmissions}</h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-app-primary">{t.forms.mySubmissions}</h2>
+            <select
+              value={myRange}
+              onChange={(e) => setMyRange(e.target.value as 'today' | 'week' | 'month')}
+              className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-elevated px-2.5 py-1.5 text-xs font-medium text-app-primary"
+            >
+              <option value="today">Today</option>
+              <option value="week">This week</option>
+              <option value="month">This month</option>
+            </select>
+          </div>
+          {filteredMyList.length === 0 ? (
+            <p className="text-sm text-app-muted">{t.common.noData}</p>
+          ) : (
           <ul className="space-y-3 text-sm">
-            {myList.map((s) => (
+            {filteredMyList.map((s) => (
               <li
                 key={s.id}
                 className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-gray-100 dark:border-ios-dark-separator pb-3 last:border-0 last:pb-0"
@@ -792,6 +791,7 @@ export function ManagementFormsView({
               </li>
             ))}
           </ul>
+          )}
         </section>
       )}
 
@@ -800,14 +800,24 @@ export function ManagementFormsView({
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold text-app-primary">{t.forms.reviewQueue}</h2>
             <span className="rounded-md bg-ios-blue/10 px-2.5 py-1 text-xs font-semibold text-ios-blue">
-              {t.common.total}: {reviewList.length}
+              {t.common.total}: {filteredReviewList.length}
             </span>
+            <select
+              value={reviewRange}
+              onChange={(e) => setReviewRange(e.target.value as 'today' | 'week' | 'month')}
+              className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-elevated px-2.5 py-1.5 text-xs font-medium text-app-primary"
+            >
+              <option value="today">Today</option>
+              <option value="week">This week</option>
+              <option value="month">This month</option>
+            </select>
           </div>
-          {reviewList.length === 0 ? (
+          {filteredReviewList.length === 0 ? (
             <p className="text-sm text-app-muted">{t.common.noData}</p>
           ) : (
             <ul className="space-y-5">
-              {reviewList.map((s) => {
+              {filteredReviewList.map((s) => {
+                const isExpanded = !!expandedReviewAnswers[s.id];
                 return (
               <li
                 id={`forms-review-submission-${s.id}`}
@@ -867,34 +877,55 @@ export function ManagementFormsView({
                     <span className="text-xs tabular-nums text-app-muted text-end">{new Date(s.submittedAt).toLocaleString()}</span>
                   </div>
                 </div>
-                <dl className="space-y-2 text-sm border-t border-gray-100 dark:border-ios-dark-separator pt-3">
-                  {s.template.fields.map((f, idx) => (
-                    <div
-                      key={f.key}
-                      className={`grid grid-cols-1 gap-0.5 rounded-md px-2 py-1.5 sm:grid-cols-[minmax(8rem,11rem)_1fr] sm:gap-x-4 sm:items-start ${
-                        idx % 2 === 0 ? 'bg-gray-50/80 dark:bg-ios-dark-elevated/30' : ''
-                      }`}
+                <div className="border-t border-gray-100 dark:border-ios-dark-separator pt-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-app-muted">
+                      {s.template.fields.length} answers
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedReviewAnswers((prev) => ({
+                          ...prev,
+                          [s.id]: !prev[s.id],
+                        }))
+                      }
+                      className="rounded-md border border-gray-300 dark:border-ios-dark-separator px-2 py-1 text-xs font-medium text-app-primary"
                     >
-                      <dt className="text-app-label leading-snug">
-                        {f.label}:
-                      </dt>
-                      <dd className="text-app-primary break-words leading-snug">
-                        {f.type === 'photo' && s.answers[f.key] ? (
-                          <a
-                            href={s.answers[f.key]}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-ios-blue hover:underline"
-                          >
-                            {t.common.photo}
-                          </a>
-                        ) : (
-                          (s.answers[f.key] ?? '—')
-                        )}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+                      {isExpanded ? 'Hide details' : 'Show details'}
+                    </button>
+                  </div>
+                  {isExpanded && (
+                    <dl className="mt-2 space-y-2 text-sm">
+                      {s.template.fields.map((f, idx) => (
+                        <div
+                          key={f.key}
+                          className={`grid grid-cols-1 gap-0.5 rounded-md px-2 py-1.5 sm:grid-cols-[minmax(8rem,11rem)_1fr] sm:gap-x-4 sm:items-start ${
+                            idx % 2 === 0 ? 'bg-gray-50/80 dark:bg-ios-dark-elevated/30' : ''
+                          }`}
+                        >
+                          <dt className="text-app-label leading-snug">
+                            {f.label}:
+                          </dt>
+                          <dd className="text-app-primary break-words leading-snug">
+                            {f.type === 'photo' && s.answers[f.key] ? (
+                              <a
+                                href={s.answers[f.key]}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-ios-blue hover:underline"
+                              >
+                                {t.common.photo}
+                              </a>
+                            ) : (
+                              (s.answers[f.key] ?? '—')
+                            )}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </div>
                 {(s.status === 'approved' || s.status === 'denied') && (s.rating != null || s.comments) ? (
                   <div className="text-sm border-t border-gray-100 dark:border-ios-dark-separator pt-3 space-y-1">
                     <p className="text-app-secondary">
@@ -904,43 +935,6 @@ export function ManagementFormsView({
                     {s.comments ? <p className="text-app-secondary">{s.comments}</p> : null}
                   </div>
                 ) : null}
-                {managerCanReportForms && (
-                  <div className="border-t border-gray-100 dark:border-ios-dark-separator pt-3">
-                    <button
-                      type="button"
-                      disabled={
-                        reportingFormSubmissionId === s.id || reportedFormSubmissionIds.has(s.id)
-                      }
-                      className="rounded-lg border border-ios-blue/40 px-2.5 py-1.5 text-xs font-medium text-ios-blue disabled:opacity-50"
-                      onClick={async () => {
-                        if (!managerUserId) return;
-                        setReportingFormSubmissionId(s.id);
-                        try {
-                          const res = await fetch(`/api/forms/submissions/${s.id}/report-to-owner`, {
-                            method: 'POST',
-                          });
-                          if (!res.ok) {
-                            const data = (await res.json().catch(() => ({}))) as { error?: string };
-                            alert(data.error ?? t.forms.reportFormToOwnerFailed);
-                            return;
-                          }
-                          setReportedFormSubmissionIds((prev) => {
-                            const next = new Set(prev);
-                            next.add(s.id);
-                            writeReportedFormIds(managerUserId, next);
-                            return next;
-                          });
-                        } finally {
-                          setReportingFormSubmissionId(null);
-                        }
-                      }}
-                    >
-                      {reportedFormSubmissionIds.has(s.id)
-                        ? t.forms.reportedFormToOwner
-                        : t.forms.reportFormToOwner}
-                    </button>
-                  </div>
-                )}
               </li>
                 );
               })}

@@ -7,9 +7,11 @@ import { DEFAULT_APP_TIMEZONE } from '@/lib/shifts';
 import { weekStartKeysBetweenRange, weekStartKeysOverlappingMonth } from '@/lib/weekly-ratings';
 import { getSalaryDeductionReport } from '@/lib/salary-deduction-report';
 import { buildQcScoreReport, isQcScoreableFormAnswers } from '@/lib/qc-form-score-report';
+import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
 
 export async function GET(req: NextRequest) {
-  await requireOwner();
+  const session = await requireOwner();
+  await maybePurgeOldManagementFormSubmissions(prisma);
   await runSalaryDistributionIfDue();
   const { searchParams } = new URL(req.url);
   const period = searchParams.get('period') ?? 'month';
@@ -37,6 +39,8 @@ export async function GET(req: NextRequest) {
   }
 
   const branchFilter = branchId ? { branchId } : {};
+  const now = new Date();
+  const alertsWindowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
 
   const statusFilter = { status: { not: 'terminated' as const } };
   const [
@@ -54,6 +58,8 @@ export async function GET(req: NextRequest) {
     reviews,
     documents,
     managers,
+    timeClockAlertsByBranch,
+    ownerTimeClockAlerts,
   ] = await Promise.all([
     prisma.employee.findMany({
       where: { ...branchFilter, ...statusFilter },
@@ -146,6 +152,23 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { name: 'asc' },
     }),
+    prisma.awaySession.groupBy({
+      by: ['branchId'],
+      where: {
+        startedAt: { gte: start, lte: end },
+        ...(branchId ? { branchId } : {}),
+      },
+      _count: { _all: true },
+    }),
+    prisma.inboxNotification.findMany({
+      where: {
+        userId: session.user.id,
+        category: { in: ['time_clock', 'manager_time_clock_report'] },
+        createdAt: { gte: alertsWindowStart, lte: now },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    }),
   ]);
 
   const headcountByBranch = employees.reduce((acc, e) => {
@@ -154,6 +177,59 @@ export async function GET(req: NextRequest) {
   }, {} as Record<string, number>);
 
   const attendance = await getAttendanceReport(employees, start, end, branchId, period);
+  const alertEmployeeIds = [
+    ...new Set(
+      ownerTimeClockAlerts
+        .map((n) => {
+          try {
+            const data = n.dataJson ? (JSON.parse(n.dataJson) as Record<string, unknown>) : {};
+            const maybeId = data.employeeId;
+            return typeof maybeId === 'string' && maybeId.length > 0 ? maybeId : null;
+          } catch {
+            return null;
+          }
+        })
+        .filter((id): id is string => !!id)
+    ),
+  ];
+  const alertEmployeesById = new Map(
+    (
+      alertEmployeeIds.length > 0
+        ? await prisma.employee.findMany({
+            where: { id: { in: alertEmployeeIds } },
+            select: { id: true, name: true, branch: { select: { name: true } } },
+          })
+        : []
+    ).map((e) => [e.id, e] as const)
+  );
+  const ownerTimeClockAlertRows = ownerTimeClockAlerts.map((n) => {
+    let data: Record<string, unknown> = {};
+    try {
+      data = n.dataJson ? (JSON.parse(n.dataJson) as Record<string, unknown>) : {};
+    } catch {
+      data = {};
+    }
+    const rawEmployeeId = data.employeeId;
+    const employeeId = typeof rawEmployeeId === 'string' ? rawEmployeeId : '';
+    const resolvedEmployee = employeeId ? alertEmployeesById.get(employeeId) : null;
+    const employeeNameFromData = data.employeeName;
+    const branchNameFromData = data.branchName;
+    return {
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      createdAt: n.createdAt,
+      employeeName:
+        (typeof employeeNameFromData === 'string' && employeeNameFromData.trim().length > 0
+          ? employeeNameFromData
+          : resolvedEmployee?.name) ?? '—',
+      branchName:
+        (typeof branchNameFromData === 'string' && branchNameFromData.trim().length > 0
+          ? branchNameFromData
+          : resolvedEmployee?.branch.name) ?? '—',
+      type: String(data.type ?? n.category),
+    };
+  });
 
   const advancesRequested = advances.length;
   const advancesApproved = advances.filter((a) => a.status === 'approved').length;
@@ -441,6 +517,86 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  const branchNameById = new Map(branchRowsForRatings.map((b) => [b.id, b.name]));
+  const attendanceByBranchName = (attendance.rows ?? []).reduce(
+    (acc, row) => {
+      if (!acc[row.branchName]) acc[row.branchName] = { expected: 0, absence: 0 };
+      acc[row.branchName].expected += row.expectedWeekdays ?? 0;
+      acc[row.branchName].absence += row.absenceDays ?? 0;
+      return acc;
+    },
+    {} as Record<string, { expected: number; absence: number }>
+  );
+  const weeklyRatingAvgByBranch = ratingsForPeriod.reduce(
+    (acc, r) => {
+      if (!acc[r.branchId]) acc[r.branchId] = { sum: 0, count: 0 };
+      acc[r.branchId].sum += r.score;
+      acc[r.branchId].count += 1;
+      return acc;
+    },
+    {} as Record<string, { sum: number; count: number }>
+  );
+  const alertCountByBranch = timeClockAlertsByBranch.reduce(
+    (acc, row) => {
+      acc[row.branchId] = row._count._all;
+      return acc;
+    },
+    {} as Record<string, number>
+  );
+  const punctualityByBranch = submissions.reduce(
+    (acc, s) => {
+      if (!acc[s.branchId]) acc[s.branchId] = { total: 0, late: 0 };
+      acc[s.branchId].total += 1;
+      if (s.isLate) acc[s.branchId].late += 1;
+      return acc;
+    },
+    {} as Record<string, { total: number; late: number }>
+  );
+
+  const branchOverviewWithOwnerScore = branchOverviewWithScores.map((row) => {
+    const branchName = branchNameById.get(row.id) ?? row.name;
+    const attendanceAgg = attendanceByBranchName[branchName];
+    const attendanceScore =
+      attendanceAgg && attendanceAgg.expected > 0
+        ? Math.max(0, Math.min(100, Math.round((1 - attendanceAgg.absence / attendanceAgg.expected) * 100)))
+        : 70;
+
+    const weeklyAgg = weeklyRatingAvgByBranch[row.id];
+    const weeklyRatingScore =
+      weeklyAgg && weeklyAgg.count > 0 ? Math.round(weeklyAgg.sum / weeklyAgg.count) : 70;
+
+    const qcEvaluationScore = row.qcRate ?? 70;
+    const alertCount = alertCountByBranch[row.id] ?? 0;
+    const timeClockAlertsScore = Math.max(0, 100 - alertCount * 10);
+
+    const punctualityAgg = punctualityByBranch[row.id];
+    const punctualityScore =
+      punctualityAgg && punctualityAgg.total > 0
+        ? Math.max(0, Math.min(100, Math.round((1 - punctualityAgg.late / punctualityAgg.total) * 100)))
+        : 70;
+
+    const branchScore = Math.round(
+      attendanceScore * 0.3 +
+        weeklyRatingScore * 0.2 +
+        qcEvaluationScore * 0.3 +
+        timeClockAlertsScore * 0.1 +
+        punctualityScore * 0.1
+    );
+
+    return {
+      ...row,
+      branchScore,
+      branchScoreComponents: {
+        attendanceScore,
+        weeklyRatingScore,
+        qcEvaluationScore,
+        timeClockAlertsScore,
+        punctualityScore,
+        alertCount,
+      },
+    };
+  });
+
   return Response.json({
     period,
     month: monthParam || null,
@@ -454,6 +610,7 @@ export async function GET(req: NextRequest) {
       newHires,
       headcountOverTime,
       attendance,
+      timeClockAlerts: ownerTimeClockAlertRows,
       leave: leaveData,
       advances: {
         requested: advancesRequested,
@@ -497,7 +654,7 @@ export async function GET(req: NextRequest) {
       ),
     },
     salary: salaryRows,
-    branchOverview: branchOverviewWithScores,
+    branchOverview: branchOverviewWithOwnerScore,
     forms: {
       total: formsTotal,
       filed: formsFiled,

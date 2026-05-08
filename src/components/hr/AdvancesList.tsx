@@ -84,22 +84,22 @@ export function AdvancesList({
               </span>
             </div>
             {ownerView && a.status === 'pending' && (
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => handleApproveDeny(a.id, 'approved')}
                   disabled={updatingId === a.id}
-                  className="rounded-ios bg-ios-blue text-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+                  className="rounded-ios bg-ios-blue text-white px-3 py-2 text-sm font-medium disabled:opacity-50 w-full sm:w-auto"
                 >
-                  {t.common.approve}
+                  {t.common.approve} request
                 </button>
                 <button
                   type="button"
                   onClick={() => handleApproveDeny(a.id, 'denied')}
                   disabled={updatingId === a.id}
-                  className="rounded bg-red-600 text-white px-3 py-1 text-sm disabled:opacity-50"
+                  className="rounded bg-red-600 text-white px-3 py-2 text-sm disabled:opacity-50 w-full sm:w-auto"
                 >
-                  {t.common.deny}
+                  {t.common.deny} request
                 </button>
               </div>
             )}
