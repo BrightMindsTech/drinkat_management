@@ -1,8 +1,11 @@
 import { NextRequest } from 'next/server';
+import { getServerSession } from 'next-auth';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { prisma } from '@/lib/prisma';
-import { requireOwnerOrManager } from '@/lib/session';
+import { authOptions } from '@/lib/auth';
 import { normalizeUserRole } from '@/lib/formVisibility';
+
+export const dynamic = 'force-dynamic';
 
 function parseMonthParam(monthParam: string | null): Date {
   if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
@@ -21,8 +24,15 @@ function overlapHours(startA: Date, endA: Date, startB: Date, endB: Date): numbe
 }
 
 export async function GET(req: NextRequest) {
-  const session = await requireOwnerOrManager();
+  try {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   const role = normalizeUserRole(session.user.role);
+  if (role !== 'owner' && role !== 'manager') {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const { searchParams } = new URL(req.url);
   const monthParam = searchParams.get('month');
   const branchIdParam = searchParams.get('branchId') ?? '';
@@ -114,4 +124,11 @@ export async function GET(req: NextRequest) {
     end: rangeEnd.toISOString(),
     rows,
   });
+  } catch (e) {
+    console.error('[time-clock/monthly-hours]', e);
+    return Response.json(
+      { error: e instanceof Error ? e.message : 'Internal server error' },
+      { status: 500 }
+    );
+  }
 }

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 import { purgeExpiredChat } from '@/lib/chat-retention';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
 import { sendClockOutRemindersIfInWindow } from '@/lib/clock-out-reminder';
@@ -42,6 +43,12 @@ export async function GET(req: Request) {
     clockOutReminders = await sendClockOutRemindersIfInWindow();
   } catch (e) {
     console.error('[cron/time-clock] clock-out shift reminders failed', e);
+  }
+
+  try {
+    await runSalaryDistributionIfDue();
+  } catch (e) {
+    console.error('[cron/time-clock] salary distribution failed', e);
   }
 
   return Response.json({

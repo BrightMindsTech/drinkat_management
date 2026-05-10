@@ -8,6 +8,10 @@
 		"global_fetch_strictly_public",
 		"no_handle_cross_request_promise_resolution"
 	],
+	// Paid Workers: raise CPU per request (default 30s). Free tier stays ~10ms — upgrade or keep requests light.
+	"limits": {
+		"cpu_ms": 120000
+	},
 	"assets": {
 		"directory": ".open-next/assets",
 		"binding": "ASSETS"

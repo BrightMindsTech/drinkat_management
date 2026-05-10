@@ -200,9 +200,12 @@ export function TimeClockView({
       <ConsentBlock status={status} onUpdated={refresh} />
 
       {geoOk && branch && (
-        <p className="text-sm text-app-secondary">
-          {branch.name} · {pos ? t.timeClock.positionOk : t.timeClock.waitingGps}
-        </p>
+        <div className="space-y-1">
+          <p className="text-sm text-app-secondary">
+            {branch.name} · {pos ? t.timeClock.positionOk : t.timeClock.waitingGps}
+          </p>
+          <p className="text-xs text-app-muted">{t.timeClock.autoClockInGeofenceHint}</p>
+        </div>
       )}
 
       <ClockActions

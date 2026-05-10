@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { Checklist, ChecklistItem, ChecklistAssignment, Employee, Branch, Department, QcSubmission, SubmissionPhoto } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 
@@ -110,17 +110,26 @@ export function QCReviewView({
     }
   }
 
-  async function createAssignment(checklistId: string, employeeId: string, branchId: string, dueDate?: string) {
+  async function assignChecklistToPeople(
+    checklistId: string,
+    employeeIds: string[],
+    dueDate?: string
+  ): Promise<{ created: AssignmentWithRelations[]; skipped: { employeeId: string; reason: string }[] }> {
     const res = await fetch('/api/assignments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ checklistId, employeeId, branchId, dueDate }),
+      body: JSON.stringify({ checklistId, employeeIds, dueDate }),
     });
-    const data = await res.json();
-    if (res.ok) {
-      setAssignments((prev) => [...prev, data]);
-      setShowAssign(false);
+    const data = (await res.json()) as {
+      created?: AssignmentWithRelations[];
+      skipped?: { employeeId: string; reason: string }[];
+      error?: string;
+    };
+    if (!res.ok || !data.created) {
+      throw new Error(typeof data.error === 'string' ? data.error : 'Assignment failed');
     }
+    setAssignments((prev) => [...prev, ...data.created!]);
+    return { created: data.created, skipped: data.skipped ?? [] };
   }
 
   async function reviewSubmission(id: string, status: 'approved' | 'denied', rating?: number, comments?: string) {
@@ -251,7 +260,8 @@ export function QCReviewView({
           <AssignForm
             checklists={checklists}
             employees={employees}
-            onSave={(cid, eid, bid, dueDate) => createAssignment(cid, eid, bid, dueDate)}
+            branches={branches}
+            onAssign={assignChecklistToPeople}
             onCancel={() => setShowAssign(false)}
           />
         )}
@@ -555,7 +565,7 @@ function NewChecklistForm({
 
   return (
     <form
-      className="mb-4 rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 space-y-3"
+      className="mb-4 rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 space-y-5"
       onSubmit={(e) => {
         e.preventDefault();
         onSave(
@@ -567,39 +577,67 @@ function NewChecklistForm({
         );
       }}
     >
-      <div className="flex flex-wrap gap-4">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t.qc.checklistName}
-          required
-          className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2"
-        />
-        <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2">
-          <option value="">{t.qc.allBranches}</option>
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>{b.name}</option>
-          ))}
-        </select>
+      <div className="rounded-lg bg-ios-blue/5 dark:bg-ios-blue/10 border border-ios-blue/20 dark:border-ios-blue/30 p-3">
+        <p className="text-sm font-semibold text-app-primary mb-2">{t.qc.newChecklistGuideTitle}</p>
+        <ol className="list-decimal list-inside space-y-1.5 text-sm text-app-secondary">
+          <li>{t.qc.newChecklistGuide1}</li>
+          <li>{t.qc.newChecklistGuide2}</li>
+          <li>{t.qc.newChecklistGuide3}</li>
+        </ol>
       </div>
-      <div className="flex flex-wrap items-center gap-4">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={repeatsDaily} onChange={(e) => setRepeatsDaily(e.target.checked)} className="rounded" />
-          <span className="text-sm text-app-label">{t.qc.repeatsDaily}</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <span className="text-sm text-app-label">{t.qc.deadlineTime}</span>
-          <input
-            type="time"
-            value={deadlineTime}
-            onChange={(e) => setDeadlineTime(e.target.value)}
-            className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2"
-          />
-        </label>
-      </div>
+
       <div>
-        <p className="text-sm font-medium text-app-primary mb-1">{t.qc.itemsOptional}</p>
+        <h3 className="text-sm font-semibold text-app-primary mb-2">{t.qc.newChecklistSectionBasics}</h3>
+        <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t.qc.checklistName}
+            required
+            className="flex-1 min-w-[12rem] rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2"
+          />
+          <select
+            value={branchId}
+            onChange={(e) => setBranchId(e.target.value)}
+            className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2 min-w-[10rem]"
+            aria-label={t.qc.allBranches}
+          >
+            <option value="">{t.qc.allBranches}</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-app-primary mb-2">{t.qc.newChecklistSectionSchedule}</h3>
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={repeatsDaily} onChange={(e) => setRepeatsDaily(e.target.checked)} className="rounded" />
+            <span className="text-sm text-app-label">{t.qc.repeatsDaily}</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="text-sm text-app-label">{t.qc.deadlineTime}</span>
+            <input
+              type="time"
+              value={deadlineTime}
+              onChange={(e) => setDeadlineTime(e.target.value)}
+              className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2"
+            />
+          </label>
+        </div>
+        {!repeatsDaily && (
+          <p className="mt-2 text-xs text-app-muted">{t.qc.newChecklistOneTimeReminder}</p>
+        )}
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-app-primary mb-2">{t.qc.newChecklistSectionItems}</h3>
+        <p className="text-sm text-app-muted mb-2">{t.qc.itemsOptional}</p>
         {items.map((item, i) => (
           <input
             key={i}
@@ -611,20 +649,20 @@ function NewChecklistForm({
               setItems(next);
             }}
             placeholder={t.qc.itemPlaceholder}
-            className="block w-full max-w-md rounded border px-3 py-1.5 text-sm mb-1"
+            className="block w-full max-w-md rounded border border-gray-200 dark:border-ios-dark-separator px-3 py-1.5 text-sm mb-1.5 bg-white dark:bg-ios-dark-elevated"
           />
         ))}
-        <button
-          type="button"
-          onClick={() => setItems((prev) => [...prev, ''])}
-          className="text-sm text-ios-blue font-medium"
-        >
+        <button type="button" onClick={() => setItems((prev) => [...prev, ''])} className="text-sm text-ios-blue font-medium">
           {t.qc.addItem}
         </button>
       </div>
-      <div className="flex gap-2">
-        <button type="submit" className="rounded-ios bg-ios-blue text-white px-4 py-2 text-sm font-medium">{t.common.create}</button>
-        <button type="button" onClick={onCancel} className="rounded border px-4 py-2 text-sm">{t.common.cancel}</button>
+      <div className="flex gap-2 pt-1">
+        <button type="submit" className="rounded-ios bg-ios-blue text-white px-4 py-2 text-sm font-medium">
+          {t.common.create}
+        </button>
+        <button type="button" onClick={onCancel} className="rounded border border-gray-300 dark:border-ios-dark-separator px-4 py-2 text-sm">
+          {t.common.cancel}
+        </button>
       </div>
     </form>
   );
@@ -633,57 +671,201 @@ function NewChecklistForm({
 function AssignForm({
   checklists,
   employees,
-  onSave,
+  branches,
+  onAssign,
   onCancel,
 }: {
   checklists: ChecklistWithItems[];
   employees: (Employee & { branch: Branch; department?: Department | null })[];
-  onSave: (checklistId: string, employeeId: string, branchId: string, dueDate?: string) => void;
+  branches: Branch[];
+  onAssign: (
+    checklistId: string,
+    employeeIds: string[],
+    dueDate?: string
+  ) => Promise<{ created: AssignmentWithRelations[]; skipped: { employeeId: string; reason: string }[] }>;
   onCancel: () => void;
 }) {
   const { t } = useLanguage();
   const [checklistId, setChecklistId] = useState(checklists[0]?.id ?? '');
-  const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? '');
+  const [filterBranchId, setFilterBranchId] = useState('');
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [dueDate, setDueDate] = useState('');
-  const employee = employees.find((e) => e.id === employeeId);
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
   const selectedChecklist = checklists.find((c) => c.id === checklistId);
-  const needsDueDate = selectedChecklist && !selectedChecklist.repeatsDaily;
+  const needsDueDate = Boolean(selectedChecklist && !selectedChecklist.repeatsDaily);
+
+  const filteredEmployees = useMemo(() => {
+    if (!filterBranchId) return employees;
+    return employees.filter((e) => e.branchId === filterBranchId);
+  }, [employees, filterBranchId]);
+
+  const selectedIds = useMemo(
+    () => Object.entries(selected).filter(([, on]) => on).map(([id]) => id),
+    [selected]
+  );
+
+  const toggle = useCallback((id: string) => {
+    setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+
+  const selectAllShown = useCallback(() => {
+    setSelected((prev) => {
+      const next = { ...prev };
+      for (const e of filteredEmployees) next[e.id] = true;
+      return next;
+    });
+  }, [filteredEmployees]);
+
+  const clearSelection = useCallback(() => {
+    setSelected({});
+  }, []);
 
   return (
     <form
-      className="mb-4 rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 flex flex-wrap gap-4"
-      onSubmit={(e) => {
+      className="mb-4 rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 space-y-4"
+      onSubmit={async (e) => {
         e.preventDefault();
-        if (employee && selectedChecklist) {
-          const assignmentBranchId = selectedChecklist.branchId ?? employee.branchId;
-          onSave(checklistId, employeeId, assignmentBranchId, needsDueDate ? dueDate : undefined);
+        setFormError(null);
+        setFeedback(null);
+        if (selectedIds.length === 0) {
+          setFormError(t.qc.assignNeedOnePerson);
+          return;
+        }
+        if (needsDueDate && !dueDate) {
+          setFormError(t.qc.assignDueDateRequired);
+          return;
+        }
+        setBusy(true);
+        try {
+          const { skipped } = await onAssign(checklistId, selectedIds, needsDueDate ? dueDate : undefined);
+          if (skipped.length > 0) {
+            setFeedback(interpolate(t.qc.assignSkippedSummary, { count: String(skipped.length) }));
+          } else {
+            onCancel();
+          }
+        } catch (err) {
+          setFormError(err instanceof Error ? err.message : 'Error');
+        } finally {
+          setBusy(false);
         }
       }}
     >
-      <select value={checklistId} onChange={(e) => setChecklistId(e.target.value)} className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2" required>
-        {checklists.map((c) => (
-          <option key={c.id} value={c.id}>{c.name}{c.repeatsDaily ? ' (daily)' : ''}</option>
-        ))}
-      </select>
-      <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2" required>
-        {employees.map((e) => (
-          <option key={e.id} value={e.id}>{e.name} ({e.branch.name}){e.department ? ` — ${e.department.name}` : ''}</option>
-        ))}
-      </select>
-      {needsDueDate && (
-        <label className="flex items-center gap-2">
-          <span className="text-sm text-app-label">{t.qc.dueDate}</span>
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            required={needsDueDate}
+      <p className="text-sm text-app-secondary">{t.qc.assignBulkIntro}</p>
+
+      <div className="flex flex-col lg:flex-row lg:items-end gap-3 flex-wrap">
+        <label className="flex flex-col gap-1.5 text-sm text-app-label min-w-[12rem] flex-1">
+          {t.common.checklist}
+          <select
+            value={checklistId}
+            onChange={(e) => {
+              setChecklistId(e.target.value);
+              setSelected({});
+              setFeedback(null);
+            }}
             className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2"
-          />
+            required
+          >
+            {checklists.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.repeatsDaily ? ` (${t.qc.repeatsDaily})` : ''}
+              </option>
+            ))}
+          </select>
         </label>
-      )}
-      <button type="submit" className="rounded-ios bg-ios-blue text-white px-4 py-2 text-sm font-medium">{t.qc.assign}</button>
-      <button type="button" onClick={onCancel} className="rounded border px-4 py-2 text-sm">{t.common.cancel}</button>
+
+        <label className="flex flex-col gap-1.5 text-sm text-app-label min-w-[12rem] flex-1">
+          {t.qc.assignFilterBranch}
+          <select
+            value={filterBranchId}
+            onChange={(e) => {
+              setFilterBranchId(e.target.value);
+              setSelected({});
+            }}
+            className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2"
+          >
+            <option value="">{t.qc.allBranches}</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {needsDueDate ? (
+          <label className="flex flex-col gap-1.5 text-sm text-app-label">
+            {t.qc.dueDate}
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              required
+              className="rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2"
+            />
+          </label>
+        ) : null}
+      </div>
+
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <span className="text-sm font-medium text-app-primary">
+            {interpolate(t.qc.assignSelectedCount, { count: String(selectedIds.length) })}
+          </span>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={selectAllShown} className="text-sm text-ios-blue font-medium">
+              {t.qc.assignSelectAllShown}
+            </button>
+            <button type="button" onClick={clearSelection} className="text-sm text-app-secondary underline-offset-2 hover:underline">
+              {t.qc.assignClearSelection}
+            </button>
+          </div>
+        </div>
+        <ul className="max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-ios-dark-separator divide-y divide-gray-100 dark:divide-ios-dark-separator">
+          {filteredEmployees.length === 0 ? (
+            <li className="p-3 text-sm text-app-muted">{t.common.noData}</li>
+          ) : (
+            filteredEmployees.map((emp) => (
+              <li key={emp.id}>
+                <label className="flex items-center gap-3 cursor-pointer px-3 py-2 hover:bg-gray-50 dark:hover:bg-ios-dark-elevated-2/40">
+                  <input
+                    type="checkbox"
+                    checked={!!selected[emp.id]}
+                    onChange={() => toggle(emp.id)}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm text-app-primary flex-1 min-w-0">
+                    {emp.name}{' '}
+                    <span className="text-app-muted">
+                      ({emp.branch.name}
+                      {emp.department ? ` — ${emp.department.name}` : ''})
+                    </span>
+                  </span>
+                </label>
+              </li>
+            ))
+          )}
+        </ul>
+      </div>
+
+      {formError && <p className="text-sm text-red-600 dark:text-red-400">{formError}</p>}
+      {feedback && <p className="text-sm text-amber-700 dark:text-amber-300">{feedback}</p>}
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="submit"
+          disabled={busy || selectedIds.length === 0}
+          className="rounded-ios bg-ios-blue text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {busy ? t.qc.assignCreating : interpolate(t.qc.assignToN, { count: String(selectedIds.length) })}
+        </button>
+        <button type="button" onClick={onCancel} className="rounded border border-gray-300 dark:border-ios-dark-separator px-4 py-2 text-sm">
+          {t.common.cancel}
+        </button>
+      </div>
     </form>
   );
 }

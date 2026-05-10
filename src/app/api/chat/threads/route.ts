@@ -11,6 +11,8 @@ import {
   listThreadsForUser,
 } from '@/lib/chat-thread';
 
+export const dynamic = 'force-dynamic';
+
 const dmSchema = z.object({
   otherUserId: z.string().min(1),
 });

@@ -26,6 +26,7 @@ const COLORS = ['#007AFF', '#5856D6', '#34C759', '#FF9500', '#FF3B30'];
 
 const SIDEBAR_SECTIONS = [
   { id: 'branch-overview', labelKey: 'branchOverview' as const },
+  { id: 'manager-reports', labelKey: 'managerReportsSection' as const },
   { id: 'hr', labelKey: 'hrSection' as const },
   { id: 'leave', labelKey: 'leaveSection' as const },
   { id: 'attendance', labelKey: 'attendanceSection' as const },
@@ -33,7 +34,6 @@ const SIDEBAR_SECTIONS = [
   { id: 'qc', labelKey: 'qcSection' as const },
   { id: 'forms', labelKey: 'formsSection' as const },
   { id: 'weekly-ratings', labelKey: 'weeklyRatingsLeaderboard' as const },
-  { id: 'manager-reports', labelKey: 'managerReportsSection' as const },
   { id: 'activity', labelKey: 'activitySection' as const },
   { id: 'salary', labelKey: 'salarySection' as const },
   { id: 'export', labelKey: 'exportCsv' as const },
@@ -204,6 +204,23 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       leave: { total: number; approved: number; denied: number; pending: number };
       overall: { total: number; approved: number; denied: number; pending: number };
     }[];
+    managerRatingReport?: {
+      managerId: string;
+      managerName: string;
+      branchId: string;
+      branchName: string;
+      teamSize: number;
+      perfReviewsConducted: number;
+      perfReviewAvgStars: number | null;
+      perfReviewsScore: number;
+      teamFormSubmissions: number;
+      teamFormsHandled: number;
+      teamFormsCoverageScore: number;
+      managerOwnForms: number;
+      managerOwnFormsScore: number;
+      attendanceScore: number;
+      compositeScore: number;
+    }[];
     weeklyRatings?: {
       periodLabel: string;
       monthLabel: string;
@@ -240,6 +257,16 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         alertCount: number;
       };
     }[];
+    cashReport?: {
+      byBranch: {
+        branchId: string;
+        branchName: string;
+        submissionCount: number;
+        grossCashSalesJod: number;
+        netCashJod: number;
+      }[];
+      totals: { submissionCount: number; grossCashSalesJod: number; netCashJod: number };
+    };
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -323,6 +350,12 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     name: branchNames[id] ?? id,
     count,
   }));
+  const cashChartData = (data.cashReport?.byBranch ?? []).map((b) => ({
+    name: b.branchName,
+    gross: b.grossCashSalesJod,
+    net: b.netCashJod,
+  }));
+  const cashReportTotals = data.cashReport?.totals;
   const advancesChartData = [
     { name: t.status.approved, value: data.hr.advances.approved, color: '#007AFF' },
     { name: t.status.denied, value: data.hr.advances.denied, color: '#ef4444' },
@@ -529,11 +562,10 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   const reportCardClass = 'app-section';
   const sectionTitleClass = 'text-xl font-semibold text-app-primary mb-2';
   const labelClass = 'text-sm font-medium text-app-secondary';
-  const branchRankedByEvaluation = [...(data.branchOverview ?? [])].sort((a, b) => b.qcRate - a.qcRate);
-  const bestBranch = branchRankedByEvaluation[0];
-  const weakestBranch = branchRankedByEvaluation[branchRankedByEvaluation.length - 1];
-  const ownerPriorityCount =
-    data.qc.pending + data.forms.filed + data.hr.advances.pending + (data.hr.leave?.totalPending ?? 0);
+  const managerRatingChartData = (data.managerRatingReport ?? []).map((row) => ({
+    name: row.managerName,
+    score: row.compositeScore,
+  }));
 
   return (
     <div className="flex flex-col lg:flex-row gap-8 min-w-0">
@@ -624,41 +656,6 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
           </button>
         </div>
 
-        <section id="owner-summary" className={`scroll-mt-6 ${reportCardClass}`}>
-          <h2 className={sectionTitleClass}>Owner Snapshot</h2>
-          <p className="text-sm text-app-muted mb-5">Fast overview of what needs attention now.</p>
-          <div className="grid gap-4 md:grid-cols-4 mb-5">
-            <div className="rounded-lg border border-ios-blue/30 bg-ios-blue/5 p-4">
-              <p className="text-xs text-ios-blue">Open priorities</p>
-              <p className="text-2xl font-semibold text-app-primary">{ownerPriorityCount}</p>
-            </div>
-            <div className="rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-gray-50/70 dark:bg-ios-dark-elevated-2/30 p-4">
-              <p className="text-xs text-app-muted">Staff headcount</p>
-              <p className="text-2xl font-semibold text-app-primary">{data.hr.totalHeadcount}</p>
-            </div>
-            <div className="rounded-lg border border-emerald-300/60 dark:border-emerald-700/40 bg-emerald-50/60 dark:bg-emerald-900/20 p-4">
-              <p className="text-xs text-emerald-700 dark:text-emerald-300">Best branch</p>
-              <p className="text-base font-semibold text-app-primary">{bestBranch?.name ?? '—'}</p>
-              <p className="text-xs text-app-muted mt-1">{bestBranch ? `${bestBranch.qcRate}% evaluation` : 'No data'}</p>
-            </div>
-            <div className="rounded-lg border border-red-300/60 dark:border-red-700/40 bg-red-50/60 dark:bg-red-900/20 p-4">
-              <p className="text-xs text-red-700 dark:text-red-300">Needs support</p>
-              <p className="text-base font-semibold text-app-primary">{weakestBranch?.name ?? '—'}</p>
-              <p className="text-xs text-app-muted mt-1">{weakestBranch ? `${weakestBranch.qcRate}% evaluation` : 'No data'}</p>
-            </div>
-          </div>
-          <div className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4">
-            <p className="text-sm font-semibold text-app-primary mb-2">Priority actions</p>
-            <ul className="space-y-1.5 text-sm text-app-secondary">
-              <li>• QC pending reviews: <span className="font-semibold text-app-primary">{data.qc.pending}</span></li>
-              <li>• Forms awaiting review: <span className="font-semibold text-app-primary">{data.forms.filed}</span></li>
-              <li>• Pending leave requests: <span className="font-semibold text-app-primary">{data.hr.leave?.totalPending ?? 0}</span></li>
-              <li>• Pending advance requests: <span className="font-semibold text-app-primary">{data.hr.advances.pending}</span></li>
-              <li>• Late QC submissions: <span className="font-semibold text-app-primary">{data.qc.lateCount}</span></li>
-            </ul>
-          </div>
-        </section>
-
         {/* Branch Overview */}
         <section id="branch-overview" className={`scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.branchOverview}</h2>
@@ -695,6 +692,254 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               </div>
             ))}
           </div>
+
+          {cashReportTotals != null && (
+            <div className="mt-10 pt-8 border-t border-gray-200 dark:border-ios-dark-separator">
+              <h3 className="text-lg font-semibold text-app-primary mb-1">{t.reports.cashReportTitle}</h3>
+              <p className="text-sm text-app-muted mb-6">{t.reports.cashReportIntro}</p>
+              {cashReportTotals.submissionCount === 0 ? (
+                <p className="text-sm text-app-muted">{t.common.noData}</p>
+              ) : (
+                <>
+                  <div className="grid gap-6 lg:grid-cols-2 mb-6">
+                    <div className="rounded-lg border border-gray-200 dark:border-ios-dark-separator bg-gray-50/30 dark:bg-ios-dark-elevated-2/20 p-5">
+                      <p className={`${labelClass} mb-3`}>{t.reports.cashReportTitle}</p>
+                      {cashChartData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={240}>
+                          <BarChart data={cashChartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis
+                              dataKey="name"
+                              tick={chartTick}
+                              axisLine={chartAxisLine}
+                              tickLine={false}
+                              tickFormatter={(value) => truncateLabel(String(value), 10)}
+                            />
+                            <YAxis tick={chartTick} axisLine={chartAxisLine} tickLine={false} />
+                            <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartTooltipLabelStyle} />
+                            <Legend />
+                            <Bar dataKey="gross" fill="#34C759" name={t.reports.cashGross} radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="net" fill="#007AFF" name={t.reports.cashNet} radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : null}
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-100 dark:bg-ios-dark-elevated-2/50">
+                            <th className="text-left p-3">{t.common.branch}</th>
+                            <th className="text-right p-3">{t.reports.cashFormsCount}</th>
+                            <th className="text-right p-3">{t.reports.cashGross}</th>
+                            <th className="text-right p-3">{t.reports.cashNet}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(data.cashReport?.byBranch ?? []).map((row, i) => (
+                            <tr
+                              key={row.branchId}
+                              className={`border-t border-gray-200 dark:border-ios-dark-separator ${
+                                i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/50 dark:bg-ios-dark-elevated-2/20'
+                              }`}
+                            >
+                              <td className="p-3 font-medium text-app-primary">{row.branchName}</td>
+                              <td className="p-3 text-right tabular-nums">{row.submissionCount}</td>
+                              <td className="p-3 text-right tabular-nums">{row.grossCashSalesJod.toFixed(2)}</td>
+                              <td className="p-3 text-right tabular-nums">{row.netCashJod.toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-gray-300 dark:border-ios-dark-separator bg-gray-50/80 dark:bg-ios-dark-elevated-2/40 font-semibold">
+                            <td className="p-3 text-app-primary">{t.reports.cashPeriodTotal}</td>
+                            <td className="p-3 text-right tabular-nums text-app-primary">{cashReportTotals.submissionCount}</td>
+                            <td className="p-3 text-right tabular-nums text-app-primary">{cashReportTotals.grossCashSalesJod.toFixed(2)}</td>
+                            <td className="p-3 text-right tabular-nums text-app-primary">{cashReportTotals.netCashJod.toFixed(2)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Manager Reports Section */}
+        <section id="manager-reports" className={`scroll-mt-6 ${reportCardClass}`}>
+          <h2 className={sectionTitleClass}>{t.reports.managerReportsSection}</h2>
+
+          {(data.managerRatingReport?.length ?? 0) > 0 ? (
+            <div className="mb-10 rounded-ios-lg border border-ios-blue/30 bg-ios-blue/5 p-5 sm:p-6">
+              <h3 className="text-lg font-semibold text-app-primary mb-1">{t.reports.managerRatingTitle}</h3>
+              <p className="text-sm text-app-secondary mb-4">{t.reports.managerRatingSummary}</p>
+              {managerRatingChartData.length ? (
+                <div className="mb-6 rounded-ios border border-gray-200 dark:border-ios-dark-separator bg-white/80 dark:bg-ios-dark-elevated p-4">
+                  <p className={`${labelClass} mb-3`}>{t.reports.managerRatingTitle}</p>
+                  <ResponsiveContainer width="100%" height={Math.max(200, managerRatingChartData.length * 40)}>
+                    <BarChart data={managerRatingChartData} layout="vertical" margin={{ left: 8, right: 16 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis type="number" domain={[0, 100]} tick={chartTick} axisLine={chartAxisLine} tickLine={false} />
+                      <YAxis type="category" dataKey="name" width={100} tick={chartTick} axisLine={chartAxisLine} tickLine={false} tickFormatter={(value) => truncateLabel(String(value), 14)} />
+                      <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartTooltipLabelStyle} />
+                      <Bar dataKey="score" fill="#007AFF" radius={[0, 6, 6, 0]} name={t.reports.compositeScoreShort} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : null}
+
+              <div className="grid gap-5 lg:grid-cols-2">
+                {(data.managerRatingReport ?? []).map((row) => (
+                  <article
+                    key={row.managerId}
+                    className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 sm:p-5"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-200 dark:border-ios-dark-separator pb-4 mb-4">
+                      <div>
+                        <h4 className="text-lg font-semibold text-app-primary">{row.managerName}</h4>
+                        <p className="text-sm text-app-secondary">{row.branchName}</p>
+                      </div>
+                      <div className="rounded-xl border border-ios-blue/40 bg-ios-blue/10 px-4 py-3 text-center min-w-[100px]">
+                        <p className="text-xs font-medium text-ios-blue uppercase tracking-wide">{t.reports.compositeScoreShort}</p>
+                        <p className="text-3xl font-bold text-app-primary leading-none">{row.compositeScore}</p>
+                      </div>
+                    </div>
+
+                    <dl className="grid grid-cols-1 gap-4 text-sm">
+                      <div>
+                        <dt className="flex flex-wrap justify-between gap-2 font-medium text-app-primary">
+                          <span>{t.reports.mgrDimPerfReviews}</span>
+                          <span className="tabular-nums">{row.perfReviewsScore}%</span>
+                        </dt>
+                        <dd className="text-xs text-app-muted mt-0.5">{t.reports.mgrDimPerfReviewsHint}</dd>
+                        <div className="mt-2 h-1.5 rounded-full bg-gray-200 dark:bg-ios-dark-elevated-2">
+                          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${row.perfReviewsScore}%` }} />
+                        </div>
+                        <p className="text-xs text-app-secondary mt-1.5">
+                          {t.reports.mgrMetricReviewsConducted}: {row.perfReviewsConducted}
+                          {row.perfReviewAvgStars != null ? ` · ${t.reports.mgrMetricStarsAvg}: ${row.perfReviewAvgStars}/5` : ''}
+                        </p>
+                      </div>
+
+                      <div>
+                        <dt className="flex flex-wrap justify-between gap-2 font-medium text-app-primary">
+                          <span>{t.reports.mgrDimTeamForms}</span>
+                          <span className="tabular-nums">{row.teamFormsCoverageScore}%</span>
+                        </dt>
+                        <dd className="text-xs text-app-muted mt-0.5">{t.reports.mgrDimTeamFormsHint}</dd>
+                        <div className="mt-2 h-1.5 rounded-full bg-gray-200 dark:bg-ios-dark-elevated-2">
+                          <div className="h-full rounded-full bg-violet-500" style={{ width: `${row.teamFormsCoverageScore}%` }} />
+                        </div>
+                        <p className="text-xs text-app-secondary mt-1.5">
+                          {t.reports.mgrMetricFormsHandledRatio}:{' '}
+                          {row.teamFormSubmissions > 0
+                            ? `${row.teamFormsHandled}/${row.teamFormSubmissions}`
+                            : '—'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <dt className="flex flex-wrap justify-between gap-2 font-medium text-app-primary">
+                          <span>{t.reports.mgrDimOwnForms}</span>
+                          <span className="tabular-nums">{row.managerOwnFormsScore}%</span>
+                        </dt>
+                        <dd className="text-xs text-app-muted mt-0.5">{t.reports.mgrDimOwnFormsHint}</dd>
+                        <div className="mt-2 h-1.5 rounded-full bg-gray-200 dark:bg-ios-dark-elevated-2">
+                          <div className="h-full rounded-full bg-amber-500" style={{ width: `${row.managerOwnFormsScore}%` }} />
+                        </div>
+                        <p className="text-xs text-app-secondary mt-1.5">
+                          {t.reports.mgrMetricFormsOwn}: {row.managerOwnForms}
+                        </p>
+                      </div>
+
+                      <div>
+                        <dt className="flex flex-wrap justify-between gap-2 font-medium text-app-primary">
+                          <span>{t.reports.mgrDimAttendance}</span>
+                          <span className="tabular-nums">{row.attendanceScore}%</span>
+                        </dt>
+                        <dd className="text-xs text-app-muted mt-0.5">{t.reports.mgrDimAttendanceHint}</dd>
+                        <div className="mt-2 h-1.5 rounded-full bg-gray-200 dark:bg-ios-dark-elevated-2">
+                          <div className="h-full rounded-full bg-sky-500" style={{ width: `${row.attendanceScore}%` }} />
+                        </div>
+                      </div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <p className="text-sm text-app-muted mb-6">{t.reports.managerReportsOverview}</p>
+          {!data.managerReports?.length ? (
+            <p className="text-app-muted text-sm">{t.common.noData}</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {data.managerReports.map((m) => {
+                const approvalRate = m.overall.total > 0 ? Math.round((m.overall.approved / m.overall.total) * 100) : 0;
+                return (
+                  <article
+                    key={m.managerId}
+                    className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 sm:p-5 shadow-sm dark:shadow-none"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-semibold text-app-primary">{m.managerName}</h3>
+                        <p className="text-sm text-app-secondary">{m.branchName}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-app-muted">{t.reports.teamSize}</p>
+                        <p className="text-xl font-semibold text-app-primary">{m.teamSize}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
+                        <p className="text-xs text-app-muted">{t.reports.qcSection}</p>
+                        <p className="text-sm font-semibold text-app-primary">{m.qc.approved}/{m.qc.total}</p>
+                      </div>
+                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
+                        <p className="text-xs text-app-muted">{t.reports.formsSection}</p>
+                        <p className="text-sm font-semibold text-app-primary">{m.forms.total}</p>
+                        <p className="text-xs text-app-muted">
+                          {t.reports.formsFiled}: {m.forms.filed}
+                        </p>
+                      </div>
+                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
+                        <p className="text-xs text-app-muted">{t.reports.advancesSection}</p>
+                        <p className="text-sm font-semibold text-app-primary">{m.advances.approved}/{m.advances.total}</p>
+                      </div>
+                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
+                        <p className="text-xs text-app-muted">{t.reports.leaveSection}</p>
+                        <p className="text-sm font-semibold text-app-primary">{m.leave.approved}/{m.leave.total}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-ios border border-gray-200 dark:border-ios-dark-separator p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-app-secondary">{t.common.total}</p>
+                        <p className="text-sm font-semibold text-app-primary">{m.overall.approved}/{m.overall.total}</p>
+                      </div>
+                      <div className="mt-2 h-2 rounded-full bg-gray-200 dark:bg-ios-dark-elevated-2 overflow-hidden">
+                        <div className="h-full bg-ios-blue" style={{ width: `${approvalRate}%` }} />
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-100 px-2 py-0.5">
+                          {t.status.approved}: {m.overall.approved}
+                        </span>
+                        <span className="rounded-full bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-100 px-2 py-0.5">
+                          {t.status.denied}: {m.overall.denied}
+                        </span>
+                        <span className="rounded-full bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100 px-2 py-0.5">
+                          {t.status.pending}: {m.overall.pending}
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {/* HR Section */}
@@ -1561,81 +1806,6 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
           )}
         </section>
         )}
-
-        {/* Manager Reports Section */}
-        <section id="manager-reports" className={`scroll-mt-6 ${reportCardClass}`}>
-          <h2 className={sectionTitleClass}>{t.reports.managerReportsSection}</h2>
-          <p className="text-sm text-app-muted mb-6">{t.reports.managerReportsOverview}</p>
-          {!data.managerReports?.length ? (
-            <p className="text-app-muted text-sm">{t.common.noData}</p>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {data.managerReports.map((m) => {
-                const approvalRate = m.overall.total > 0 ? Math.round((m.overall.approved / m.overall.total) * 100) : 0;
-                return (
-                  <article
-                    key={m.managerId}
-                    className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 sm:p-5 shadow-sm dark:shadow-none"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-lg font-semibold text-app-primary">{m.managerName}</h3>
-                        <p className="text-sm text-app-secondary">{m.branchName}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-app-muted">{t.reports.teamSize}</p>
-                        <p className="text-xl font-semibold text-app-primary">{m.teamSize}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
-                        <p className="text-xs text-app-muted">{t.reports.qcSection}</p>
-                        <p className="text-sm font-semibold text-app-primary">{m.qc.approved}/{m.qc.total}</p>
-                      </div>
-                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
-                        <p className="text-xs text-app-muted">{t.reports.formsSection}</p>
-                        <p className="text-sm font-semibold text-app-primary">{m.forms.total}</p>
-                        <p className="text-xs text-app-muted">
-                          {t.reports.formsFiled}: {m.forms.filed}
-                        </p>
-                      </div>
-                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
-                        <p className="text-xs text-app-muted">{t.reports.advancesSection}</p>
-                        <p className="text-sm font-semibold text-app-primary">{m.advances.approved}/{m.advances.total}</p>
-                      </div>
-                      <div className="rounded-ios border border-gray-200 dark:border-ios-dark-separator px-3 py-2">
-                        <p className="text-xs text-app-muted">{t.reports.leaveSection}</p>
-                        <p className="text-sm font-semibold text-app-primary">{m.leave.approved}/{m.leave.total}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 rounded-ios border border-gray-200 dark:border-ios-dark-separator p-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-app-secondary">{t.common.total}</p>
-                        <p className="text-sm font-semibold text-app-primary">{m.overall.approved}/{m.overall.total}</p>
-                      </div>
-                      <div className="mt-2 h-2 rounded-full bg-gray-200 dark:bg-ios-dark-elevated-2 overflow-hidden">
-                        <div className="h-full bg-ios-blue" style={{ width: `${approvalRate}%` }} />
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                        <span className="rounded-full bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-100 px-2 py-0.5">
-                          {t.status.approved}: {m.overall.approved}
-                        </span>
-                        <span className="rounded-full bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-100 px-2 py-0.5">
-                          {t.status.denied}: {m.overall.denied}
-                        </span>
-                        <span className="rounded-full bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100 px-2 py-0.5">
-                          {t.status.pending}: {m.overall.pending}
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
 
         {/* Activity Section */}
         {showDetailedAnalytics && (

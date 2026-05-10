@@ -26,7 +26,7 @@ const awayMinutesByKind: Record<'break' | 'bathroom' | 'other', number> = {
 
 export type TimeClockGeofenceContextValue = {
   status: TimeClockStatus | null;
-  refresh: () => Promise<void>;
+  refresh: () => Promise<TimeClockStatus | null>;
   err: string | null;
   setErr: (e: string | null) => void;
   pos: { lat: number; lng: number } | null;
@@ -80,15 +80,17 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
     };
   }, [showClockInRequiredGate]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<TimeClockStatus | null> => {
     try {
       const r = await fetch('/api/time-clock/status');
       if (!r.ok) throw new Error(`status_${r.status}`);
       const j = (await r.json()) as TimeClockStatus;
       setStatus(j);
       setErr(null);
+      return j;
     } catch {
       setErr(t.timeClock.loadStatusFailed);
+      return null;
     }
   }, [t.timeClock.loadStatusFailed]);
 
@@ -136,6 +138,28 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
 
   const onGeoTransition = useCallback(
     async (kind: 'enter' | 'exit', lat: number, lng: number) => {
+      if (kind === 'enter') {
+        const st = await refresh();
+        if (
+          st &&
+          st.applicable &&
+          !st.geofenceExempt &&
+          st.branch?.hasGeofence &&
+          !st.clock
+        ) {
+          try {
+            const cin = await fetch('/api/time-clock/clock-in', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ lat, lng }),
+            });
+            if (cin.ok) await refresh();
+          } catch {
+            /* still notify server below */
+          }
+        }
+      }
+
       let payload: { action?: string; inside?: boolean } = {};
       try {
         const res = await fetch('/api/time-clock/location-event', {

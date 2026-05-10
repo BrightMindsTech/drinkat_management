@@ -12,6 +12,8 @@ import { DepartmentSection } from './DepartmentSection';
 import { LeaveRequestsSection } from './LeaveRequestsSection';
 import { ManagerAssignmentsSection } from './ManagerAssignmentsSection';
 import { BranchGeofenceSection } from './BranchGeofenceSection';
+import { OwnerLiveAttendanceSection } from './OwnerLiveAttendanceSection';
+import type { OwnerLiveAttendanceRow } from '@/lib/time-clock-owner-live';
 
 type EmployeeWithRelations = Employee & { branch: Branch; department?: Department | null; user: { email: string } | null };
 type AdvanceWithEmployee = Advance & { employee: Employee & { branch: { name: string } } };
@@ -23,12 +25,14 @@ export function HROwnerView({
   initialLeaveRequests,
   branches,
   departments,
+  initialLiveAttendance,
 }: {
   initialEmployees: EmployeeWithRelations[];
   initialAdvances: AdvanceWithEmployee[];
   initialLeaveRequests: LeaveWithEmployee[];
   branches: Branch[];
   departments: Department[];
+  initialLiveAttendance: OwnerLiveAttendanceRow[];
 }) {
   const { t } = useLanguage();
   const [employees, setEmployees] = useState(initialEmployees);
@@ -137,6 +141,7 @@ export function HROwnerView({
   return (
     <div className="app-page">
       <BranchGeofenceSection branches={branches} />
+      <OwnerLiveAttendanceSection initialRows={initialLiveAttendance} />
       <section id="hr-owner-staff" className={sectionClass}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-app-primary">{t.hr.staff}</h2>

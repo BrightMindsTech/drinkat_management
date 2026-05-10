@@ -1,18 +1,19 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
-import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, format } from 'date-fns';
 import { DEFAULT_APP_TIMEZONE } from '@/lib/shifts';
 import { weekStartKeysBetweenRange, weekStartKeysOverlappingMonth } from '@/lib/weekly-ratings';
 import { getSalaryDeductionReport } from '@/lib/salary-deduction-report';
 import { buildQcScoreReport, isQcScoreableFormAnswers } from '@/lib/qc-form-score-report';
 import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
+import { buildCashFormReport } from '@/lib/cash-form-report';
+import { buildManagerRatingReport } from '@/lib/manager-rating-report';
+import { normalizeUserRole } from '@/lib/formVisibility';
 
 export async function GET(req: NextRequest) {
   const session = await requireOwner();
   await maybePurgeOldManagementFormSubmissions(prisma);
-  await runSalaryDistributionIfDue();
   const { searchParams } = new URL(req.url);
   const period = searchParams.get('period') ?? 'month';
   const branchId = searchParams.get('branchId') ?? '';
@@ -60,6 +61,10 @@ export async function GET(req: NextRequest) {
     managers,
     timeClockAlertsByBranch,
     ownerTimeClockAlerts,
+    branchesOrdered,
+    cashFormSubmissions,
+    managementFormsAgg,
+    perfReviewsAgg,
   ] = await Promise.all([
     prisma.employee.findMany({
       where: { ...branchFilter, ...statusFilter },
@@ -82,6 +87,9 @@ export async function GET(req: NextRequest) {
         assignment: { include: { checklist: true } },
         photos: { select: { id: true, filePath: true } },
       },
+      // Cap payload: very busy months + photos metadata can exceed Worker CPU on Cloudflare.
+      take: 3500,
+      orderBy: { submittedAt: 'desc' },
     }),
     getSalaryDeductionReport(
       prisma,
@@ -169,7 +177,43 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
       take: 100,
     }),
+    prisma.branch.findMany({
+      where: branchId ? { id: branchId } : undefined,
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.managementFormSubmission.findMany({
+      where: {
+        submittedAt: { gte: start, lte: end },
+        template: { category: 'cash' },
+        status: { not: 'denied' },
+        ...(branchId ? { branchId } : {}),
+      },
+      select: { branchId: true, answersJson: true, status: true },
+      take: 8000,
+      orderBy: { submittedAt: 'desc' },
+    }),
+    prisma.managementFormSubmission.findMany({
+      where: {
+        submittedAt: { gte: start, lte: end },
+        ...(branchId ? { branchId } : {}),
+      },
+      select: { employeeId: true, reviewedAt: true, status: true },
+      take: 12000,
+      orderBy: { submittedAt: 'desc' },
+    }),
+    prisma.performanceReview.findMany({
+      where: {
+        reviewedAt: { gte: start, lte: end },
+        ...(branchId ? { employee: { branchId } } : {}),
+      },
+      select: { employeeId: true, reviewedById: true, rating: true },
+      take: 8000,
+      orderBy: { reviewedAt: 'desc' },
+    }),
   ]);
+
+  const cashReport = buildCashFormReport(cashFormSubmissions, branchesOrdered);
 
   const headcountByBranch = employees.reduce((acc, e) => {
     acc[e.branchId] = (acc[e.branchId] ?? 0) + 1;
@@ -177,6 +221,53 @@ export async function GET(req: NextRequest) {
   }, {} as Record<string, number>);
 
   const attendance = await getAttendanceReport(employees, start, end, branchId, period);
+
+  const reviewerIds = [...new Set(perfReviewsAgg.map((r) => r.reviewedById).filter((id): id is string => !!id))];
+  const reviewerUsers =
+    reviewerIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: reviewerIds } },
+          select: { id: true, role: true, employee: { select: { id: true } } },
+        })
+      : [];
+  const managerEmployeeIdByUserId = new Map<string, string | null>(
+    reviewerUsers.map((u) => [u.id, u.employee?.id ?? null])
+  );
+  const reviewerRoleByUserId = new Map<string, ReturnType<typeof normalizeUserRole>>(
+    reviewerUsers.map((u) => [u.id, normalizeUserRole(u.role)])
+  );
+
+  const attendanceRows: Record<
+    string,
+    { expectedWeekdays: number | null | undefined; absenceDays: number | null | undefined }
+  > = {};
+  for (const row of attendance.rows ?? []) {
+    attendanceRows[row.employeeId] = {
+      expectedWeekdays: row.expectedWeekdays,
+      absenceDays: row.absenceDays,
+    };
+  }
+
+  const managersForRating = managers.map((m) => ({
+    id: m.id,
+    name: m.name,
+    branchId: m.branchId,
+    branchName: m.branch.name,
+    directReportIds: m.directReports.map((dr) => dr.id),
+    userId: m.userId,
+  }));
+
+  const periodKey = period === 'day' || period === 'week' || period === 'month' ? period : 'month';
+  const managerRatingReport = buildManagerRatingReport({
+    period: periodKey,
+    managers: managersForRating,
+    perfReviews: perfReviewsAgg,
+    formSubmissions: managementFormsAgg,
+    managerEmployeeIdByUserId,
+    reviewerRoleByUserId: reviewerRoleByUserId,
+    attendanceRows,
+  }).sort((a, b) => b.compositeScore - a.compositeScore);
+
   const alertEmployeeIds = [
     ...new Set(
       ownerTimeClockAlerts
@@ -400,11 +491,6 @@ export async function GET(req: NextRequest) {
 
   const weekKeysPeriod = weekStartKeysBetweenRange(start, end, DEFAULT_APP_TIMEZONE);
   const monthKeysForRef = weekStartKeysOverlappingMonth(refDate, DEFAULT_APP_TIMEZONE);
-  const branchRowsForRatings = await prisma.branch.findMany({
-    where: branchId ? { id: branchId } : undefined,
-    select: { id: true, name: true },
-    orderBy: { name: 'asc' },
-  });
 
   const [ratingsForPeriod, ratingsForMonth] = await Promise.all([
     weekKeysPeriod.length
@@ -482,7 +568,7 @@ export async function GET(req: NextRequest) {
   }
 
   const periodAgg = aggregateWeeklyRatings(ratingsForPeriod);
-  const periodByBranch = branchRowsForRatings.map((b) => {
+  const periodByBranch = branchesOrdered.map((b) => {
     const rows = sortAggRows(periodAgg.filter((x) => x.branchId === b.id)).slice(0, 20);
     return {
       branchId: b.id,
@@ -496,7 +582,7 @@ export async function GET(req: NextRequest) {
   });
 
   const monthAgg = aggregateWeeklyRatings(ratingsForMonth);
-  const monthByBranch = branchRowsForRatings.map((b) => {
+  const monthByBranch = branchesOrdered.map((b) => {
     const sorted = sortAggRows(monthAgg.filter((x) => x.branchId === b.id));
     const top = sorted[0];
     return {
@@ -517,7 +603,7 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  const branchNameById = new Map(branchRowsForRatings.map((b) => [b.id, b.name]));
+  const branchNameById = new Map(branchesOrdered.map((b) => [b.id, b.name]));
   const attendanceByBranchName = (attendance.rows ?? []).reduce(
     (acc, row) => {
       if (!acc[row.branchName]) acc[row.branchName] = { expected: 0, absence: 0 };
@@ -655,6 +741,7 @@ export async function GET(req: NextRequest) {
     },
     salary: salaryRows,
     branchOverview: branchOverviewWithOwnerScore,
+    cashReport,
     forms: {
       total: formsTotal,
       filed: formsFiled,
@@ -682,6 +769,7 @@ export async function GET(req: NextRequest) {
       })),
     },
     managerReports,
+    managerRatingReport,
     weeklyRatings: {
       periodLabel: format(start, 'yyyy-MM-dd') + ' – ' + format(end, 'yyyy-MM-dd'),
       monthLabel: format(refDate, 'yyyy-MM'),
@@ -982,20 +1070,20 @@ async function getNewHires(start: Date, end: Date, branchId: string) {
 
 async function getHeadcountOverTime(branchId: string) {
   const now = new Date();
-  const result: { month: string; count: number }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = subMonths(now, i);
-    const endOfMonthDate = endOfMonth(d);
-    const count = await prisma.employee.count({
-      where: {
-        joinDate: { lte: endOfMonthDate },
-        status: { not: 'terminated' },
-        ...(branchId ? { branchId } : {}),
-      },
-    });
-    result.push({ month: format(d, 'yyyy-MM'), count });
-  }
-  return result;
+  const months = Array.from({ length: 6 }, (_, i) => subMonths(now, 5 - i));
+  const counts = await Promise.all(
+    months.map((d) => {
+      const endOfMonthDate = endOfMonth(d);
+      return prisma.employee.count({
+        where: {
+          joinDate: { lte: endOfMonthDate },
+          status: { not: 'terminated' },
+          ...(branchId ? { branchId } : {}),
+        },
+      }).then((count) => ({ month: format(d, 'yyyy-MM'), count }));
+    })
+  );
+  return counts;
 }
 
 async function getBranchOverview(
@@ -1033,10 +1121,19 @@ async function getBranchOverview(
     _sum: { amount: true },
   });
 
+  const empIds = advancesByBranch.map((a) => a.employeeId);
+  const empBranches =
+    empIds.length > 0
+      ? await prisma.employee.findMany({
+          where: { id: { in: empIds } },
+          select: { id: true, branchId: true },
+        })
+      : [];
+  const branchIdByEmployeeId = new Map(empBranches.map((e) => [e.id, e.branchId] as const));
   const advMap = new Map<string, number>();
   for (const a of advancesByBranch) {
-    const emp = await prisma.employee.findUnique({ where: { id: a.employeeId }, select: { branchId: true } });
-    if (emp) advMap.set(emp.branchId, (advMap.get(emp.branchId) ?? 0) + (a._sum.amount ?? 0));
+    const bid = branchIdByEmployeeId.get(a.employeeId);
+    if (bid) advMap.set(bid, (advMap.get(bid) ?? 0) + (a._sum.amount ?? 0));
   }
 
   return branches.map((b) => {

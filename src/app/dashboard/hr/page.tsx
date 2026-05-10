@@ -8,6 +8,7 @@ import { HRManagerView } from '@/components/hr/HRManagerView';
 import { HRPageTitle } from '@/components/HRPageTitle';
 import { NoEmployeeMessage } from '@/components/NoEmployeeMessage';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { getOwnerLiveAttendanceRows } from '@/lib/time-clock-owner-live';
 
 export default async function HRPage() {
   const session = await getServerSession(authOptions);
@@ -16,7 +17,7 @@ export default async function HRPage() {
   const role = normalizeUserRole(session.user.role);
 
   if (role === 'owner') {
-    const [employees, advances, branches, departments, leaveRequests] = await Promise.all([
+    const [employees, advances, branches, departments, leaveRequests, liveAttendance] = await Promise.all([
       prisma.employee.findMany({
         where: { status: { not: 'terminated' } },
         include: {
@@ -38,11 +39,19 @@ export default async function HRPage() {
         include: { employee: { include: { branch: true } } },
         orderBy: { createdAt: 'desc' },
       }),
+      getOwnerLiveAttendanceRows(prisma),
     ]);
     return (
       <div>
         <HRPageTitle variant="owner" />
-        <HROwnerView initialEmployees={employees} initialAdvances={advances} initialLeaveRequests={leaveRequests} branches={branches} departments={departments} />
+        <HROwnerView
+          initialEmployees={employees}
+          initialAdvances={advances}
+          initialLeaveRequests={leaveRequests}
+          branches={branches}
+          departments={departments}
+          initialLiveAttendance={liveAttendance}
+        />
       </div>
     );
   }

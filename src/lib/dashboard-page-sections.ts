@@ -65,6 +65,7 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
     if (role === 'owner') {
       return [
         { id: 'hr-branch-geofence', labelRef: 'hr.branchGeofenceTitle' },
+        { id: 'hr-owner-live-attendance', labelRef: 'hr.liveAttendanceTitle' },
         { id: 'hr-owner-staff', labelRef: 'hr.staff' },
         { id: 'hr-owner-departments', labelRef: 'hr.departments' },
         { id: 'hr-owner-manager-assignments', labelRef: 'hr.assignToManager' },

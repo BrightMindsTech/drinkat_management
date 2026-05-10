@@ -12,6 +12,12 @@ const createSchema = z.object({
   dueDate: z.string().optional(), // ISO date for non-daily checklists
 });
 
+const bulkSchema = z.object({
+  checklistId: z.string(),
+  employeeIds: z.array(z.string().min(1)).min(1).max(200),
+  dueDate: z.string().optional(),
+});
+
 export async function GET(req: NextRequest) {
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
@@ -68,10 +74,83 @@ export async function GET(req: NextRequest) {
   return Response.json(assignments);
 }
 
+const assignmentInclude = {
+  checklist: { include: { items: { orderBy: { sortOrder: 'asc' as const } } } },
+  employee: { include: { branch: true } },
+  branch: true,
+} as const;
+
 export async function POST(req: NextRequest) {
   const session = await requireQc();
   const role = normalizeUserRole(session.user.role);
-  const body = await req.json();
+  const body: unknown = await req.json();
+
+  if (body !== null && typeof body === 'object' && Array.isArray((body as { employeeIds?: unknown }).employeeIds)) {
+    const parsed = bulkSchema.safeParse(body);
+    if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
+
+    const checklist = await prisma.checklist.findUnique({ where: { id: parsed.data.checklistId } });
+    if (!checklist) return Response.json({ error: 'Checklist not found' }, { status: 404 });
+    if (!checklist.repeatsDaily && !parsed.data.dueDate) {
+      return Response.json({ error: 'Due date is required for one-time checklists' }, { status: 400 });
+    }
+
+    const uniqueIds = [...new Set(parsed.data.employeeIds)];
+    const employees = await prisma.employee.findMany({
+      where: { id: { in: uniqueIds } },
+    });
+    const byId = new Map(employees.map((e) => [e.id, e] as const));
+
+    let managerEmployee: { id: string } | null = null;
+    if (role === 'manager') {
+      const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
+      if (!user?.employee) return Response.json({ error: 'Forbidden' }, { status: 403 });
+      managerEmployee = user.employee;
+    }
+
+    const created: Awaited<ReturnType<typeof prisma.checklistAssignment.create>>[] = [];
+    const skipped: { employeeId: string; reason: string }[] = [];
+
+    for (const employeeId of uniqueIds) {
+      const employee = byId.get(employeeId);
+      if (!employee) {
+        skipped.push({ employeeId, reason: 'not_found' });
+        continue;
+      }
+      if (employee.status === 'terminated') {
+        skipped.push({ employeeId, reason: 'terminated' });
+        continue;
+      }
+
+      const branchId = checklist.branchId ?? employee.branchId;
+      if (role === 'manager' && managerEmployee) {
+        const okReport = employee.reportsToEmployeeId === managerEmployee.id;
+        const okChecklistBranch = !checklist.branchId || checklist.branchId === branchId;
+        if (!okReport || !okChecklistBranch) {
+          skipped.push({ employeeId, reason: 'forbidden' });
+          continue;
+        }
+      }
+
+      try {
+        const row = await prisma.checklistAssignment.create({
+          data: {
+            checklistId: checklist.id,
+            employeeId: employee.id,
+            branchId,
+            dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
+          },
+          include: assignmentInclude,
+        });
+        created.push(row);
+      } catch {
+        skipped.push({ employeeId, reason: 'create_failed' });
+      }
+    }
+
+    return Response.json({ created, skipped });
+  }
+
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
 
@@ -110,11 +189,7 @@ export async function POST(req: NextRequest) {
       branchId: parsed.data.branchId,
       dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
     },
-    include: {
-      checklist: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
-      employee: { include: { branch: true } },
-      branch: true,
-    },
+    include: assignmentInclude,
   });
-  return Response.json(assignment);
+  return Response.json({ created: [assignment], skipped: [] as { employeeId: string; reason: string }[] });
 }
