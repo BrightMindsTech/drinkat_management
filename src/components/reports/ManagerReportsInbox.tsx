@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { LocaleMessages } from '@/locales/en';
 
@@ -291,13 +292,37 @@ export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerM
     FormExtendPayload | TimeClockExtendPayload | WeeklyRatingExtendPayload | null
   >(null);
   const extendLayerRef = useRef<HTMLDivElement>(null);
+  const extendPanelRef = useRef<HTMLDivElement>(null);
+  const [portalReady, setPortalReady] = useState(false);
 
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  /** Lock page scroll while the extend dialog is open (full-viewport overlay is portaled to `body`). */
+  useEffect(() => {
+    if (!extendId) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflow;
+    const prevBody = body.style.overflow;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    return () => {
+      html.style.overflow = prevHtml;
+      body.style.overflow = prevBody;
+    };
+  }, [extendId]);
+
+  /** After open or content load, ensure the sheet is in view (esp. mobile bottom sheet). */
   useLayoutEffect(() => {
     if (!extendId) return;
-    const node = extendLayerRef.current;
-    if (!node) return;
+    const panel = extendPanelRef.current;
+    if (!panel) return;
+    const run = () =>
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
     const id = requestAnimationFrame(() => {
-      node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      requestAnimationFrame(run);
     });
     return () => cancelAnimationFrame(id);
   }, [extendId, extendLoading, extendPayload, extendError]);
@@ -546,19 +571,23 @@ export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerM
         <p className="text-sm text-app-secondary px-1">{m.noMatchFilters}</p>
       ) : null}
 
-      {extendId ? (
-        <div
-          ref={extendLayerRef}
-          id="manager-reports-extend-layer"
-          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="manager-report-extend-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeExtend();
-          }}
-        >
-          <div className="w-full sm:max-w-lg max-h-[min(90vh,640px)] overflow-hidden rounded-t-2xl sm:rounded-2xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated-2 shadow-xl flex flex-col">
+      {extendId && portalReady
+        ? createPortal(
+            <div
+              ref={extendLayerRef}
+              id="manager-reports-extend-layer"
+              className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="manager-report-extend-title"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) closeExtend();
+              }}
+            >
+          <div
+            ref={extendPanelRef}
+            className="w-full sm:max-w-lg max-h-[min(90vh,640px)] overflow-hidden rounded-t-2xl sm:rounded-2xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated-2 shadow-xl flex flex-col"
+          >
             <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100 dark:border-ios-dark-separator shrink-0">
               <h2 id="manager-report-extend-title" className="text-sm font-semibold text-app-label">
                 {m.fullReportTitle}
@@ -585,8 +614,10 @@ export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerM
               ) : null}
             </div>
           </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

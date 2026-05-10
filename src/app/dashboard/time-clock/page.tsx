@@ -160,9 +160,11 @@ export default async function TimeClockPage() {
               details:
                 e.clockOutReason === 'away_timer_expired'
                   ? 'Clock-out (auto after away)'
-                  : e.clockOutReason === 'force_hr_manager' || e.clockOutReason === 'force_hr_owner'
-                    ? 'Clock-out (forced from HR)'
-                    : 'Clock-out',
+                  : e.clockOutReason === 'auto_daily_4am'
+                    ? 'Clock-out (auto at 4:00 AM daily)'
+                    : e.clockOutReason === 'force_hr_manager' || e.clockOutReason === 'force_hr_owner'
+                      ? 'Clock-out (forced from HR)'
+                      : 'Clock-out',
               reportedToOwner: reportedIds.has(`out-${e.id}`),
             });
           }

@@ -36,6 +36,8 @@
     "db:d1:migrate:time-clock:all:local": "npm run db:d1:migrate:time-clock:local && npm run db:d1:migrate:shift-profile:local",
     "db:migrate:sql": "prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script --output prisma/migrations/0001_init.sql",
     "preview": "opennextjs-cloudflare build && node scripts/ensure-prisma-workerd.mjs && node scripts/patch-opennext-worker-cron.mjs && opennextjs-cloudflare preview",
+    "cf:bootstrap-cron": "node scripts/bootstrap-cron-secret.mjs",
+    "cf:upload-cron-secret": "node scripts/wrangler-upload-cron-secret.mjs",
     "deploy": "opennextjs-cloudflare build && node scripts/ensure-prisma-workerd.mjs && node scripts/patch-opennext-worker-cron.mjs && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && node scripts/ensure-prisma-workerd.mjs && node scripts/patch-opennext-worker-cron.mjs && opennextjs-cloudflare upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",

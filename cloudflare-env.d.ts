@@ -2,6 +2,8 @@
 
 declare global {
   interface CloudflareEnv {
+    /** Set via `npm run cf:upload-cron-secret` or Cloudflare dashboard; required for scheduled /api/cron/time-clock. */
+    CRON_SECRET?: string;
     DB: D1Database;
     /** Employee / QC uploads (R2). Prefer `UPLOADS`; Wrangler CLI may use `drinkat_management_uploads`. */
     UPLOADS?: R2Bucket;

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { maybePurgeChatIfDue } from '@/lib/chat-retention';
+import { maybeRunAutoClockOutIfDue } from '@/lib/auto-clock-out-daily';
 import { canUsersChat, roleMayUseChat, validateGroupParticipants } from '@/lib/chat-policy';
 import {
   createDirectThread,
@@ -40,6 +41,7 @@ export async function GET() {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     await maybePurgeChatIfDue(prisma);
+    await maybeRunAutoClockOutIfDue();
     const threads = await listThreadsForUser(prisma, session.user.id);
     return Response.json({ threads });
   } catch (e) {

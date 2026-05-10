@@ -4,6 +4,7 @@ import { purgeExpiredChat } from '@/lib/chat-retention';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
 import { sendClockOutRemindersIfInWindow } from '@/lib/clock-out-reminder';
 import { sendWeeklyRatingRemindersIfDue } from '@/lib/weekly-rating-reminders';
+import { maybeRunAutoClockOutIfDue } from '@/lib/auto-clock-out-daily';
 
 /**
  * Authenticated with CRON_SECRET (query `?secret=` or `Authorization: Bearer`).
@@ -12,6 +13,10 @@ import { sendWeeklyRatingRemindersIfDue } from '@/lib/weekly-rating-reminders';
  * This endpoint is optional: use it if you already ping it for away-session processing.
  * For ~30m-before-shift clock-out push reminders, call this (or a dedicated schedule) on an interval
  * of a few minutes so the 24–36 minute window is hit reliably.
+ *
+ * **Daily 4:00 AM auto clock-out** normally runs from app traffic via `maybeRunAutoClockOutIfDue` (watermark —
+ * no HTTP scheduler required). This cron still calls the same helper if you keep a schedule; optional.
+ * `AUTO_CLOCK_OUT_4AM=false` disables; see `src/lib/ramadan.ts`.
  */
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -25,6 +30,13 @@ export async function GET(req: Request) {
   }
 
   const awayProcessed = await processExpiredAwaySessions();
+
+  let autoClockOut4am: Awaited<ReturnType<typeof maybeRunAutoClockOutIfDue>> | null = null;
+  try {
+    autoClockOut4am = await maybeRunAutoClockOutIfDue();
+  } catch (e) {
+    console.error('[cron/time-clock] auto clock-out 4am failed', e);
+  }
 
   let chat: { messagesDeleted: number; threadsDeleted: number; typingDeleted: number } | null = null;
   let weeklyRatings: { sentUsers: number; weekKey: string; skipped: boolean } | null = null;
@@ -54,6 +66,7 @@ export async function GET(req: Request) {
   return Response.json({
     ok: true,
     processed: awayProcessed,
+    autoClockOut4am,
     chat,
     weeklyRatings,
     clockOutReminders,

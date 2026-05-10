@@ -211,7 +211,7 @@ model TimeClockEntry {
   clockInLng   Float?
   clockOutLat  Float?
   clockOutLng  Float?
-  clockOutReason String? // manual | away_timer_expired | force_hr_manager | force_hr_owner
+  clockOutReason String? // manual | away_timer_expired | force_hr_manager | force_hr_owner | auto_daily_4am
   createdAt    DateTime  @default(now())
 
   @@index([employeeId, clockOutAt])

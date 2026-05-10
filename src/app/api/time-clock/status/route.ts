@@ -11,6 +11,7 @@ import {
   rolesSubjectToWeeklyRating,
 } from '@/lib/weekly-ratings';
 import { isTimeClockGeofenceExempt } from '@/lib/time-clock-geofence-policy';
+import { maybeRunAutoClockOutIfDue } from '@/lib/auto-clock-out-daily';
 
 export async function GET() {
   const session = await requireSession();
@@ -18,6 +19,11 @@ export async function GET() {
     await processExpiredAwaySessions();
   } catch (e) {
     console.error('time-clock/status: failed to process expired away sessions', e);
+  }
+  try {
+    await maybeRunAutoClockOutIfDue();
+  } catch (e) {
+    console.error('time-clock/status: maybe auto clock-out 4am failed', e);
   }
 
   const emp = await getTimeClockEmployee(session.user.id, session.user.role);

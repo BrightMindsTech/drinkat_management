@@ -7,6 +7,7 @@ import { weekStartKeysBetweenRange, weekStartKeysOverlappingMonth } from '@/lib/
 import { getSalaryDeductionReport } from '@/lib/salary-deduction-report';
 import { buildQcScoreReport, isQcScoreableFormAnswers } from '@/lib/qc-form-score-report';
 import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
+import { maybeRunAutoClockOutIfDue } from '@/lib/auto-clock-out-daily';
 import { buildCashFormReport } from '@/lib/cash-form-report';
 import { buildManagerRatingReport } from '@/lib/manager-rating-report';
 import { normalizeUserRole } from '@/lib/formVisibility';
@@ -14,6 +15,11 @@ import { normalizeUserRole } from '@/lib/formVisibility';
 export async function GET(req: NextRequest) {
   const session = await requireOwner();
   await maybePurgeOldManagementFormSubmissions(prisma);
+  try {
+    await maybeRunAutoClockOutIfDue();
+  } catch (e) {
+    console.error('[reports GET] maybe auto clock-out 4am failed', e);
+  }
   const { searchParams } = new URL(req.url);
   const period = searchParams.get('period') ?? 'month';
   const branchId = searchParams.get('branchId') ?? '';
