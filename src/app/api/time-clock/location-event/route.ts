@@ -5,9 +5,9 @@ import { attemptAutoGeofenceClockIn } from '@/lib/auto-geofence-clock-in';
 import { isTimeClockGeofenceExempt } from '@/lib/time-clock-geofence-policy';
 import { getOpenClockEntry, getTimeClockEmployee } from '@/lib/time-clock-helpers';
 import { isInsideBranchRadius } from '@/lib/geo';
-import { sendPushToUser } from '@/lib/push';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
-import { createInboxForUsers, getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { notifyUser, notifyUsers } from '@/lib/user-notify';
 
 const bodySchema = z.object({
   kind: z.enum(['enter', 'exit']),
@@ -41,7 +41,18 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Location consent required' }, { status: 403 });
   }
 
-  if (isTimeClockGeofenceExempt({ name: emp.name, role: emp.role, department: emp.department }, session.user.email)) {
+  if (
+    isTimeClockGeofenceExempt(
+      {
+        name: emp.name,
+        role: emp.role,
+        employmentType: emp.employmentType,
+        department: emp.department,
+      },
+      session.user.email,
+      session.user.role
+    )
+  ) {
     return Response.json({ ok: true, action: 'none' as const, inside: true });
   }
 
@@ -56,7 +67,6 @@ export async function POST(req: Request) {
   const { kind, lat, lng } = parsed.data;
   const inside = isInsideBranchRadius(lat, lng, emp.branch.latitude, emp.branch.longitude, emp.branch.geofenceRadiusM);
   const open = await getOpenClockEntry(emp.id);
-  const subs = await prisma.pushSubscription.findMany({ where: { userId: session.user.id } });
   const origin = originFromRequest(req);
   const deepLink = `${origin}/dashboard/time-clock`;
 
@@ -67,8 +77,15 @@ export async function POST(req: Request) {
     | 'clock_out_reminder'
     | 'destination_required' = 'none';
 
-  const pushSelf = async (title: string, body: string, data: Record<string, string>) => {
-    await sendPushToUser(session.user.id, subs, { title, body, data });
+  const notifySelf = async (title: string, body: string, data: Record<string, string>, category: string) => {
+    if (!user?.pushConsentAt) return;
+    await notifyUser(prisma, session.user.id, {
+      category,
+      title,
+      body,
+      dataJson: JSON.stringify({ ...data, href: data.url }),
+      push: { title, body, data },
+    });
   };
 
   if (kind === 'enter' && inside && !open) {
@@ -85,27 +102,32 @@ export async function POST(req: Request) {
       action = 'none';
     } else {
       action = 'clock_in_reminder';
-      await pushSelf('Clock in', `You arrived at ${emp.branch.name}. Tap to clock in.`, {
-        type: 'time_clock_clock_in',
-        url: `${deepLink}?remind=clock_in`,
-      });
+      await notifySelf(
+        'Clock in',
+        `You arrived at ${emp.branch.name}. Tap to clock in.`,
+        { type: 'time_clock_clock_in', url: `${deepLink}?remind=clock_in` },
+        'time_clock'
+      );
     }
   }
 
   if (kind === 'exit' && !inside && open) {
     action = 'destination_required';
-    await pushSelf('Did you leave?', 'Open the app and choose your reason.', {
-      type: 'time_clock_destination',
-      url: `${deepLink}?forceAway=1`,
-    });
+    await notifySelf(
+      'Did you leave?',
+      'Open the app and choose your reason.',
+      { type: 'time_clock_destination', url: `${deepLink}?forceAway=1` },
+      'time_clock'
+    );
 
-    // Owner receives this alert immediately; no manager escalation required.
     const ownerIds = await getOwnerUserIds();
     if (ownerIds.length > 0) {
-      await createInboxForUsers(ownerIds, {
+      const ownerTitle = 'Time clock alert: employee left branch';
+      const ownerBody = `${emp.name} exited ${emp.branch.name} while still clocked in.`;
+      await notifyUsers(prisma, ownerIds, {
         category: 'time_clock',
-        title: 'Time clock alert: employee left branch',
-        body: `${emp.name} exited ${emp.branch.name} while still clocked in.`,
+        title: ownerTitle,
+        body: ownerBody,
         dataJson: JSON.stringify({
           type: 'time_clock_destination_required',
           employeeId: emp.id,
@@ -114,20 +136,16 @@ export async function POST(req: Request) {
           branchName: emp.branch.name,
           href: '/dashboard/time-clock',
         }),
-      });
-      const ownerSubs = await prisma.pushSubscription.findMany({ where: { userId: { in: ownerIds } } });
-      for (const ownerId of ownerIds) {
-        const subsForOwner = ownerSubs.filter((s) => s.userId === ownerId);
-        await sendPushToUser(ownerId, subsForOwner, {
-          title: 'Time clock alert: employee left branch',
-          body: `${emp.name} exited ${emp.branch.name} while still clocked in.`,
+        push: {
+          title: ownerTitle,
+          body: ownerBody,
           data: {
             type: 'time_clock_destination_required',
             url: '/dashboard/time-clock',
             employeeId: emp.id,
           },
-        });
-      }
+        },
+      });
     }
   }
 

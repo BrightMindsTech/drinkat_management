@@ -18,9 +18,10 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { downloadCsvWithMobileFallback } from '@/lib/client-download';
 import { buildQcScoreReport, type QcScoreReport } from '@/lib/qc-form-score-report';
 import { QcScoreReportModal } from '@/components/qc/QcScoreReportModal';
+import { ReportTableModal } from '@/components/ReportTableModal';
+import type { ReportTableData } from '@/lib/report-table';
 
 const COLORS = ['#007AFF', '#5856D6', '#34C759', '#FF9500', '#FF3B30'];
 
@@ -66,6 +67,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   const [qcArchiveFrom, setQcArchiveFrom] = useState('');
   const [qcArchiveTo, setQcArchiveTo] = useState('');
   const [qcReportModal, setQcReportModal] = useState<QcScoreReport | null>(null);
+  const [tableReport, setTableReport] = useState<ReportTableData | null>(null);
   const [showDetailedAnalytics, setShowDetailedAnalytics] = useState(false);
   const [hideTimeClockAlerts, setHideTimeClockAlerts] = useState(true);
 
@@ -433,14 +435,6 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 
-  function toCsvCell(value: string | number) {
-    const raw = String(value ?? '');
-    if (raw.includes(',') || raw.includes('"') || raw.includes('\n')) {
-      return `"${raw.replace(/"/g, '""')}"`;
-    }
-    return raw;
-  }
-
   function monthLabelFromKey(key: string) {
     const date = new Date(`${key}-01`);
     if (Number.isNaN(date.getTime())) return key;
@@ -448,10 +442,10 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   }
 
 
-  async function exportSalaryCsv() {
+  function openSalaryReport() {
     const rows = data!.salary.rows;
     if (!rows.length) return;
-    const header = [
+    const headers = [
       t.reports.month,
       t.common.employee,
       t.common.branch,
@@ -460,9 +454,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       t.salary.salary,
       t.salary.deduction,
       t.salary.net,
-    ]
-      .map(toCsvCell)
-      .join(',');
+    ];
     const grouped = rows.reduce(
       (acc, row) => {
         const key = row.periodMonth || data!.salary.periodMonth;
@@ -473,36 +465,47 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       {} as Record<string, typeof rows>
     );
     const orderedMonths = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
-    const bodyLines = orderedMonths.flatMap((monthKey) =>
-      grouped[monthKey].map((r) =>
-        [
-          monthLabelFromKey(monthKey),
-          r.employeeName,
-          r.branchName,
-          r.employmentType === 'part_time' && r.daysWorked != null ? String(r.daysWorked) : '—',
-          r.employmentType === 'part_time' && r.dailyRate != null ? r.dailyRate.toFixed(2) : '—',
-          r.salary.toFixed(2),
-          r.deduction.toFixed(2),
-          r.net.toFixed(2),
-        ]
-          .map(toCsvCell)
-          .join(',')
-      )
+    const tableRows = orderedMonths.flatMap((monthKey) =>
+      grouped[monthKey].map((r) => [
+        monthLabelFromKey(monthKey),
+        r.employeeName,
+        r.branchName,
+        r.employmentType === 'part_time' && r.daysWorked != null ? String(r.daysWorked) : '—',
+        r.employmentType === 'part_time' && r.dailyRate != null ? r.dailyRate.toFixed(2) : '—',
+        r.salary.toFixed(2),
+        r.deduction.toFixed(2),
+        r.net.toFixed(2),
+      ])
     );
-    const csv = [header, ...bodyLines].join('\n');
-    try {
-      await downloadCsvWithMobileFallback(`salary-${data!.salary.periodMonth}.csv`, csv);
-    } catch {
-      alert(t.forms.exportCsvFailed);
-    }
+    setTableReport({
+      title: t.reports.exportSalary,
+      subtitle: data!.salary.periodMonth,
+      headers,
+      rows: tableRows,
+      footerRow: [
+        t.common.total,
+        '',
+        '',
+        '',
+        '',
+        data!.salary.totals.salary.toFixed(2),
+        data!.salary.totals.deduction.toFixed(2),
+        data!.salary.totals.net.toFixed(2),
+      ],
+    });
   }
 
-  async function exportAdvancesCsv() {
+  function openAdvancesReport() {
     const list = data!.hr.advancesList ?? [];
     if (!list.length) return;
-    const header = [t.reports.month, t.common.employee, t.common.branch, t.advances.amountJod, t.common.status, t.common.date]
-      .map(toCsvCell)
-      .join(',');
+    const headers = [
+      t.reports.month,
+      t.common.employee,
+      t.common.branch,
+      t.advances.amountJod,
+      t.common.status,
+      t.common.date,
+    ];
     const grouped = list.reduce(
       (acc, row) => {
         const d = new Date(row.requestedAt);
@@ -516,47 +519,37 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       {} as Record<string, typeof list>
     );
     const orderedMonths = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
-    const bodyLines = orderedMonths.flatMap((monthKey) =>
-      grouped[monthKey].map((a) =>
-        [
-          monthKey === 'unknown' ? 'Unknown' : monthLabelFromKey(monthKey),
-          a.employee.name,
-          a.employee.branch?.name ?? '—',
-          a.amount.toFixed(2),
-          a.status,
-          new Date(a.requestedAt).toLocaleDateString(),
-        ]
-          .map(toCsvCell)
-          .join(',')
-      )
+    const tableRows = orderedMonths.flatMap((monthKey) =>
+      grouped[monthKey].map((a) => [
+        monthKey === 'unknown' ? 'Unknown' : monthLabelFromKey(monthKey),
+        a.employee.name,
+        a.employee.branch?.name ?? '—',
+        a.amount.toFixed(2),
+        a.status,
+        new Date(a.requestedAt).toLocaleDateString(),
+      ])
     );
-    const csv = [header, ...bodyLines].join('\n');
-    try {
-      await downloadCsvWithMobileFallback(`advances-${data!.salary.periodMonth}.csv`, csv);
-    } catch {
-      alert(t.forms.exportCsvFailed);
-    }
+    setTableReport({
+      title: t.reports.exportAdvances,
+      headers,
+      rows: tableRows,
+    });
   }
 
-  async function exportFormsCsv() {
+  function openFormsReport() {
     const list = data!.forms.recent ?? [];
     if (!list.length) return;
-    const header = [t.common.employee, t.common.branch, t.forms.createFormName, t.common.status, t.common.date]
-      .map(toCsvCell)
-      .join(',');
-    const body = list
-      .map((s) =>
-        [s.employee.name, s.branch?.name ?? '—', s.template.title, s.status, new Date(s.submittedAt).toLocaleDateString()]
-          .map(toCsvCell)
-          .join(',')
-      )
-      .join('\n');
-    const csv = header + '\n' + body;
-    try {
-      await downloadCsvWithMobileFallback(`forms-${data!.salary.periodMonth}.csv`, csv);
-    } catch {
-      alert(t.forms.exportCsvFailed);
-    }
+    setTableReport({
+      title: t.reports.exportForms,
+      headers: [t.common.employee, t.common.branch, t.forms.createFormName, t.common.status, t.common.date],
+      rows: list.map((s) => [
+        s.employee.name,
+        s.branch?.name ?? '—',
+        s.template.title,
+        s.status,
+        new Date(s.submittedAt).toLocaleDateString(),
+      ]),
+    });
   }
 
   const reportCardClass = 'app-section';
@@ -1888,21 +1881,21 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={exportSalaryCsv}
+              onClick={openSalaryReport}
               className="rounded-ios bg-ios-blue text-white px-4 py-2.5 text-sm font-medium active:opacity-90"
             >
               {t.reports.exportSalary}
             </button>
             <button
               type="button"
-              onClick={exportAdvancesCsv}
+              onClick={openAdvancesReport}
               className="rounded-ios border border-gray-300 dark:border-ios-dark-separator px-4 py-2.5 text-sm font-medium text-app-primary hover:bg-gray-100 dark:hover:bg-ios-dark-elevated-2"
             >
               {t.reports.exportAdvances}
             </button>
             <button
               type="button"
-              onClick={exportFormsCsv}
+              onClick={openFormsReport}
               className="rounded-ios border border-gray-300 dark:border-ios-dark-separator px-4 py-2.5 text-sm font-medium text-app-primary hover:bg-gray-100 dark:hover:bg-ios-dark-elevated-2"
             >
               {t.reports.exportForms}
@@ -1911,6 +1904,13 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         </section>
       </div>
       <QcScoreReportModal open={qcReportModal != null} report={qcReportModal} onClose={() => setQcReportModal(null)} />
+      <ReportTableModal
+        open={tableReport != null}
+        report={tableReport}
+        onClose={() => setTableReport(null)}
+        closeLabel={t.common.close}
+        screenshotHint={t.reports.reportScreenshotHint}
+      />
     </div>
   );
 }

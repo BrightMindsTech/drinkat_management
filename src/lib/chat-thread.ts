@@ -111,6 +111,46 @@ export function senderDisplayNameInThread(
   return displayNameForUser(part.user);
 }
 
+/** Unread message counts per thread (one query for all threads, D1-safe). */
+async function unreadCountsForThreads(
+  prisma: PrismaClient,
+  userId: string,
+  lastReadByThread: Map<string, Date | null | undefined>
+): Promise<Map<string, number>> {
+  const threadIds = [...lastReadByThread.keys()];
+  const out = new Map<string, number>();
+  if (threadIds.length === 0) return out;
+
+  const messages = await prisma.chatMessage.findMany({
+    where: {
+      threadId: { in: threadIds },
+      senderUserId: { not: userId },
+    },
+    select: { threadId: true, createdAt: true },
+  });
+
+  for (const m of messages) {
+    const lastRead = lastReadByThread.get(m.threadId);
+    if (lastRead && m.createdAt <= lastRead) continue;
+    out.set(m.threadId, (out.get(m.threadId) ?? 0) + 1);
+  }
+  return out;
+}
+
+/** Total unread across all threads (for nav badge; avoids loading full thread list). */
+export async function getChatUnreadTotal(prisma: PrismaClient, userId: string): Promise<number> {
+  const parts = await prisma.chatParticipant.findMany({
+    where: { userId },
+    select: { threadId: true, lastReadAt: true },
+  });
+  if (parts.length === 0) return 0;
+  const lastReadByThread = new Map(parts.map((p) => [p.threadId, p.lastReadAt]));
+  const counts = await unreadCountsForThreads(prisma, userId, lastReadByThread);
+  let total = 0;
+  for (const n of counts.values()) total += n;
+  return total;
+}
+
 export type ThreadListRow = {
   id: string;
   updatedAt: string;
@@ -129,7 +169,22 @@ export type ThreadListRow = {
 };
 
 export async function listThreadsForUser(prisma: PrismaClient, userId: string): Promise<ThreadListRow[]> {
-  const threads = await prisma.chatThread.findMany({
+  let threads: Awaited<
+    ReturnType<
+      typeof prisma.chatThread.findMany<{
+        include: {
+          participants: {
+            include: {
+              user: { select: { id: true; email: true; employee: { select: { name: true } } } };
+            };
+          };
+          messages: { orderBy: { createdAt: 'desc' }; take: 1; select: { body: true; createdAt: true } };
+        };
+      }>
+    >
+  >;
+  try {
+    threads = await prisma.chatThread.findMany({
     where: { participants: { some: { userId } } },
     include: {
       participants: {
@@ -144,6 +199,21 @@ export async function listThreadsForUser(prisma: PrismaClient, userId: string): 
     orderBy: { updatedAt: 'desc' },
     take: 100,
   });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('kind') || msg.includes('no such column')) {
+      console.error(
+        '[listThreadsForUser] ChatThread.kind missing — run: npm run db:d1:migrate:chat-group:remote',
+        e
+      );
+    }
+    throw e;
+  }
+
+  const lastReadByThread = new Map(
+    threads.map((t) => [t.id, t.participants.find((p) => p.userId === userId)?.lastReadAt])
+  );
+  const unreadByThread = await unreadCountsForThreads(prisma, userId, lastReadByThread);
 
   const out: ThreadListRow[] = [];
   for (const t of threads) {
@@ -155,13 +225,7 @@ export async function listThreadsForUser(prisma: PrismaClient, userId: string): 
 
     const mePart = t.participants.find((p) => p.userId === userId);
     const last = t.messages[0] ?? null;
-    const unread = await prisma.chatMessage.count({
-      where: {
-        threadId: t.id,
-        senderUserId: { not: userId },
-        ...(mePart?.lastReadAt ? { createdAt: { gt: mePart.lastReadAt } } : {}),
-      },
-    });
+    const unread = unreadByThread.get(t.id) ?? 0;
 
     // 3+ people is always treated as group (fixes rows where DB still has kind='direct' due to stale writes).
     if (t.kind === 'group' || t.participants.length >= 3) {

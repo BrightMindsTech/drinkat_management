@@ -180,10 +180,15 @@ function ensureVapid() {
   return true;
 }
 
+export type PushDeliveryResult = 'ok' | 'failed' | 'expired';
+
 /** Web Push (browser / PWA), legacy FCM, and native iOS (APNs token in `apns:` endpoint). */
-export async function sendPushToSubscription(sub: PushSubscription, payload: PushPayload): Promise<boolean> {
+export async function sendPushToSubscription(
+  sub: PushSubscription,
+  payload: PushPayload
+): Promise<PushDeliveryResult> {
   if (sub.provider === 'web' && sub.keysJson) {
-    if (!ensureVapid()) return false;
+    if (!ensureVapid()) return 'failed';
     try {
       const keys = JSON.parse(sub.keysJson) as { auth: string; p256dh: string };
       await webpush.sendNotification(
@@ -196,18 +201,20 @@ export async function sendPushToSubscription(sub: PushSubscription, payload: Pus
           body: payload.body,
           data: payload.data ?? {},
         }),
-        { TTL: 3600 }
+        { TTL: 86400 }
       );
-      return true;
-    } catch {
-      return false;
+      return 'ok';
+    } catch (e) {
+      const code = (e as { statusCode?: number })?.statusCode;
+      if (code === 404 || code === 410) return 'expired';
+      return 'failed';
     }
   }
 
   if (sub.provider === 'fcm' && sub.endpoint.startsWith('fcm:')) {
     const token = sub.endpoint.slice(4);
     const legacyKey = process.env.FCM_LEGACY_SERVER_KEY;
-    if (!legacyKey) return false;
+    if (!legacyKey) return 'failed';
     try {
       const res = await fetch('https://fcm.googleapis.com/fcm/send', {
         method: 'POST',
@@ -222,23 +229,40 @@ export async function sendPushToSubscription(sub: PushSubscription, payload: Pus
           data: payload.data ?? {},
         }),
       });
-      return res.ok;
+      if (res.status === 404 || res.status === 410) return 'expired';
+      return res.ok ? 'ok' : 'failed';
     } catch {
-      return false;
+      return 'failed';
     }
   }
 
   if (sub.provider === 'apns' && sub.endpoint.startsWith('apns:')) {
     const deviceToken = sub.endpoint.slice(5);
-    if (deviceToken.length < 10) return false;
-    return sendApnsAlert(deviceToken, payload);
+    if (deviceToken.length < 10) return 'failed';
+    const ok = await sendApnsAlert(deviceToken, payload);
+    return ok ? 'ok' : 'failed';
   }
 
-  return false;
+  return 'failed';
 }
 
-export async function sendPushToUser(userId: string, subs: PushSubscription[], payload: PushPayload) {
+/** @returns count of subscriptions that accepted the push */
+export async function sendPushToUser(
+  userId: string,
+  subs: PushSubscription[],
+  payload: PushPayload
+): Promise<number> {
+  let sent = 0;
+  const expiredIds: string[] = [];
   for (const s of subs) {
-    await sendPushToSubscription(s, payload);
+    const result = await sendPushToSubscription(s, payload);
+    if (result === 'ok') sent += 1;
+    else if (result === 'expired') expiredIds.push(s.id);
   }
+  if (expiredIds.length > 0) {
+    const { prisma } = await import('@/lib/prisma');
+    await prisma.pushSubscription.deleteMany({ where: { id: { in: expiredIds } } });
+    console.log('[push] removed expired subscriptions', { userId, count: expiredIds.length });
+  }
+  return sent;
 }

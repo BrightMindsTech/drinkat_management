@@ -106,11 +106,12 @@ export async function POST(req: Request) {
 
     // One-time self-test when APNs token is first seen for this user.
     if (!existed) {
-      const ok = await sendPushToSubscription(saved, {
-        title: 'Push connected',
-        body: 'Your iPhone push notifications are now connected.',
-        data: { type: 'push_connected', url: '/dashboard' },
-      });
+      const ok =
+        (await sendPushToSubscription(saved, {
+          title: 'Push connected',
+          body: 'Your iPhone push notifications are now connected.',
+          data: { type: 'push_connected', url: '/dashboard' },
+        })) === 'ok';
       console.log('[push/register] apns first-registration self-test', {
         userId: session.user.id,
         subscriptionId: saved.id,

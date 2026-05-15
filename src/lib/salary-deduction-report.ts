@@ -63,8 +63,14 @@ export async function getSalaryDeductionReport(
     prisma.advance.findMany({
       where: {
         status: 'approved',
-        periodMonth,
         ...(branchId ? { employee: { branchId } } : {}),
+        OR: [
+          { periodMonth },
+          {
+            periodMonth: null,
+            requestedAt: { gte: start, lte: end },
+          },
+        ],
       },
       select: { employeeId: true, amount: true },
     }),

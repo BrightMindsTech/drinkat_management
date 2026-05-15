@@ -61,6 +61,21 @@ model User {
   chatParticipants  ChatParticipant[]
   chatMessagesSent  ChatMessage[]       @relation("ChatMessageSender")
   chatTypingStates  ChatTypingState[]
+  supportReports    SupportReport[]
+}
+
+/// User-submitted app bug / technical support tickets (screenshots stored as upload paths JSON).
+model SupportReport {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  description     String
+  screenshotsJson String   @default("[]")
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 /// Single-row keys for infrequent jobs (e.g. throttled chat retention) without external schedulers.

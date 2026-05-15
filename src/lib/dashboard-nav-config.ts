@@ -12,11 +12,14 @@ export type DashboardNavLabelKey =
   | 'timeClock'
   | 'ratings'
   | 'myInfoAdvances'
-  | 'qcSubmissions';
+  | 'qcSubmissions'
+  | 'technicalSupport';
 
 export type DashboardNavItem = { href: string; labelKey: DashboardNavLabelKey };
 
 const base = '/dashboard';
+
+const supportItem: DashboardNavItem = { href: `${base}/support`, labelKey: 'technicalSupport' };
 
 const ownerItems: DashboardNavItem[] = [
   { href: base, labelKey: 'home' },
@@ -26,6 +29,7 @@ const ownerItems: DashboardNavItem[] = [
   { href: `${base}/forms`, labelKey: 'forms' },
   { href: `${base}/reports`, labelKey: 'reports' },
   { href: `${base}/manager-reports`, labelKey: 'managerReports' },
+  supportItem,
 ];
 
 const staffItems: DashboardNavItem[] = [
@@ -36,6 +40,7 @@ const staffItems: DashboardNavItem[] = [
   { href: `${base}/hr`, labelKey: 'myInfoAdvances' },
   { href: `${base}/qc`, labelKey: 'qcSubmissions' },
   { href: `${base}/forms`, labelKey: 'forms' },
+  supportItem,
 ];
 
 const managerItems: DashboardNavItem[] = [
@@ -46,6 +51,7 @@ const managerItems: DashboardNavItem[] = [
   { href: `${base}/hr`, labelKey: 'hr' },
   { href: `${base}/qc`, labelKey: 'qc' },
   { href: `${base}/forms`, labelKey: 'forms' },
+  supportItem,
 ];
 
 const marketingItems: DashboardNavItem[] = [
@@ -55,6 +61,7 @@ const marketingItems: DashboardNavItem[] = [
   { href: `${base}/messages`, labelKey: 'messages' },
   { href: `${base}/hr`, labelKey: 'myInfoAdvances' },
   { href: `${base}/forms`, labelKey: 'forms' },
+  supportItem,
 ];
 
 export function getDashboardNavItems(role: string | undefined | null): DashboardNavItem[] {

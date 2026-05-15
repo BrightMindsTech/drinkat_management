@@ -51,7 +51,7 @@ export function isQcFormEmployee(
   employee: { role: string } | null | undefined
 ): boolean {
   if (userRole === 'qc') return true;
-  return employee?.role.trim().toLowerCase() === 'qc';
+  return (employee?.role ?? '').trim().toLowerCase() === 'qc';
 }
 
 export function canFillManagementForm(ctx: FormViewContext, template: TemplateForVisibility): boolean {

@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireOwner } from '@/lib/session';
 
 /**
- * Quick check that the Worker can reach D1 (user table count). Does not expose rows.
- * GET /api/health-db — expect { ok: true, userCount: number } when DB works.
+ * Owner-only D1 connectivity check (user count only, no row data).
  */
 export async function GET() {
   try {
+    await requireOwner();
     const userCount = await prisma.user.count();
     return NextResponse.json({ ok: true, userCount });
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'unknown error';
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (e instanceof Response) return e;
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
 }

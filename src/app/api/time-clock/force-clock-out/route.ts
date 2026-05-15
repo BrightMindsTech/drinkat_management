@@ -74,21 +74,19 @@ export async function POST(req: Request) {
   const details = `Force clock-out from HR (${reporterDisplay}). Was clocked in since ${open.clockInAt.toISOString()}.`;
   const logId = `force-out-${open.id}-${now.getTime()}`;
 
-  await prisma.$transaction([
-    prisma.awaySession.updateMany({
-      where: { employeeId: target.id, status: 'active' },
-      data: { status: 'canceled' },
-    }),
-    prisma.timeClockEntry.update({
-      where: { id: open.id },
-      data: {
-        clockOutAt: now,
-        clockOutLat: null,
-        clockOutLng: null,
-        clockOutReason: clockReason,
-      },
-    }),
-  ]);
+  await prisma.awaySession.updateMany({
+    where: { employeeId: target.id, status: 'active' },
+    data: { status: 'canceled' },
+  });
+  await prisma.timeClockEntry.update({
+    where: { id: open.id },
+    data: {
+      clockOutAt: now,
+      clockOutLat: null,
+      clockOutLng: null,
+      clockOutReason: clockReason,
+    },
+  });
 
   const owners = await getOwnerUserIds();
   if (owners.length > 0) {

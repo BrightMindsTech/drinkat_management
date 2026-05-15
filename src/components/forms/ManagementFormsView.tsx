@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import type { FormFieldDef } from '@/lib/formTemplate';
 import { scrollIntoViewById } from '@/lib/scrollIntoViewDeferred';
-import { downloadSubmissionReportCsv, type SubmissionReportCsvInput } from '@/lib/formSubmissionCsv';
+import { buildSubmissionReportTable, type SubmissionReportCsvInput } from '@/lib/formSubmissionCsv';
+import { ReportTableModal } from '@/components/ReportTableModal';
+import type { ReportTableData } from '@/lib/report-table';
 import {
   buildQcScoreReport,
   type QcScoreReport,
@@ -92,6 +94,7 @@ export function ManagementFormsView({
   const [importingDefaults, setImportingDefaults] = useState(false);
   const [importingBarista, setImportingBarista] = useState(false);
   const [qcReportModal, setQcReportModal] = useState<QcScoreReport | null>(null);
+  const [tableReport, setTableReport] = useState<ReportTableData | null>(null);
   const [expandedReviewAnswers, setExpandedReviewAnswers] = useState<Record<string, boolean>>({});
   const [reviewRange, setReviewRange] = useState<'today' | 'week' | 'month'>('week');
   const [myRange, setMyRange] = useState<'today' | 'week' | 'month'>('week');
@@ -301,13 +304,13 @@ export function ManagementFormsView({
     };
   }
 
-  async function handleExportSubmissionCsv(s: FormsReviewSubmission) {
-    try {
-      const base = `${s.template.title}-${s.id}`.replace(/\s+/g, '-');
-      await downloadSubmissionReportCsv(submissionToCsvInput(s), base);
-    } catch {
-      alert(t.forms.exportCsvFailed);
-    }
+  function handleViewSubmissionReport(s: FormsReviewSubmission) {
+    setTableReport(
+      buildSubmissionReportTable(submissionToCsvInput(s), {
+        field: t.reports.reportFieldColumn,
+        value: t.reports.reportValueColumn,
+      })
+    );
   }
 
   async function importDefaultTemplates() {
@@ -897,7 +900,7 @@ export function ManagementFormsView({
                       {showReview && (
                         <button
                           type="button"
-                          onClick={() => handleExportSubmissionCsv(s)}
+                          onClick={() => handleViewSubmissionReport(s)}
                           className="rounded-lg border border-gray-300 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated px-2.5 py-1.5 text-xs font-medium text-app-primary hover:bg-gray-50 dark:hover:bg-ios-dark-fill"
                         >
                           {t.forms.exportSubmissionCsv}
@@ -989,6 +992,13 @@ export function ManagementFormsView({
         </section>
       )}
       <QcScoreReportModal open={qcReportModal != null} report={qcReportModal} onClose={() => setQcReportModal(null)} />
+      <ReportTableModal
+        open={tableReport != null}
+        report={tableReport}
+        onClose={() => setTableReport(null)}
+        closeLabel={t.common.close}
+        screenshotHint={t.reports.reportScreenshotHint}
+      />
     </div>
   );
 }

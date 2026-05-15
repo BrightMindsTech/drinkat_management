@@ -158,7 +158,9 @@ export default async function TimeClockPage() {
               employeeName: e.employee.name,
               type: 'clock_out',
               details:
-                e.clockOutReason === 'away_timer_expired'
+                e.clockOutReason === 'geofence_exit_end_shift'
+                  ? 'Clock-out (ended shift outside branch)'
+                  : e.clockOutReason === 'away_timer_expired'
                   ? 'Clock-out (auto after away)'
                   : e.clockOutReason === 'auto_daily_4am'
                     ? 'Clock-out (auto at 4:00 AM daily)'

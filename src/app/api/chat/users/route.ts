@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { listChatEligiblePeers, listGroupChatEligibleUsers, roleMayUseChat } from '@/lib/chat-policy';
+import { apiErrorResponse } from '@/lib/api-route-error';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,8 +21,6 @@ export async function GET(req: NextRequest) {
         : await listChatEligiblePeers(prisma, session.user.id, session.user.role);
     return Response.json({ users });
   } catch (e) {
-    if (e instanceof Response) return e;
-    console.error('[chat/users]', e);
-    return Response.json({ error: 'Failed to load users' }, { status: 500 });
+    return apiErrorResponse('chat/users', e, 'Failed to load users');
   }
 }

@@ -5,7 +5,7 @@ import {
 } from '@/lib/time-clock-helpers';
 import { prisma } from '@/lib/prisma';
 import { normalizeUserRole } from '@/lib/formVisibility';
-import { isAutoGeofenceClockInEnabled, isTimeClockGeofenceExempt } from '@/lib/time-clock-geofence-policy';
+import { resolveGeofencePolicy } from '@/lib/time-clock-geofence-policy';
 import { isWeeklyRatingGateBlocking, rolesSubjectToWeeklyRating } from '@/lib/weekly-ratings';
 
 export type AutoGeofenceClockInResult =
@@ -24,17 +24,17 @@ export async function attemptAutoGeofenceClockIn(
   lat: number,
   lng: number
 ): Promise<AutoGeofenceClockInResult> {
-  const geofenceExempt = isTimeClockGeofenceExempt(
-    { name: emp.name, role: emp.role, department: emp.department },
-    userEmail
+  const { geofenceExempt, autoGeofenceClockIn } = resolveGeofencePolicy(
+    {
+      name: emp.name,
+      role: emp.role,
+      employmentType: emp.employmentType,
+      department: emp.department,
+    },
+    userEmail,
+    userRole
   );
-  if (
-    !isAutoGeofenceClockInEnabled(
-      { employmentType: emp.employmentType, role: emp.role, department: emp.department },
-      geofenceExempt,
-      userEmail
-    )
-  ) {
+  if (!autoGeofenceClockIn) {
     return { ok: true, clockedIn: false, reason: 'not_eligible' };
   }
 

@@ -11,7 +11,7 @@ import {
   touchThreadUpdatedAt,
   userParticipatesInThread,
 } from '@/lib/chat-thread';
-import { sendPushToUser } from '@/lib/push';
+import { notifyUsers } from '@/lib/user-notify';
 
 const postSchema = z.object({
   body: z.string().min(1).max(4000),
@@ -151,17 +151,19 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
     after(async () => {
       try {
-        for (const uid of recipientIds) {
-          const subs = await prisma.pushSubscription.findMany({ where: { userId: uid } });
-          if (subs.length === 0) continue;
-          await sendPushToUser(uid, subs, {
+        await notifyUsers(prisma, recipientIds, {
+          category: 'chat_message',
+          title: 'You have new messages',
+          body: 'Open the app to read your chat.',
+          dataJson: JSON.stringify({ type: 'chat_message', href: deepLink, threadId }),
+          push: {
             title: 'You have new messages',
             body: 'Open the app to read your chat.',
             data: { type: 'chat_message', url: deepLink, threadId },
-          });
-        }
+          },
+        });
       } catch (pushErr) {
-        console.error('[chat/messages POST] push', pushErr);
+        console.error('[chat/messages POST] notify', pushErr);
       }
     });
 

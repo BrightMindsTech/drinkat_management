@@ -14,8 +14,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { normalizeUserRole } from '@/lib/formVisibility';
-import { isCapacitorIos, registerIosPushWithBackend } from '@/lib/native-push-client';
-import { subscribeWebPush } from '@/lib/web-push-client';
+import { ensurePushRegistered } from '@/lib/push-registration-client';
 import { ForcedAwayModal, useGeofenceWatch, type TimeClockStatus } from '@/components/time-clock/geofence-shared';
 import { isInsideBranchRadius } from '@/lib/geo';
 
@@ -90,6 +89,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   const [otherText, setOtherText] = useState('');
   const [awayNotice, setAwayNotice] = useState<string | null>(null);
   const [awaySubmitting, setAwaySubmitting] = useState(false);
+  const [endShiftSubmitting, setEndShiftSubmitting] = useState(false);
   const exitCheckRaisedRef = useRef(false);
 
   const timeClockHref = '/dashboard/time-clock';
@@ -120,8 +120,11 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async (): Promise<TimeClockStatus | null> => {
     try {
-      const r = await fetch('/api/time-clock/status');
-      if (!r.ok) throw new Error(`status_${r.status}`);
+      const r = await fetch('/api/time-clock/status', { cache: 'no-store', credentials: 'include' });
+      if (!r.ok) {
+        const errBody = (await r.json().catch(() => ({}))) as { error?: string; detail?: string };
+        throw new Error(errBody.detail ?? errBody.error ?? `status_${r.status}`);
+      }
       const j = (await r.json()) as TimeClockStatus;
       setStatus(j);
       setErr(null);
@@ -162,6 +165,21 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
     locationConsentOk
   );
 
+  const readCurrentPosition = useCallback((): Promise<{ lat: number; lng: number } | null> => {
+    if (pos) return Promise.resolve(pos);
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(null);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+      );
+    });
+  }, [pos]);
+
   const closeForcedAwayModal = useCallback(() => {
     setForceAwayOpen(false);
     if (typeof window === 'undefined') return;
@@ -199,7 +217,9 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
           }
         }
         if (!shouldPromptAway) return;
-        const s = await fetch('/api/time-clock/status').then((r) => r.json() as Promise<TimeClockStatus>);
+        const s = await fetch('/api/time-clock/status', { cache: 'no-store', credentials: 'include' }).then(
+          (r) => r.json() as Promise<TimeClockStatus>
+        );
         if (s.clock && !s.away && s.branch?.hasGeofence) {
           setAwayNotice(null);
           setForceAwayOpen(true);
@@ -329,25 +349,9 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!pushConsentOk) return;
     let cancelled = false;
-    (async () => {
-      try {
-        if (isCapacitorIos()) {
-          if (cancelled) return;
-          await registerIosPushWithBackend();
-          return;
-        }
-        if (!('serviceWorker' in navigator)) return;
-        await navigator.serviceWorker.register('/sw.js');
-        const v = await fetch('/api/push/vapid-public').then((r) => r.json());
-        if (!v.configured || !v.publicKey || cancelled) return;
-        const reg = await navigator.serviceWorker.ready;
-        const existing = await reg.pushManager.getSubscription();
-        if (existing) return;
-        await subscribeWebPush(v.publicKey);
-      } catch {
-        /* optional */
-      }
-    })();
+    void ensurePushRegistered({ requestPermission: false }).then(() => {
+      if (cancelled) return;
+    });
     return () => {
       cancelled = true;
     };
@@ -391,6 +395,45 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
       )}
       {forceAwayOpen && status?.clock && !status.away && (
         <ForcedAwayModal
+          onEndShift={async () => {
+            setEndShiftSubmitting(true);
+            try {
+              const coords = await readCurrentPosition();
+              if (!coords) {
+                setErr(t.timeClock.endShiftGpsRequired);
+                return;
+              }
+              const ctl = new AbortController();
+              const to = window.setTimeout(() => ctl.abort(), 12000);
+              const r = await fetch('/api/time-clock/clock-out', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  lat: coords.lat,
+                  lng: coords.lng,
+                  fromGeofenceExitPrompt: true,
+                }),
+                signal: ctl.signal,
+              });
+              window.clearTimeout(to);
+              if (!r.ok) {
+                const e = (await r.json().catch(() => ({}))) as { error?: string };
+                setErr(e.error ?? t.timeClock.endShiftFailed);
+                await refresh();
+                return;
+              }
+              setAwayNotice(null);
+              setOtherText('');
+              exitCheckRaisedRef.current = false;
+              closeForcedAwayModal();
+              await refresh();
+            } catch {
+              setErr(t.timeClock.endShiftFailed);
+            } finally {
+              setEndShiftSubmitting(false);
+            }
+          }}
+          endShiftLoading={endShiftSubmitting}
           onPick={async (kind: 'break' | 'bathroom' | 'other', note?: string) => {
             setAwaySubmitting(true);
             try {

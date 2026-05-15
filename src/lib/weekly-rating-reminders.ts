@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { getExpectedRatingTargetIds, getObligationWeekStartKey, rolesSubjectToWeeklyRating } from '@/lib/weekly-ratings';
 import { normalizeUserRole } from '@/lib/formVisibility';
-import { sendPushToUser } from '@/lib/push';
+import { notifyUser } from '@/lib/user-notify';
 
 /**
  * Sends weekly rating reminders once per due week to users
@@ -39,15 +39,23 @@ export async function sendWeeklyRatingRemindersIfDue(): Promise<{ sentUsers: num
     const remaining = expectedTargetIds.filter((id) => !done.has(id)).length;
     if (remaining <= 0) continue;
 
-    const subs = await prisma.pushSubscription.findMany({ where: { userId: u.id } });
-    if (subs.length === 0) continue;
-    await sendPushToUser(u.id, subs, {
+    await notifyUser(prisma, u.id, {
+      category: 'weekly_rating_reminder',
       title: 'Weekly rating reminder',
       body: `You still have ${remaining} weekly rating${remaining === 1 ? '' : 's'} to submit.`,
-      data: {
+      dataJson: JSON.stringify({
         type: 'weekly_rating_reminder',
-        url: '/dashboard/ratings',
+        href: '/dashboard/ratings',
         weekStartKey: weekKey,
+      }),
+      push: {
+        title: 'Weekly rating reminder',
+        body: `You still have ${remaining} weekly rating${remaining === 1 ? '' : 's'} to submit.`,
+        data: {
+          type: 'weekly_rating_reminder',
+          url: '/dashboard/ratings',
+          weekStartKey: weekKey,
+        },
       },
     });
     sentUsers += 1;

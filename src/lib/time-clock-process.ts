@@ -17,25 +17,20 @@ export async function processExpiredAwaySessions(): Promise<number> {
   let n = 0;
   for (const session of expired) {
     const open = await getOpenClockEntry(session.employeeId);
-    const ops = [];
+    // D1: sequential writes — interactive `$transaction` is unreliable on Workers.
     if (open) {
-      ops.push(
-        prisma.timeClockEntry.update({
-          where: { id: open.id },
-          data: {
-            clockOutAt: now,
-            clockOutReason: 'away_timer_expired',
-          },
-        })
-      );
+      await prisma.timeClockEntry.update({
+        where: { id: open.id },
+        data: {
+          clockOutAt: now,
+          clockOutReason: 'away_timer_expired',
+        },
+      });
     }
-    ops.push(
-      prisma.awaySession.update({
-        where: { id: session.id },
-        data: { status: 'expired_processed' },
-      })
-    );
-    await prisma.$transaction(ops);
+    await prisma.awaySession.update({
+      where: { id: session.id },
+      data: { status: 'expired_processed' },
+    });
     n += 1;
 
     const mgrId = await getManagerUserIdForEmployee(session.employee);

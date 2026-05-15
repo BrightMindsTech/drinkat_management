@@ -8,6 +8,27 @@ export function urlBase64ToUint8Array(base64String: string): BufferSource {
   return out;
 }
 
+async function registerWebSubscriptionOnServer(sub: PushSubscription): Promise<boolean> {
+  const j = sub.toJSON();
+  if (!j.endpoint || !j.keys?.auth || !j.keys?.p256dh) return false;
+  const res = await fetch('/api/push/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      provider: 'web',
+      endpoint: j.endpoint,
+      keys: { auth: j.keys.auth, p256dh: j.keys.p256dh },
+    }),
+  });
+  return res.ok;
+}
+
+/** Re-sync browser subscription to server (fixes “sometimes” push after DB loss / new login). */
+export async function syncWebPushSubscriptionToBackend(sub: PushSubscription): Promise<boolean> {
+  return registerWebSubscriptionOnServer(sub);
+}
+
 export async function subscribeWebPush(publicKey: string): Promise<PushSubscription | null> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
   const reg = await navigator.serviceWorker.ready;
@@ -15,16 +36,7 @@ export async function subscribeWebPush(publicKey: string): Promise<PushSubscript
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(publicKey),
   });
-  const j = sub.toJSON();
-  if (!j.endpoint || !j.keys?.auth || !j.keys?.p256dh) return null;
-  await fetch('/api/push/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      provider: 'web',
-      endpoint: j.endpoint,
-      keys: { auth: j.keys.auth, p256dh: j.keys.p256dh },
-    }),
-  });
+  const ok = await registerWebSubscriptionOnServer(sub);
+  if (!ok) return null;
   return sub;
 }

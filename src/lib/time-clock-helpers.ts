@@ -16,19 +16,102 @@ export type TimeClockEmployee = Employee & {
   shiftDefinition: { id: string; key: string; startMinute: number; endMinute: number; crossesMidnight: boolean } | null;
 };
 
+const branchSelectForTimeClock = {
+  id: true,
+  name: true,
+  latitude: true,
+  longitude: true,
+  geofenceRadiusM: true,
+  shiftProfile: true,
+} as const;
+
+const shiftSelectForTimeClock = {
+  id: true,
+  key: true,
+  name: true,
+  startMinute: true,
+  endMinute: true,
+  crossesMidnight: true,
+} as const;
+
+function normalizeTimeClockEmployee(
+  emp: {
+    id: string;
+    userId: string | null;
+    branchId: string;
+    name: string;
+    role: string;
+    status: string;
+    employmentType?: string;
+    branch: {
+      id: string;
+      name: string;
+      latitude: number | null;
+      longitude: number | null;
+      geofenceRadiusM: number;
+      shiftProfile?: string;
+    };
+    department: { id: string; name: string } | null;
+    shiftDefinition?: {
+      id: string;
+      key: string;
+      name: string;
+      startMinute: number;
+      endMinute: number;
+      crossesMidnight: boolean;
+    } | null;
+  } & Record<string, unknown>
+): TimeClockEmployee {
+  return {
+    ...(emp as TimeClockEmployee),
+    employmentType: emp.employmentType ?? 'full_time',
+    branch: {
+      id: emp.branch.id,
+      name: emp.branch.name,
+      latitude: emp.branch.latitude,
+      longitude: emp.branch.longitude,
+      geofenceRadiusM: emp.branch.geofenceRadiusM ?? 25,
+      shiftProfile: emp.branch.shiftProfile ?? 'default',
+    },
+    shiftDefinition: emp.shiftDefinition ?? null,
+  } as TimeClockEmployee;
+}
+
 /** Owner is excluded from time clock entirely. */
 export async function getTimeClockEmployee(userId: string, userRole: string): Promise<TimeClockEmployee | null> {
   if (normalizeUserRole(userRole) === 'owner') return null;
-  const emp = await prisma.employee.findUnique({
-    where: { userId },
-    include: {
-      branch: true,
-      department: true,
-      shiftDefinition: true,
-    },
-  });
-  if (!emp || emp.status === 'terminated') return null;
-  return emp as TimeClockEmployee;
+  try {
+    const emp = await prisma.employee.findUnique({
+      where: { userId },
+      include: {
+        branch: { select: branchSelectForTimeClock },
+        department: { select: { id: true, name: true } },
+        shiftDefinition: { select: shiftSelectForTimeClock },
+      },
+    });
+    if (!emp || emp.status === 'terminated') return null;
+    return normalizeTimeClockEmployee(emp);
+  } catch (e) {
+    console.error('[getTimeClockEmployee] full include failed, retrying minimal', e);
+    try {
+      const emp = await prisma.employee.findUnique({
+        where: { userId },
+        include: {
+          branch: { select: { id: true, name: true, latitude: true, longitude: true, geofenceRadiusM: true } },
+          department: { select: { id: true, name: true } },
+        },
+      });
+      if (!emp || emp.status === 'terminated') return null;
+      return normalizeTimeClockEmployee({
+        ...emp,
+        shiftDefinition: null,
+        branch: { ...emp.branch, shiftProfile: 'default' },
+      });
+    } catch (e2) {
+      console.error('[getTimeClockEmployee] minimal query failed', e2);
+      return null;
+    }
+  }
 }
 
 export async function getOpenClockEntry(employeeId: string) {

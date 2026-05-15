@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwnerOrManager } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { periodMonthFromDate } from '@/lib/advance-period-month';
 import { z } from 'zod';
 
 const patchSchema = z.object({
@@ -28,9 +29,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!ok) return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  const decidedAt = new Date();
+  const updateData: {
+    status: 'approved' | 'denied';
+    decidedAt: Date;
+    periodMonth?: string;
+  } = {
+    status: parsed.data.status,
+    decidedAt,
+  };
+  if (parsed.data.status === 'approved' && !advance.periodMonth) {
+    updateData.periodMonth = periodMonthFromDate(advance.requestedAt);
+  }
+
   const updated = await prisma.advance.update({
     where: { id },
-    data: { status: parsed.data.status as 'approved' | 'denied', decidedAt: new Date() },
+    data: updateData,
     include: { employee: { include: { branch: true } } },
   });
   return Response.json(updated);

@@ -20,15 +20,16 @@ export async function POST(req: Request) {
 
   const results: { id: string; provider: string; ok: boolean }[] = [];
   for (const sub of selectedSubs) {
-    const ok = await sendPushToSubscription(sub, {
-      title: 'Push test',
-      body: 'If you can read this, push delivery is working.',
-      data: {
-        type: 'push_test',
-        url: '/dashboard/messages',
-      },
-    });
-    results.push({ id: sub.id, provider: sub.provider, ok });
+    const delivered =
+      (await sendPushToSubscription(sub, {
+        title: 'Push test',
+        body: 'If you can read this, push delivery is working.',
+        data: {
+          type: 'push_test',
+          url: '/dashboard/messages',
+        },
+      })) === 'ok';
+    results.push({ id: sub.id, provider: sub.provider, ok: delivered });
   }
 
   return Response.json({

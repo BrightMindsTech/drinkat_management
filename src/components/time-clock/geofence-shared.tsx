@@ -113,21 +113,26 @@ export function useGeofenceWatch(opts: {
 
 export function ForcedAwayModal({
   onPick,
+  onEndShift,
   otherText,
   setOtherText,
   loading,
+  endShiftLoading,
   notice,
   onClose,
   t,
 }: {
   onPick: (k: 'break' | 'bathroom' | 'other', note?: string) => void;
+  onEndShift: () => void;
   otherText: string;
   setOtherText: (s: string) => void;
   loading: boolean;
+  endShiftLoading: boolean;
   notice: string | null;
   onClose: () => void;
   t: { timeClock: Record<string, string>; common: Record<string, string> };
 }) {
+  const busy = loading || endShiftLoading;
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal>
       <div className="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4">
@@ -150,7 +155,7 @@ export function ForcedAwayModal({
             <div className="flex flex-col gap-2">
               <button
                 type="button"
-                disabled={loading}
+                disabled={busy}
                 className="rounded-xl border border-gray-200 dark:border-ios-dark-separator py-3 text-left px-4 font-medium disabled:opacity-50"
                 onClick={() => onPick('bathroom')}
               >
@@ -158,7 +163,7 @@ export function ForcedAwayModal({
               </button>
               <button
                 type="button"
-                disabled={loading}
+                disabled={busy}
                 className="rounded-xl border border-gray-200 dark:border-ios-dark-separator py-3 text-left px-4 font-medium disabled:opacity-50"
                 onClick={() => onPick('break')}
               >
@@ -172,16 +177,28 @@ export function ForcedAwayModal({
                   value={otherText}
                   onChange={(e) => setOtherText(e.target.value)}
                   placeholder={t.timeClock.otherPlaceholder}
+                  disabled={busy}
                 />
                 <button
                   type="button"
-                  disabled={!otherText.trim() || loading}
+                  disabled={!otherText.trim() || busy}
                   className="w-full rounded-xl bg-ios-blue py-3 text-white font-medium disabled:opacity-50"
                   onClick={() => onPick('other', otherText.trim())}
                 >
                   {t.timeClock.submitOther}
                 </button>
               </div>
+            </div>
+            <div className="border-t border-gray-200 dark:border-ios-dark-separator pt-4 mt-2 space-y-2">
+              <p className="text-xs text-app-secondary">{t.timeClock.endShiftHint}</p>
+              <button
+                type="button"
+                disabled={busy}
+                className="w-full rounded-xl bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500 py-3 text-white font-semibold disabled:opacity-50"
+                onClick={onEndShift}
+              >
+                {endShiftLoading ? t.timeClock.endShiftLoading : t.timeClock.endShift}
+              </button>
             </div>
           </>
         )}

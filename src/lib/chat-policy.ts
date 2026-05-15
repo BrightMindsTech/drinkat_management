@@ -146,13 +146,17 @@ export async function listChatEligiblePeers(
   });
   if (!me) return [];
 
+  const myRole = normalizeUserRole(sessionRole);
+  const myBranch = myRole === 'owner' ? null : await getEffectiveBranchId(prisma, sessionUserId);
+
   const others = await prisma.user.findMany({
     where: { id: { not: sessionUserId } },
     select: {
       id: true,
       role: true,
       email: true,
-      employee: { select: { name: true, status: true } },
+      branchId: true,
+      employee: { select: { name: true, status: true, branchId: true } },
     },
     orderBy: { email: 'asc' },
     take: 500,
@@ -161,10 +165,19 @@ export async function listChatEligiblePeers(
   const rows: ChatUserListRow[] = [];
   for (const u of others) {
     if (u.employee?.status === 'terminated') continue;
-    const gate = await canUsersChat(prisma, sessionUserId, u.id);
-    if (!gate.ok) continue;
+    if (!roleMayUseChat(u.role)) continue;
+
+    const peerRole = normalizeUserRole(u.role);
+    if (myRole !== 'owner') {
+      if (peerRole !== 'owner') {
+        if (!myBranch) continue;
+        const peerBranch = u.branchId ?? u.employee?.branchId ?? null;
+        if (!peerBranch || peerBranch !== myBranch) continue;
+      }
+    }
+
     const displayName = u.employee?.name?.trim() || u.email.split('@')[0] || u.id;
-    rows.push({ id: u.id, displayName, role: normalizeUserRole(u.role) });
+    rows.push({ id: u.id, displayName, role: peerRole });
   }
 
   return rows;

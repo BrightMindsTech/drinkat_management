@@ -1,10 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import { DEFAULT_APP_TIMEZONE, minutesUntilShiftEnd } from '@/lib/shifts';
-import { sendPushToUser } from '@/lib/push';
+import { notifyUser } from '@/lib/user-notify';
 
 /** Wider than ±1 cron tick so 5min schedules still land once; first hit in range wins (deduped). */
-const REMIND_MIN = 24;
-const REMIND_MAX = 36;
+const REMIND_MIN = 18;
+const REMIND_MAX = 42;
 
 /**
  * For employees still clocked in, send a one-time push when shift end is about 30 minutes away
@@ -56,16 +56,22 @@ export async function sendClockOutRemindersIfInWindow(): Promise<{ sent: number;
     const already = await prisma.appCronWatermark.findUnique({ where: { key: watermarkKey } });
     if (already) continue;
 
-    const subs = await prisma.pushSubscription.findMany({ where: { userId } });
-    if (subs.length === 0) continue;
-
     try {
-      await sendPushToUser(userId, subs, {
+      await notifyUser(prisma, userId, {
+        category: 'clock_out_reminder',
         title: 'Time clock',
         body: "Please don't forget to clock out before your shift ends.",
-        data: {
+        dataJson: JSON.stringify({
           type: 'clock_out_shifts_remind',
-          url: '/dashboard/time-clock',
+          href: '/dashboard/time-clock',
+        }),
+        push: {
+          title: 'Time clock',
+          body: "Please don't forget to clock out before your shift ends.",
+          data: {
+            type: 'clock_out_shifts_remind',
+            url: '/dashboard/time-clock',
+          },
         },
       });
     } catch (e) {

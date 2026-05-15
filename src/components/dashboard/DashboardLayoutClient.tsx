@@ -7,12 +7,13 @@ import { LanguageToggle } from '@/components/LanguageToggle';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SignOutButton } from '@/components/SignOutButton';
 import { PendingReviewNotice } from '@/components/PendingReviewNotice';
-import { registerIosPushWithBackend } from '@/lib/native-push-client';
+import { ensurePushRegistered } from '@/lib/push-registration-client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DashboardNavLinks } from './DashboardNavLinks';
 import { DashboardPageSectionNav } from './DashboardPageSectionNav';
 import { DashboardScrollMain } from './DashboardScrollMain';
 import { usePathname, useRouter } from 'next/navigation';
+import { roleMayUseChat } from '@/lib/chat-policy';
 
 function SidebarAccountBlock({ email, bottomSafeArea = true }: { email: string; bottomSafeArea?: boolean }) {
   return (
@@ -68,15 +69,16 @@ export function DashboardLayoutClient({
     let stopped = false;
     let timerId: number | null = null;
     let inLoop = false;
+
     async function attemptRegister() {
       if (stopped || inLoop) return;
       inLoop = true;
-      const ok = await registerIosPushWithBackend();
+      const { done } = await ensurePushRegistered({ requestPermission: false });
       inLoop = false;
-      if (ok || stopped) return;
+      if (done || stopped) return;
       timerId = window.setTimeout(() => {
         void attemptRegister();
-      }, 5000);
+      }, 15000);
     }
     void attemptRegister();
     const onVisibility = () => {
@@ -91,15 +93,19 @@ export function DashboardLayoutClient({
   }, []);
 
   useEffect(() => {
+    if (!roleMayUseChat(role)) {
+      setChatUnreadCount(0);
+      return;
+    }
+
     let cancelled = false;
     async function refreshChatUnreadCount() {
       try {
-        const res = await fetch('/api/chat/threads', { cache: 'no-store', credentials: 'include' });
+        const res = await fetch('/api/chat/unread', { cache: 'no-store', credentials: 'include' });
         if (!res.ok) return;
-        const data = (await res.json().catch(() => ({}))) as { threads?: { unreadCount?: number }[] };
+        const data = (await res.json().catch(() => ({}))) as { total?: number };
         if (cancelled) return;
-        const total = (data.threads ?? []).reduce((sum, th) => sum + (th.unreadCount ?? 0), 0);
-        setChatUnreadCount(total);
+        setChatUnreadCount(typeof data.total === 'number' ? data.total : 0);
       } catch {
         // optional UI enhancement; keep silent on fetch failures
       }
@@ -111,7 +117,7 @@ export function DashboardLayoutClient({
 
     const id = window.setInterval(() => {
       if (document.visibilityState === 'visible') void refreshChatUnreadCount();
-    }, 5000);
+    }, 30000);
 
     document.addEventListener('visibilitychange', onVisibility);
     void refreshChatUnreadCount();
@@ -120,7 +126,7 @@ export function DashboardLayoutClient({
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [role]);
 
   const menuOpenDirection = dir === 'rtl' ? -1 : 1;
   const menuEdge = dir === 'rtl' ? 'right' : 'left';

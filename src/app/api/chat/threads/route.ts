@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { maybePurgeChatIfDue } from '@/lib/chat-retention';
-import { maybeRunAutoClockOutIfDue } from '@/lib/auto-clock-out-daily';
 import { canUsersChat, roleMayUseChat, validateGroupParticipants } from '@/lib/chat-policy';
 import {
   createDirectThread,
@@ -40,12 +39,10 @@ export async function GET() {
     if (!roleMayUseChat(role)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    await maybePurgeChatIfDue(prisma);
-    try {
-      await maybeRunAutoClockOutIfDue();
-    } catch (e) {
-      console.error('[chat/threads GET] maybeRunAutoClockOutIfDue', e);
-    }
+    // Do not block the hot polling path on retention (runs in background).
+    void maybePurgeChatIfDue(prisma).catch((e) => {
+      console.error('[chat/threads GET] maybePurgeChatIfDue', e);
+    });
     const threads = await listThreadsForUser(prisma, session.user.id);
     return Response.json({ threads });
   } catch (e) {

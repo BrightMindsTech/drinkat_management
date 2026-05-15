@@ -22,5 +22,6 @@ export const config = {
     '/api/forms/:path*',
     '/api/ratings/:path*',
     '/api/chat/:path*',
+    '/api/support/:path*',
   ],
 };

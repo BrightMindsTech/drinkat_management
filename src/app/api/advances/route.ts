@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/session';
 import { createInboxForUsers, getManagerUserIdForEmployee } from '@/lib/time-clock-helpers';
 import { sendPushToUser } from '@/lib/push';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { currentAdvancePeriodMonth } from '@/lib/advance-period-month';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
       employeeId: user.employee.id,
       amount: parsed.data.amount,
       note: parsed.data.note ?? null,
-      periodMonth: parsed.data.periodMonth ?? null,
+      periodMonth: parsed.data.periodMonth ?? currentAdvancePeriodMonth(),
     },
     include: { employee: { include: { branch: true } } },
   });

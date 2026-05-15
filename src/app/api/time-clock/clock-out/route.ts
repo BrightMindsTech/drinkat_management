@@ -17,6 +17,8 @@ import { isZainBadarneh } from '@/lib/named-employee-policy';
 const bodySchema = z.object({
   lat: z.number(),
   lng: z.number(),
+  /** Set when employee ends shift from the "Did you leave?" prompt (outside branch radius). */
+  fromGeofenceExitPrompt: z.boolean().optional(),
 });
 
 export async function POST(req: Request) {
@@ -59,7 +61,7 @@ export async function POST(req: Request) {
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
 
-  const { lat, lng } = parsed.data;
+  const { lat, lng, fromGeofenceExitPrompt } = parsed.data;
   const open = await getOpenClockEntry(emp.id);
   if (!open) {
     // Idempotent success: if user was auto clocked out moments ago, don't surface an error.
@@ -67,11 +69,19 @@ export async function POST(req: Request) {
   }
 
   const geofenceExempt = isTimeClockGeofenceExempt(
-    { name: emp.name, role: emp.role, department: emp.department },
-    session.user.email
+    {
+      name: emp.name,
+      role: emp.role,
+      employmentType: emp.employmentType,
+      department: emp.department,
+    },
+    session.user.email,
+    session.user.role
   );
 
-  if (!geofenceExempt) {
+  const skipGeofenceForExitPrompt = fromGeofenceExitPrompt === true;
+
+  if (!geofenceExempt && !skipGeofenceForExitPrompt) {
     const entryBranch = await prisma.branch.findUnique({ where: { id: open.branchId } });
     if (!entryBranch || entryBranch.latitude == null || entryBranch.longitude == null) {
       return Response.json({ error: 'Branch location not configured' }, { status: 400 });
@@ -156,13 +166,17 @@ export async function POST(req: Request) {
   }
 
   const now = new Date();
+  await prisma.awaySession.updateMany({
+    where: { employeeId: emp.id, status: 'active' },
+    data: { status: 'canceled' },
+  });
   const updated = await prisma.timeClockEntry.update({
     where: { id: open.id },
     data: {
       clockOutAt: now,
       clockOutLat: lat,
       clockOutLng: lng,
-      clockOutReason: 'manual',
+      clockOutReason: skipGeofenceForExitPrompt ? 'geofence_exit_end_shift' : 'manual',
     },
   });
 

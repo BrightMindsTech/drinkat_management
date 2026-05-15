@@ -1,12 +1,8 @@
 import { requireSession } from '@/lib/session';
-import { getTimeClockEmployee } from '@/lib/time-clock-helpers';
 
+/** Public VAPID key for Web Push — any signed-in user (chat, HR, time clock). */
 export async function GET() {
-  const session = await requireSession();
-  const emp = await getTimeClockEmployee(session.user.id, session.user.role);
-  if (!emp) {
-    return Response.json({ error: 'Not applicable' }, { status: 403 });
-  }
+  await requireSession();
   const pub = process.env.WEB_PUSH_VAPID_PUBLIC_KEY;
   if (!pub) {
     return Response.json({ configured: false, publicKey: null });
