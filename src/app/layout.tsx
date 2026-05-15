@@ -35,7 +35,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body className="min-h-screen w-full max-w-[100dvw] overflow-x-hidden bg-ios-gray dark:bg-ios-gray-dark text-app-primary antialiased transition-colors">
         <ThemeProvider>
-          <LanguageProvider>
+          <LanguageProvider initialLocale={locale}>
             <SessionProvider>
               <ModalScrollIntoViewListener />
               <MobileZoomResetGesture />

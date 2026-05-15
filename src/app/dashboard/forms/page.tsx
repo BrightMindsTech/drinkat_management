@@ -3,9 +3,13 @@ import { redirect } from 'next/navigation';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { parseTemplateFields } from '@/lib/formTemplate';
-import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
+import {
+  canManagerAssignTemplate,
+  isTemplateVisibleInFillCatalog,
+  normalizeUserRole,
+  type FormViewContext,
+} from '@/lib/formVisibility';
 import { isQcReviewerUser } from '@/lib/qc-reviewer';
-import { isZainBadarneh } from '@/lib/named-employee-policy';
 import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
 import {
   ManagementFormsView,
@@ -34,15 +38,16 @@ export default async function FormsPage() {
   });
 
   const qcReviewer = isQcReviewerUser(session.user.role, user?.employee ?? null);
-  const canSubmitQcForms =
-    normalizeUserRole(session.user.role) === 'qc' ||
-    user?.employee?.role.trim().toLowerCase() === 'qc';
 
   const ctx: FormViewContext = {
     userRole: role,
     employeeDepartmentId: user?.employee?.departmentId ?? null,
     employeeDepartmentName: user?.employee?.department?.name ?? null,
   };
+
+  const employeeForForms = user?.employee
+    ? { id: user.employee.id, role: user.employee.role, name: user.employee.name }
+    : null;
 
   const mapToRow = (t: (typeof allTemplates)[0]): FormsTemplateRow => {
     let fields: ReturnType<typeof parseTemplateFields> = [];
@@ -66,28 +71,28 @@ export default async function FormsPage() {
     role === 'owner'
       ? []
       : allTemplates
-          .filter(
-            (t) =>
-              t.active &&
-              (t.category !== 'qc' || canSubmitQcForms) &&
-              (t.employeeAssignments.some((a) => a.employeeId === user?.employee?.id) ||
-                canFillManagementForm(ctx, {
-                  category: t.category,
-                  departmentAssignments: t.departmentAssignments,
-                }))
-          )
-          .filter(
-            (t) =>
-              !(
-                t.category === 'cash' &&
-                user?.employee &&
-                isZainBadarneh({ name: user.employee.name }, session.user.email)
-              )
+          .filter((t) =>
+            isTemplateVisibleInFillCatalog(
+              ctx,
+              {
+                category: t.category,
+                departmentAssignments: t.departmentAssignments,
+                employeeAssignments: t.employeeAssignments,
+                active: t.active,
+              },
+              employeeForForms,
+              session.user.email
+            )
           )
           .map(mapToRow);
 
   const allTemplatesForOwner: FormsTemplateRow[] | undefined =
-    role === 'owner' || role === 'manager' ? allTemplates.map(mapToRow) : undefined;
+    role === 'owner' ? allTemplates.map(mapToRow) : undefined;
+
+  const templatesForManagerAssign: FormsTemplateRow[] | undefined =
+    role === 'manager'
+      ? allTemplates.filter((t) => canManagerAssignTemplate(t.category)).map(mapToRow)
+      : undefined;
 
   const departments =
     role === 'owner'
@@ -102,7 +107,12 @@ export default async function FormsPage() {
             include: { branch: { select: { name: true } } },
             orderBy: { name: 'asc' },
           })
-        ).map((e) => ({ id: e.id, name: e.name, branchName: e.branch.name }))
+        ).map((e) => ({
+          id: e.id,
+          name: e.name,
+          branchName: e.branch.name,
+          role: e.role,
+        }))
       : undefined;
 
   const managerEmployees =
@@ -284,6 +294,7 @@ export default async function FormsPage() {
       role={role}
       templatesForFill={templatesForFill}
       allTemplatesForOwner={allTemplatesForOwner}
+      managerAssignTemplates={templatesForManagerAssign}
       departments={departments}
       assignmentEmployees={assignmentEmployees}
       managerEmployees={managerEmployees}

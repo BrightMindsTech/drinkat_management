@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
+import { attemptAutoGeofenceClockIn } from '@/lib/auto-geofence-clock-in';
 import { isTimeClockGeofenceExempt } from '@/lib/time-clock-geofence-policy';
 import { getOpenClockEntry, getTimeClockEmployee } from '@/lib/time-clock-helpers';
 import { isInsideBranchRadius } from '@/lib/geo';
@@ -59,18 +60,36 @@ export async function POST(req: Request) {
   const origin = originFromRequest(req);
   const deepLink = `${origin}/dashboard/time-clock`;
 
-  let action: 'none' | 'clock_in_reminder' | 'clock_out_reminder' | 'destination_required' = 'none';
+  let action:
+    | 'none'
+    | 'clocked_in_auto'
+    | 'clock_in_reminder'
+    | 'clock_out_reminder'
+    | 'destination_required' = 'none';
 
   const pushSelf = async (title: string, body: string, data: Record<string, string>) => {
     await sendPushToUser(session.user.id, subs, { title, body, data });
   };
 
   if (kind === 'enter' && inside && !open) {
-    action = 'clock_in_reminder';
-    await pushSelf('Clock in', `You arrived at ${emp.branch.name}. Tap to clock in.`, {
-      type: 'time_clock_clock_in',
-      url: `${deepLink}?remind=clock_in`,
-    });
+    const autoIn = await attemptAutoGeofenceClockIn(
+      emp,
+      session.user.email ?? null,
+      session.user.role,
+      lat,
+      lng
+    );
+    if (autoIn.ok && autoIn.clockedIn) {
+      action = 'clocked_in_auto';
+    } else if (autoIn.ok && autoIn.reason === 'not_eligible') {
+      action = 'none';
+    } else {
+      action = 'clock_in_reminder';
+      await pushSelf('Clock in', `You arrived at ${emp.branch.name}. Tap to clock in.`, {
+        type: 'time_clock_clock_in',
+        url: `${deepLink}?remind=clock_in`,
+      });
+    }
   }
 
   if (kind === 'exit' && !inside && open) {

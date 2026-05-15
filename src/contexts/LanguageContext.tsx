@@ -30,14 +30,20 @@ function setLocaleCookie(locale: Locale) {
   document.cookie = `locale=${locale};path=/;max-age=31536000`;
 }
 
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>('en');
+export function LanguageProvider({
+  children,
+  initialLocale = 'en',
+}: {
+  children: React.ReactNode;
+  initialLocale?: Locale;
+}) {
+  const [locale, setLocaleState] = useState<Locale>(initialLocale);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const initial = getInitialLocale();
-    setLocaleState(initial);
-    setLocaleCookie(initial);
+    const stored = getInitialLocale();
+    setLocaleState(stored);
+    setLocaleCookie(stored);
     setMounted(true);
   }, []);
 

@@ -363,6 +363,7 @@ export const en = {
     failedRequest: 'Failed to request leave',
     selectDates: 'Select start and end dates',
     allStatus: 'All status',
+    actionFailed: 'Could not update leave request. Try again.',
   },
   employeeCard: {
     roleLabel: 'Role',
@@ -481,7 +482,9 @@ export const en = {
       'Checklists for QC, marketing, kitchen, and cash. The owner assigns each form to departments and/or specific employees below.',
     assignTitle: 'Assign forms to teams and people',
     assignIntro:
-      'Tick which departments may use each form. Optionally tick specific employees below—they can fill the form even if their department is not selected. Leave departments empty to use the default rules (QC form → QC team only; marketing → marketing team; kitchen & cash → all staff).',
+      'Tick which departments may use each form. Optionally tick specific employees below—they can fill the form even if their department is not selected. QC forms should be assigned to the QC department only. Cash forms are for managers (they assign staff individually); other categories use department rules.',
+    managerCashAssignIntro:
+      'Cash forms only. Assign each cash form to direct reports who should fill it—they will see it under Available forms.',
     assignHint: 'QC role and owner always see every form.',
     assignSpecificEmployees: 'Specific employees',
     assignSpecificEmployeesHint:
@@ -541,6 +544,30 @@ export const en = {
       'Delete this form permanently? All submissions for this form will be removed. This cannot be undone.',
     deletingForm: 'Deleting…',
     manageFormsTitle: 'Manage forms',
+    importDefaultTemplates: 'Import default templates',
+    importDefaultTemplatesWorking: 'Importing templates…',
+    importBaristaTemplates: 'Import barista checklists (Google Forms)',
+    importBaristaTemplatesWorking: 'Importing barista forms…',
+    importBaristaDone: 'Imported {count} barista form(s).',
+    importBaristaSkipped: '{count} form(s) were skipped (not publicly accessible).',
+    importBaristaFailed: 'Could not import barista forms.',
+    importBaristaSkippedHint:
+      'For forms that require sign-in: use “Import private Google Form” below (one form at a time).',
+    importGooglePasteTitle: 'Import private Google Form (paste)',
+    importGooglePasteIntro:
+      'Works when the form is restricted but you can open it while signed in to Google. No need to change link sharing.',
+    importGooglePasteStep1: 'Open the Google Form in a new tab (links below for forms 4 & 5).',
+    importGooglePasteStep2: 'Press F12 (or right‑click → Inspect) → Console.',
+    importGooglePasteStep3: 'Click “Copy extract script”, paste into the console, press Enter — JSON is copied.',
+    importGooglePasteStep4: 'Paste the JSON here and click Import. Repeat for each private form.',
+    importGooglePasteCopyScript: 'Copy extract script',
+    importGooglePasteScriptCopied: 'Script copied',
+    importGooglePasteCopyScriptManual: 'Copy this script manually:',
+    importGooglePastePlaceholder: 'Paste JSON from the browser console here…',
+    importGooglePasteSubmit: 'Import from paste',
+    importGooglePasteWorking: 'Importing…',
+    importGooglePasteSuccess: 'Imported “{title}” ({count} questions).',
+    importGooglePasteFailed: 'Could not import from paste.',
     exportSubmissionCsv: 'Export CSV',
     exportCsvFailed: 'Could not export CSV.',
     fieldTypes: {

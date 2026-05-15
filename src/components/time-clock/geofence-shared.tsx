@@ -9,6 +9,9 @@ export type TimeClockStatus = {
   employeeName?: string;
   /** QC dept / named remote: no branch radius for clock in-out; client skips fence watch. */
   geofenceExempt?: boolean;
+  /** Full-time only: auto clock-in when GPS enters branch geofence. */
+  autoGeofenceClockIn?: boolean;
+  employmentType?: string;
   displayTimeZone?: string;
   shift?: {
     id: string;

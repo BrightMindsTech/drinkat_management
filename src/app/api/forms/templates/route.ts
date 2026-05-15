@@ -2,8 +2,11 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner, requireSession } from '@/lib/session';
 import { formTemplateFieldsSchema } from '@/lib/formTemplate';
-import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
-import { isZainBadarneh } from '@/lib/named-employee-policy';
+import {
+  canUserFillTemplate,
+  normalizeUserRole,
+  type FormViewContext,
+} from '@/lib/formVisibility';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -64,25 +67,21 @@ export async function GET(req: NextRequest) {
     employeeDepartmentName: user?.employee?.department?.name ?? null,
   };
 
-  const employeeId = user?.employee?.id ?? null;
-  const isQcEmployee =
-    role === 'qc' || user?.employee?.role.trim().toLowerCase() === 'qc';
-  const visible = templates.filter((t) => {
-    if (t.category === 'qc' && !isQcEmployee) return false;
-    if (
-      t.category === 'cash' &&
-      user?.employee &&
-      isZainBadarneh({ name: user.employee.name }, session.user.email)
-    ) {
-      return false;
-    }
-    const explicitlyAssigned = !!(employeeId && t.employeeAssignments.some((a) => a.employeeId === employeeId));
-    if (explicitlyAssigned) return true;
-    return canFillManagementForm(ctx, {
-      category: t.category,
-      departmentAssignments: t.departmentAssignments,
-    });
-  });
+  const employeeForForms = user?.employee
+    ? { id: user.employee.id, role: user.employee.role, name: user.employee.name }
+    : null;
+  const visible = templates.filter((t) =>
+    canUserFillTemplate(
+      ctx,
+      {
+        category: t.category,
+        departmentAssignments: t.departmentAssignments,
+        employeeAssignments: t.employeeAssignments,
+      },
+      employeeForForms,
+      session.user.email
+    )
+  );
 
   return Response.json(mapTemplatesForResponse(visible));
 }

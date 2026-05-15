@@ -14,3 +14,17 @@ export function isTimeClockGeofenceExempt(
   if (d === 'qc' || d === 'quality control') return true;
   return false;
 }
+
+/**
+ * Auto clock-in when entering branch geofence (background GPS watch).
+ * Part-time staff clock in manually at whichever branch they are at.
+ */
+export function isAutoGeofenceClockInEnabled(
+  emp: { employmentType: string; role: string; department: { name: string } | null },
+  geofenceExempt: boolean,
+  userEmail?: string | null
+): boolean {
+  if (geofenceExempt || isTimeClockGeofenceExempt(emp, userEmail)) return false;
+  if (emp.employmentType === 'part_time') return false;
+  return true;
+}

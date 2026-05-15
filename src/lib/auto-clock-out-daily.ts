@@ -70,21 +70,20 @@ export async function runAutoClockOutAfterFourAm(now: Date = new Date()): Promis
 
   const employeeIds = [...new Set(open.map((e) => e.employeeId))];
 
-  await prisma.$transaction([
-    prisma.awaySession.updateMany({
-      where: { status: 'active', employeeId: { in: employeeIds } },
-      data: { status: 'canceled' },
-    }),
-    prisma.timeClockEntry.updateMany({
-      where: { clockOutAt: null },
-      data: {
-        clockOutAt: cutoffUtc,
-        clockOutReason: REASON,
-        clockOutLat: null,
-        clockOutLng: null,
-      },
-    }),
-  ]);
+  // D1: use sequential writes instead of `$transaction` (see ratings/weekly, leave PATCH).
+  await prisma.awaySession.updateMany({
+    where: { status: 'active', employeeId: { in: employeeIds } },
+    data: { status: 'canceled' },
+  });
+  await prisma.timeClockEntry.updateMany({
+    where: { clockOutAt: null },
+    data: {
+      clockOutAt: cutoffUtc,
+      clockOutReason: REASON,
+      clockOutLat: null,
+      clockOutLng: null,
+    },
+  });
 
   const owners = await getOwnerUserIds();
   if (owners.length > 0 && open.length > 0) {

@@ -258,7 +258,10 @@ export function DashboardLayoutClient({
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           {chatUnreadCount > 0 ? (
-            <span className="absolute -top-1 -right-1 min-w-[1.25rem] rounded-full bg-red-600 px-1.5 text-center text-[11px] font-bold leading-5 text-white shadow">
+            <span
+              suppressHydrationWarning
+              className="absolute -top-1 -right-1 min-w-[1.25rem] rounded-full bg-red-600 px-1.5 text-center text-[11px] font-bold leading-5 text-white shadow"
+            >
               {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
             </span>
           ) : null}

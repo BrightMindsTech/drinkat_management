@@ -41,7 +41,11 @@ export async function GET() {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     await maybePurgeChatIfDue(prisma);
-    await maybeRunAutoClockOutIfDue();
+    try {
+      await maybeRunAutoClockOutIfDue();
+    } catch (e) {
+      console.error('[chat/threads GET] maybeRunAutoClockOutIfDue', e);
+    }
     const threads = await listThreadsForUser(prisma, session.user.id);
     return Response.json({ threads });
   } catch (e) {

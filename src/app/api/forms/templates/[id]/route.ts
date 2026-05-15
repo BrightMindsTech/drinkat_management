@@ -2,8 +2,13 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner, requireSession } from '@/lib/session';
 import { formTemplateFieldsSchema, parseTemplateFields } from '@/lib/formTemplate';
-import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
-import { isZainBadarneh } from '@/lib/named-employee-policy';
+import {
+  canManagerAssignTemplate,
+  canUserFillTemplate,
+  isQcFormCategory,
+  normalizeUserRole,
+  type FormViewContext,
+} from '@/lib/formVisibility';
 import { z } from 'zod';
 
 const patchSchema = z.object({
@@ -35,26 +40,24 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       where: { id: session.user.id },
       include: { employee: { include: { department: true } } },
     });
-    if (
-      t.category === 'cash' &&
-      user?.employee &&
-      isZainBadarneh({ name: user.employee.name }, session.user.email)
-    ) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
     const ctx: FormViewContext = {
       userRole: role,
       employeeDepartmentId: user?.employee?.departmentId ?? null,
       employeeDepartmentName: user?.employee?.department?.name ?? null,
     };
-    const employeeId = user?.employee?.id ?? null;
-    const explicitlyAssigned = !!(employeeId && t.employeeAssignments.some((a) => a.employeeId === employeeId));
-    const ok =
-      explicitlyAssigned ||
-      canFillManagementForm(ctx, {
+    const employeeForForms = user?.employee
+      ? { id: user.employee.id, role: user.employee.role, name: user.employee.name }
+      : null;
+    const ok = canUserFillTemplate(
+      ctx,
+      {
         category: t.category,
         departmentAssignments: t.departmentAssignments,
-      });
+        employeeAssignments: t.employeeAssignments,
+      },
+      employeeForForms,
+      session.user.email
+    );
     if (!ok) return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -81,6 +84,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const existing = await prisma.managementFormTemplate.findUnique({ where: { id } });
   if (!existing) return Response.json({ error: 'Not found' }, { status: 404 });
+
+  if (role === 'manager' && isQcFormCategory(existing.category)) {
+    return Response.json({ error: 'Managers cannot assign quality control forms' }, { status: 403 });
+  }
+  if (role === 'manager' && !canManagerAssignTemplate(existing.category)) {
+    return Response.json({ error: 'Managers can only assign cash forms' }, { status: 403 });
+  }
 
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);

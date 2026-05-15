@@ -204,7 +204,9 @@ export function TimeClockView({
           <p className="text-sm text-app-secondary">
             {branch.name} · {pos ? t.timeClock.positionOk : t.timeClock.waitingGps}
           </p>
-          <p className="text-xs text-app-muted">{t.timeClock.autoClockInGeofenceHint}</p>
+          {status?.autoGeofenceClockIn ? (
+            <p className="text-xs text-app-muted">{t.timeClock.autoClockInGeofenceHint}</p>
+          ) : null}
         </div>
       )}
 

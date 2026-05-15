@@ -364,6 +364,7 @@ export const ar: LocaleMessages = {
     failedRequest: 'فشل طلب الإجازة',
     selectDates: 'اختر تاريخ البداية والنهاية',
     allStatus: 'جميع الحالات',
+    actionFailed: 'تعذّر تحديث طلب الإجازة. حاول مرة أخرى.',
   },
   employeeCard: {
     roleLabel: 'الدور',
@@ -482,7 +483,9 @@ export const ar: LocaleMessages = {
       'قوائم الجودة والتسويق والمطبخ والصندوق. المالك يربط كل نموذج بالأقسام و/أو بموظفين محددين أدناه.',
     assignTitle: 'ربط النماذج بالأقسام والأشخاص',
     assignIntro:
-      'حدد الأقسام التي يمكنها استخدام كل نموذج. يمكنك اختيار موظفين محددين أدناه—يستطيعون تعبئة النموذج حتى لو لم يُحدَّد قسمهم. إن تركت الأقسام فارغة تُستخدم القواعد الافتراضية (الجودة → قسم الجودة؛ التسويق → التسويق؛ المطبخ والصندوق → الجميع).',
+      'حدد الأقسام التي يمكنها استخدام كل نموذج. يمكنك اختيار موظفين محددين أدناه. نماذج الجودة لقسم الجودة فقط. نماذج الصندوق للمديرين (يعيّنون الموظفين يدوياً). باقي الفئات حسب الأقسام.',
+    managerCashAssignIntro:
+      'نماذج الصندوق فقط. عيّن كل نموذج للمرؤوسين المباشرين الذين يجب أن يعبّئوه—يظهر لهم ضمن النماذج المتاحة.',
     assignHint: 'دور مراقبة الجودة والمالك يريان كل النماذج دائماً.',
     assignSpecificEmployees: 'موظفون محددون',
     assignSpecificEmployeesHint:
@@ -542,6 +545,30 @@ export const ar: LocaleMessages = {
       'حذف هذا النموذج نهائياً؟ ستُحذف جميع التقديمات المرتبطة به. لا يمكن التراجع.',
     deletingForm: 'جاري الحذف…',
     manageFormsTitle: 'إدارة النماذج',
+    importDefaultTemplates: 'استيراد النماذج الافتراضية',
+    importDefaultTemplatesWorking: 'جاري استيراد النماذج…',
+    importBaristaTemplates: 'استيراد قوائم الباريستا (Google Forms)',
+    importBaristaTemplatesWorking: 'جاري استيراد نماذج الباريستا…',
+    importBaristaDone: 'تم استيراد {count} نموذج باريستا.',
+    importBaristaSkipped: 'تم تخطي {count} نموذج (غير متاح للعامة).',
+    importBaristaFailed: 'تعذر استيراد نماذج الباريستا.',
+    importBaristaSkippedHint:
+      'للنماذج التي تتطلب تسجيل الدخول: استخدم «استيراد نموذج Google خاص» أدناه (نموذج واحد في كل مرة).',
+    importGooglePasteTitle: 'استيراد نموذج Google خاص (لصق)',
+    importGooglePasteIntro:
+      'يعمل عندما يكون النموذج مقيداً لكنك تستطيع فتحه وأنت مسجّل الدخول في Google. لا حاجة لتغيير مشاركة الرابط.',
+    importGooglePasteStep1: 'افتح نموذج Google في تبويب جديد (روابط النموذج 4 و 5 أدناه).',
+    importGooglePasteStep2: 'اضغط F12 (أو انقر يميناً → فحص) → Console.',
+    importGooglePasteStep3: 'انقر «نسخ سكربت الاستخراج»، الصقه في Console واضغط Enter — يُنسخ JSON.',
+    importGooglePasteStep4: 'الصق JSON هنا واضغط استيراد. كرّر لكل نموذج خاص.',
+    importGooglePasteCopyScript: 'نسخ سكربت الاستخراج',
+    importGooglePasteScriptCopied: 'تم نسخ السكربت',
+    importGooglePasteCopyScriptManual: 'انسخ هذا السكربت يدوياً:',
+    importGooglePastePlaceholder: 'الصق JSON من متصفحك هنا…',
+    importGooglePasteSubmit: 'استيراد من اللصق',
+    importGooglePasteWorking: 'جاري الاستيراد…',
+    importGooglePasteSuccess: 'تم استيراد «{title}» ({count} أسئلة).',
+    importGooglePasteFailed: 'تعذر الاستيراد من اللصق.',
     exportSubmissionCsv: 'تصدير CSV',
     exportCsvFailed: 'تعذر تصدير ملف CSV.',
     fieldTypes: {

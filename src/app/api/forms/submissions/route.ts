@@ -2,8 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { parseTemplateFields, validateAnswersAgainstFields } from '@/lib/formTemplate';
-import { canFillManagementForm, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
-import { isZainBadarneh } from '@/lib/named-employee-policy';
+import { canUserFillTemplate, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
 import {
   createInboxForUsers,
   getOwnerUserIds,
@@ -122,24 +121,25 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Template not found' }, { status: 404 });
   }
 
-  if (template.category === 'cash' && isZainBadarneh(emp, session.user.email)) {
-    return Response.json({ error: 'Cash forms are not assigned to your profile' }, { status: 403 });
-  }
-
   const ctx: FormViewContext = {
     userRole: normalizeUserRole(session.user.role),
     employeeDepartmentId: emp.departmentId,
     employeeDepartmentName: emp.department?.name ?? null,
   };
-  const normalizedRole = normalizeUserRole(session.user.role);
-  const isQcEmployee = normalizedRole === 'qc' || emp.role.trim().toLowerCase() === 'qc';
 
-  if (template.category === 'qc' && !isQcEmployee) {
-    return Response.json({ error: 'Only QC employees can submit quality control forms' }, { status: 403 });
-  }
-
-  const explicitlyAssigned = template.employeeAssignments.some((a) => a.employeeId === emp.id);
-  if (!explicitlyAssigned && !canFillManagementForm(ctx, template)) {
+  const allowed = canUserFillTemplate(
+    ctx,
+    template,
+    { id: emp.id, role: emp.role, name: emp.name },
+    session.user.email
+  );
+  if (!allowed) {
+    if (template.category === 'qc') {
+      return Response.json({ error: 'Only QC employees can submit quality control forms' }, { status: 403 });
+    }
+    if (template.category === 'cash') {
+      return Response.json({ error: 'Cash forms are for managers or employees assigned by a manager' }, { status: 403 });
+    }
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 

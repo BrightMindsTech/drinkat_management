@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import type { FormFieldDef } from '@/lib/formTemplate';
 import { scrollIntoViewById } from '@/lib/scrollIntoViewDeferred';
 import { downloadSubmissionReportCsv, type SubmissionReportCsvInput } from '@/lib/formSubmissionCsv';
@@ -14,6 +14,7 @@ import {
 import { QcScoreReportModal } from '@/components/qc/QcScoreReportModal';
 import { FormAssignmentsPanel } from './FormAssignmentsPanel';
 import { CreateFormPanel } from './CreateFormPanel';
+import { ImportGoogleFormPastePanel } from './ImportGoogleFormPastePanel';
 import { FormEmployeeAssignmentsPanel } from './FormEmployeeAssignmentsPanel';
 
 export type FormsTemplateRow = {
@@ -54,6 +55,7 @@ export function ManagementFormsView({
   role,
   templatesForFill,
   allTemplatesForOwner,
+  managerAssignTemplates,
   departments,
   assignmentEmployees,
   managerEmployees,
@@ -65,9 +67,11 @@ export function ManagementFormsView({
   role: string;
   templatesForFill: FormsTemplateRow[];
   allTemplatesForOwner?: FormsTemplateRow[];
+  /** Manager: cash forms only (assign to direct reports). */
+  managerAssignTemplates?: FormsTemplateRow[];
   departments?: { id: string; name: string }[];
   /** Owner: all active employees for per-person form assignment (optional). */
-  assignmentEmployees?: { id: string; name: string; branchName: string }[];
+  assignmentEmployees?: { id: string; name: string; branchName: string; role?: string }[];
   managerEmployees?: { id: string; name: string; role: string }[];
   initialReviewSubmissions: FormsReviewSubmission[];
   initialMySubmissions: FormsMySubmission[];
@@ -86,6 +90,7 @@ export function ManagementFormsView({
   const [ownerEditId, setOwnerEditId] = useState<string | null>(null);
   const [ownerSaving, setOwnerSaving] = useState(false);
   const [importingDefaults, setImportingDefaults] = useState(false);
+  const [importingBarista, setImportingBarista] = useState(false);
   const [qcReportModal, setQcReportModal] = useState<QcScoreReport | null>(null);
   const [expandedReviewAnswers, setExpandedReviewAnswers] = useState<Record<string, boolean>>({});
   const [reviewRange, setReviewRange] = useState<'today' | 'week' | 'month'>('week');
@@ -322,6 +327,37 @@ export function ManagementFormsView({
     }
   }
 
+  async function importBaristaTemplates() {
+    setImportingBarista(true);
+    try {
+      const res = await fetch('/api/forms/templates/import-barista', { method: 'POST' });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        imported?: string[];
+        skipped?: { formId: string; error: string }[];
+        hint?: string;
+      };
+      if (!res.ok) {
+        alert(data?.error ?? t.forms.importBaristaFailed);
+        return;
+      }
+      const lines = [
+        interpolate(t.forms.importBaristaDone, { count: String(data.imported?.length ?? 0) }),
+        ...(data.skipped?.length
+          ? [
+              interpolate(t.forms.importBaristaSkipped, { count: String(data.skipped.length) }),
+              t.forms.importBaristaSkippedHint,
+            ]
+          : []),
+        data.hint ?? '',
+      ].filter(Boolean);
+      alert(lines.join('\n\n'));
+      router.refresh();
+    } finally {
+      setImportingBarista(false);
+    }
+  }
+
   function renderField(f: FormFieldDef, tplId: string) {
     const v = answers[f.key];
     const disabled = submitting || openId !== tplId;
@@ -481,12 +517,21 @@ export function ManagementFormsView({
               <button
                 type="button"
                 onClick={importDefaultTemplates}
-                disabled={importingDefaults}
+                disabled={importingDefaults || importingBarista}
                 className="app-btn-secondary"
               >
-                {importingDefaults ? 'Importing templates…' : 'Import default templates'}
+                {importingDefaults ? t.forms.importDefaultTemplatesWorking : t.forms.importDefaultTemplates}
+              </button>
+              <button
+                type="button"
+                onClick={importBaristaTemplates}
+                disabled={importingBarista || importingDefaults}
+                className="app-btn-secondary"
+              >
+                {importingBarista ? t.forms.importBaristaTemplatesWorking : t.forms.importBaristaTemplates}
               </button>
             </div>
+            <ImportGoogleFormPastePanel />
             {ownerTemplates.length > 0 && (
               <div>
                 <h3 className="text-base font-semibold text-app-primary mb-3">Edit form content</h3>
@@ -640,8 +685,9 @@ export function ManagementFormsView({
       {role === 'manager' && managerEmployees && (
         <section id="section-forms-manager-assign" className={sectionClass}>
           <h2 className="text-lg font-semibold text-app-primary mb-4">{t.forms.assignTitle}</h2>
-          {allTemplatesForOwner && allTemplatesForOwner.length > 0 ? (
-            <FormEmployeeAssignmentsPanel templates={allTemplatesForOwner} employees={managerEmployees} />
+          <p className="text-sm text-app-muted mb-3">{t.forms.managerCashAssignIntro}</p>
+          {managerAssignTemplates && managerAssignTemplates.length > 0 ? (
+            <FormEmployeeAssignmentsPanel templates={managerAssignTemplates} employees={managerEmployees} />
           ) : (
             <p className="text-sm text-app-muted">{t.common.noData}</p>
           )}

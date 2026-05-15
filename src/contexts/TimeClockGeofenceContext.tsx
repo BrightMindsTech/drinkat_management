@@ -17,12 +17,50 @@ import { normalizeUserRole } from '@/lib/formVisibility';
 import { isCapacitorIos, registerIosPushWithBackend } from '@/lib/native-push-client';
 import { subscribeWebPush } from '@/lib/web-push-client';
 import { ForcedAwayModal, useGeofenceWatch, type TimeClockStatus } from '@/components/time-clock/geofence-shared';
+import { isInsideBranchRadius } from '@/lib/geo';
 
 const awayMinutesByKind: Record<'break' | 'bathroom' | 'other', number> = {
   break: 30,
   bathroom: 10,
   other: 10,
 };
+
+const AUTO_CLOCK_IN_MAX_ATTEMPTS = 3;
+const AUTO_CLOCK_IN_RETRY_MS = 2500;
+/** While inside geofence and not clocked in, retry auto clock-in periodically. */
+const AUTO_CLOCK_IN_RECONCILE_MS = 30_000;
+
+async function postAutoClockInWithRetries(lat: number, lng: number): Promise<boolean> {
+  for (let attempt = 0; attempt < AUTO_CLOCK_IN_MAX_ATTEMPTS; attempt++) {
+    try {
+      const cin = await fetch('/api/time-clock/clock-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat, lng }),
+      });
+      if (cin.ok) return true;
+    } catch {
+      /* retry */
+    }
+    if (attempt < AUTO_CLOCK_IN_MAX_ATTEMPTS - 1) {
+      await new Promise((r) => setTimeout(r, AUTO_CLOCK_IN_RETRY_MS));
+    }
+  }
+  return false;
+}
+
+async function postLocationEvent(kind: 'enter' | 'exit', lat: number, lng: number) {
+  try {
+    const res = await fetch('/api/time-clock/location-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, lat, lng }),
+    });
+    return (await res.json().catch(() => ({}))) as { action?: string; inside?: boolean };
+  } catch {
+    return {};
+  }
+}
 
 export type TimeClockGeofenceContextValue = {
   status: TimeClockStatus | null;
@@ -117,7 +155,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   const pushConsentOk = !!status?.consent?.push;
   const geoWatchEnabled = !!(
     status?.applicable &&
-    !status?.geofenceExempt &&
+    status?.autoGeofenceClockIn &&
     branch?.hasGeofence &&
     branch.latitude != null &&
     branch.longitude != null &&
@@ -140,37 +178,12 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
     async (kind: 'enter' | 'exit', lat: number, lng: number) => {
       if (kind === 'enter') {
         const st = await refresh();
-        if (
-          st &&
-          st.applicable &&
-          !st.geofenceExempt &&
-          st.branch?.hasGeofence &&
-          !st.clock
-        ) {
-          try {
-            const cin = await fetch('/api/time-clock/clock-in', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ lat, lng }),
-            });
-            if (cin.ok) await refresh();
-          } catch {
-            /* still notify server below */
-          }
+        if (st && st.applicable && st.autoGeofenceClockIn && st.branch?.hasGeofence && !st.clock) {
+          await postAutoClockInWithRetries(lat, lng);
         }
       }
 
-      let payload: { action?: string; inside?: boolean } = {};
-      try {
-        const res = await fetch('/api/time-clock/location-event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ kind, lat, lng }),
-        });
-        payload = (await res.json().catch(() => ({}))) as { action?: string; inside?: boolean };
-      } catch {
-        payload = {};
-      }
+      const payload = await postLocationEvent(kind, lat, lng);
       await refresh();
       if (kind === 'exit') {
         let shouldPromptAway = payload.action === 'destination_required';
@@ -229,6 +242,37 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
     onError: onGeoError,
     geoMessages,
   });
+
+  useEffect(() => {
+    if (!geoWatchEnabled || !pos || branch?.latitude == null || branch?.longitude == null) return;
+    if (status?.clock) return;
+
+    const inside = isInsideBranchRadius(
+      pos.lat,
+      pos.lng,
+      branch.latitude,
+      branch.longitude,
+      branch.geofenceRadiusM ?? 25
+    );
+    if (!inside) return;
+
+    let cancelled = false;
+    const reconcile = async () => {
+      if (cancelled) return;
+      const st = await refresh();
+      if (!st?.autoGeofenceClockIn || st.clock) return;
+      await postAutoClockInWithRetries(pos.lat, pos.lng);
+      await postLocationEvent('enter', pos.lat, pos.lng);
+      if (!cancelled) await refresh();
+    };
+
+    void reconcile();
+    const id = window.setInterval(() => void reconcile(), AUTO_CLOCK_IN_RECONCILE_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [geoWatchEnabled, pos, status?.clock, branch, refresh]);
 
   useEffect(() => {
     if (!status?.applicable || !status?.geofenceExempt || !locationConsentOk) return;

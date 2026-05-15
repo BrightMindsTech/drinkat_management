@@ -121,18 +121,16 @@ export async function createInboxForUsers(
   row: { category: string; title: string; body: string; dataJson?: string | null }
 ) {
   const unique = [...new Set(userIds)];
-  await prisma.$transaction(
-    unique.map((userId) =>
-      prisma.inboxNotification.create({
-        data: {
-          id: crypto.randomUUID(),
-          userId,
-          category: row.category,
-          title: row.title,
-          body: row.body,
-          dataJson: row.dataJson ?? null,
-        },
-      })
-    )
-  );
+  for (const userId of unique) {
+    await prisma.inboxNotification.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId,
+        category: row.category,
+        title: row.title,
+        body: row.body,
+        dataJson: row.dataJson ?? null,
+      },
+    });
+  }
 }

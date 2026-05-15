@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { isQcFormCategory, isQcFormEmployee } from '@/lib/formVisibility';
 import type { FormsTemplateRow } from './ManagementFormsView';
 
 export function FormAssignmentsPanel({
@@ -13,7 +14,7 @@ export function FormAssignmentsPanel({
   templates: FormsTemplateRow[];
   departments: { id: string; name: string }[];
   /** Active employees (all branches); owner assigns forms to individuals in addition to departments. */
-  employees?: { id: string; name: string; branchName?: string }[];
+  employees?: { id: string; name: string; branchName?: string; role?: string }[];
 }) {
   const { t } = useLanguage();
   const router = useRouter();
@@ -98,7 +99,12 @@ export function FormAssignmentsPanel({
     <div className="space-y-6">
       <p className="text-sm text-app-secondary">{t.forms.assignIntro}</p>
       <ul className="space-y-4">
-        {templates.map((tpl) => (
+        {templates.map((tpl) => {
+          const qcForm = isQcFormCategory(tpl.category);
+          const employeesForTpl = qcForm
+            ? employees.filter((e) => isQcFormEmployee('staff', { role: e.role ?? '' }))
+            : employees;
+          return (
           <li
             key={tpl.id}
             className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4"
@@ -118,12 +124,12 @@ export function FormAssignmentsPanel({
                 </label>
               ))}
             </div>
-            {employees.length > 0 && (
+            {employeesForTpl.length > 0 && (
               <div className="mt-4">
                 <p className="text-sm font-medium text-app-primary mb-1">{t.forms.assignSpecificEmployees}</p>
                 <p className="text-xs text-app-muted mb-2">{t.forms.assignSpecificEmployeesHint}</p>
                 <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 dark:border-ios-dark-separator p-2 space-y-1.5">
-                  {employees.map((e) => (
+                  {employeesForTpl.map((e) => (
                     <label key={e.id} className="flex items-start gap-2 text-sm cursor-pointer py-0.5">
                       <input
                         type="checkbox"
@@ -164,7 +170,8 @@ export function FormAssignmentsPanel({
               </button>
             </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </div>
   );
