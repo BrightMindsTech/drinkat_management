@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { attachPullToRefresh } from '@/lib/attach-pull-to-refresh';
+import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
 
 type ThreadRow = {
@@ -33,7 +34,7 @@ type MessageRow = {
 
 type PeerUser = { id: string; displayName: string; role: string };
 
-const POLL_MS = 8000;
+const POLL_MS = 5000;
 const TYPING_POLL_MS = 4500;
 const TYPING_DEBOUNCE_MS = 600;
 
@@ -248,7 +249,11 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
       if (activeThreadId) void loadMessages(activeThreadId, { silent: true });
     };
     const id = window.setInterval(tick, POLL_MS);
-    return () => window.clearInterval(id);
+    window.addEventListener(APP_RESUME_EVENT, tick);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener(APP_RESUME_EVENT, tick);
+    };
   }, [loadThreads, loadMessages, activeThreadId]);
 
   useEffect(() => {

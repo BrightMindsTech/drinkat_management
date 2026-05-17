@@ -6,6 +6,8 @@ import { DEFAULT_APP_TIMEZONE } from '@/lib/shifts';
 import { weekStartKeysBetweenRange, weekStartKeysOverlappingMonth } from '@/lib/weekly-ratings';
 import { getSalaryDeductionReport } from '@/lib/salary-deduction-report';
 import { buildQcScoreReport, isQcScoreableFormAnswers } from '@/lib/qc-form-score-report';
+import { parseTemplateFields } from '@/lib/formTemplate';
+import { resolveQcScoringProfileForSubmission } from '@/lib/qc-scoring-profile';
 import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
 import { maybeRunAutoClockOutIfDue } from '@/lib/auto-clock-out-daily';
 import { buildCashFormReport } from '@/lib/cash-form-report';
@@ -120,7 +122,7 @@ export async function GET(req: NextRequest) {
         ...(branchId ? { branchId } : {}),
       },
       include: {
-        template: { select: { title: true, category: true } },
+        template: { select: { title: true, category: true, fieldsJson: true } },
         employee: { select: { name: true } },
         branch: { select: { name: true } },
       },
@@ -410,10 +412,23 @@ export async function GET(req: NextRequest) {
       } catch {
         return acc;
       }
-      if (!isQcScoreableFormAnswers(answers)) return acc;
+      let templateFields: ReturnType<typeof parseTemplateFields> = [];
+      try {
+        templateFields = parseTemplateFields(submission.template.fieldsJson);
+      } catch {
+        templateFields = [];
+      }
+      const profile = resolveQcScoringProfileForSubmission({
+        title: submission.template.title,
+        fields: templateFields,
+        answers,
+      });
+      if (!isQcScoreableFormAnswers(answers, profile)) return acc;
       const score = buildQcScoreReport(answers, {
         branchName: submission.branch.name,
         qcOfficer: submission.employee.name,
+        templateTitle: submission.template.title,
+        templateFields,
       }).finalScore;
       if (!acc[submission.branchId]) acc[submission.branchId] = { sum: 0, count: 0 };
       acc[submission.branchId].sum += score;
@@ -758,21 +773,33 @@ export async function GET(req: NextRequest) {
       byBranch: formsByBranch,
       byCategory: formsByCategory,
       trend: formsTrend,
-      recent: formSubmissions.slice(0, 20).map((s) => ({
-        id: s.id,
-        status: s.status,
-        submittedAt: s.submittedAt,
-        employee: s.employee,
-        branch: s.branch,
-        template: s.template,
-        answers: (() => {
-          try {
-            return JSON.parse(s.answersJson) as Record<string, string>;
-          } catch {
-            return {};
-          }
-        })(),
-      })),
+      recent: formSubmissions.slice(0, 20).map((s) => {
+        let templateFields: ReturnType<typeof parseTemplateFields> = [];
+        try {
+          templateFields = parseTemplateFields(s.template.fieldsJson);
+        } catch {
+          templateFields = [];
+        }
+        return {
+          id: s.id,
+          status: s.status,
+          submittedAt: s.submittedAt,
+          employee: s.employee,
+          branch: s.branch,
+          template: {
+            title: s.template.title,
+            category: s.template.category,
+            fields: templateFields,
+          },
+          answers: (() => {
+            try {
+              return JSON.parse(s.answersJson) as Record<string, string>;
+            } catch {
+              return {};
+            }
+          })(),
+        };
+      }),
     },
     managerReports,
     managerRatingReport,

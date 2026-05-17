@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { checkDatabaseHealth } from '@/lib/db-health';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,11 +8,10 @@ export const dynamic = 'force-dynamic';
  * Used by post-deploy smoke test — no auth, returns only { ok, db }.
  */
 export async function GET() {
-  try {
-    await prisma.user.count();
+  const health = await checkDatabaseHealth();
+  if (health.ok) {
     return NextResponse.json({ ok: true, db: true });
-  } catch (e) {
-    console.error('[health/ready] database check failed', e);
-    return NextResponse.json({ ok: false, db: false }, { status: 503 });
   }
+  console.error('[health/ready] database check failed', health.error);
+  return NextResponse.json({ ok: false, db: false }, { status: 503 });
 }

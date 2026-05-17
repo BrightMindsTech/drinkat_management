@@ -1,3 +1,4 @@
+import { checkDatabaseHealth } from '@/lib/db-health';
 import { prisma } from '@/lib/prisma';
 import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 import { purgeExpiredChat } from '@/lib/chat-retention';
@@ -27,6 +28,12 @@ export async function GET(req: Request) {
   const token = auth?.startsWith('Bearer ') ? auth.slice(7) : new URL(req.url).searchParams.get('secret');
   if (token !== secret) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const dbHealth = await checkDatabaseHealth();
+  if (!dbHealth.ok) {
+    console.error('[cron/time-clock] database health failed', dbHealth.error);
+    return Response.json({ ok: false, db: false, error: 'database unavailable' }, { status: 503 });
   }
 
   const awayProcessed = await processExpiredAwaySessions();
@@ -65,6 +72,7 @@ export async function GET(req: Request) {
 
   return Response.json({
     ok: true,
+    db: true,
     processed: awayProcessed,
     autoClockOut4am,
     chat,

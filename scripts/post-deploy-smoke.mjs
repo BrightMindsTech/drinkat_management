@@ -21,19 +21,30 @@ async function checkOnce() {
   return { res, body };
 }
 
+/** Back-to-back hits catch Prisma clients leaked across requests (React cache bug on Workers). */
+async function checkBurst(count = 5) {
+  for (let i = 0; i < count; i++) {
+    const { res, body } = await checkOnce();
+    if (!res.ok || body?.ok !== true || body?.db !== true) {
+      return { ok: false, res, body, index: i + 1 };
+    }
+  }
+  return { ok: true };
+}
+
 async function main() {
-  console.log(`[post-deploy-smoke] GET ${url}`);
+  console.log(`[post-deploy-smoke] GET ${url} (burst of 5 per attempt)`);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const { res, body } = await checkOnce();
-      if (res.ok && body?.ok === true && body?.db === true) {
-        console.log('[post-deploy-smoke] OK — database reachable');
+      const burst = await checkBurst(5);
+      if (burst.ok) {
+        console.log('[post-deploy-smoke] OK — database reachable (5 consecutive checks)');
         return;
       }
       console.warn(
-        `[post-deploy-smoke] attempt ${attempt}/${maxAttempts}: HTTP ${res.status}`,
-        JSON.stringify(body)
+        `[post-deploy-smoke] attempt ${attempt}/${maxAttempts}: failed on burst #${burst.index} HTTP ${burst.res?.status}`,
+        JSON.stringify(burst.body)
       );
     } catch (e) {
       console.warn(`[post-deploy-smoke] attempt ${attempt}/${maxAttempts}:`, e instanceof Error ? e.message : e);

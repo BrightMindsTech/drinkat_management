@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { ensurePushRegistered } from '@/lib/push-registration-client';
 import { ForcedAwayModal, useGeofenceWatch, type TimeClockStatus } from '@/components/time-clock/geofence-shared';
 import { isInsideBranchRadius } from '@/lib/geo';
@@ -152,11 +153,15 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   useEffect(() => {
-    const onVis = () => {
+    const onWake = () => {
       if (document.visibilityState === 'visible') void refresh();
     };
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener(APP_RESUME_EVENT, onWake);
+    return () => {
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener(APP_RESUME_EVENT, onWake);
+    };
   }, [refresh]);
 
   useEffect(() => {

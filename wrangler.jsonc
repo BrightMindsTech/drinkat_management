@@ -52,7 +52,7 @@
 	// Internal cron: no third-party pinger. Patched worker calls /api/cron/time-clock via WORKER_SELF_REFERENCE.
 	"triggers": {
 		"crons": [
-			"*/5 * * * *"
+			"*/3 * * * *"
 		]
 	}
 }

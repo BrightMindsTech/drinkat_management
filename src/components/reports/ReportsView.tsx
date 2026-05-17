@@ -1682,6 +1682,8 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                                 buildQcScoreReport(row.answers ?? {}, {
                                   branchName: row.branch?.name,
                                   qcOfficer: row.employee?.name,
+                                  templateTitle: row.template?.title,
+                                  templateFields: row.template?.fields,
                                 })
                               )
                             }

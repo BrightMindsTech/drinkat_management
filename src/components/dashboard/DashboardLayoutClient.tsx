@@ -7,7 +7,7 @@ import { LanguageToggle } from '@/components/LanguageToggle';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SignOutButton } from '@/components/SignOutButton';
 import { PendingReviewNotice } from '@/components/PendingReviewNotice';
-import { ensurePushRegistered } from '@/lib/push-registration-client';
+import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DashboardNavLinks } from './DashboardNavLinks';
 import { DashboardPageSectionNav } from './DashboardPageSectionNav';
@@ -66,33 +66,6 @@ export function DashboardLayoutClient({
   }, [drawerOpen]);
 
   useEffect(() => {
-    let stopped = false;
-    let timerId: number | null = null;
-    let inLoop = false;
-
-    async function attemptRegister() {
-      if (stopped || inLoop) return;
-      inLoop = true;
-      const { done } = await ensurePushRegistered({ requestPermission: false });
-      inLoop = false;
-      if (done || stopped) return;
-      timerId = window.setTimeout(() => {
-        void attemptRegister();
-      }, 15000);
-    }
-    void attemptRegister();
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') void attemptRegister();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      stopped = true;
-      if (timerId != null) window.clearTimeout(timerId);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!roleMayUseChat(role)) {
       setChatUnreadCount(0);
       return;
@@ -111,20 +84,20 @@ export function DashboardLayoutClient({
       }
     }
 
-    const onVisibility = () => {
+    const onWake = () => {
       if (document.visibilityState === 'visible') void refreshChatUnreadCount();
     };
 
-    const id = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refreshChatUnreadCount();
-    }, 30000);
+    const id = window.setInterval(onWake, 15000);
 
-    document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener(APP_RESUME_EVENT, onWake);
     void refreshChatUnreadCount();
     return () => {
       cancelled = true;
       window.clearInterval(id);
-      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener(APP_RESUME_EVENT, onWake);
     };
   }, [role]);
 

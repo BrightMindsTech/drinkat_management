@@ -17,9 +17,43 @@ function canUseNativePushPlugin(): boolean {
   }
 }
 
-let listenersAttached = false;
+let registrationListenersAttached = false;
+let deliveryListenersAttached = false;
 let pendingFinish: ((ok: boolean) => void) | null = null;
 let inFlightPromise: Promise<boolean> | null = null;
+
+function openUrlFromPushData(data: Record<string, unknown> | undefined) {
+  if (typeof window === 'undefined' || !data) return;
+  const url = data.url;
+  if (typeof url === 'string' && url.length > 0) {
+    window.location.href = url;
+  }
+}
+
+/**
+ * Tap-to-open deep links + keep push channel warm when returning to foreground.
+ */
+export async function setupNativePushDelivery(): Promise<void> {
+  if (!canUseNativePushPlugin() || deliveryListenersAttached) return;
+  const { PushNotifications } = await import('@capacitor/push-notifications');
+  deliveryListenersAttached = true;
+
+  await PushNotifications.addListener('pushNotificationActionPerformed', (event) => {
+    const data = event.notification.data as Record<string, unknown> | undefined;
+    openUrlFromPushData(data);
+  });
+
+  await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+    const data = notification.data as Record<string, unknown> | undefined;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('drinkat:push-received', {
+          detail: data ?? {},
+        })
+      );
+    }
+  });
+}
 
 /**
  * Registers with APNs via Capacitor and stores the device token for the signed-in user.
@@ -64,7 +98,9 @@ export async function registerIosPushWithBackend(): Promise<boolean> {
     setDebug({ permission: perm.receive });
     if (perm.receive !== 'granted') return false;
 
-    if (!listenersAttached) {
+    await setupNativePushDelivery();
+
+    if (!registrationListenersAttached) {
       await PushNotifications.addListener('registration', async (token) => {
         try {
           setDebug({ phase: 'registration_event', tokenPreview: token.value.slice(0, 12) });
@@ -97,7 +133,7 @@ export async function registerIosPushWithBackend(): Promise<boolean> {
         pendingFinish = null;
       });
 
-      listenersAttached = true;
+      registrationListenersAttached = true;
     }
 
     return new Promise((resolve) => {

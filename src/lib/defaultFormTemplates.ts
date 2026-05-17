@@ -7,21 +7,7 @@ type DefaultTemplate = {
   fields: FormFieldDef[];
 };
 
-const QC_BASE_FIELDS: FormFieldDef[] = [
-  { key: 'evaluator_name', label: 'Evaluator Name', type: 'text', required: true },
-  { key: 'branch_name', label: 'Branch Name', type: 'text', required: true },
-  { key: 'visit_date', label: 'Visit Date', type: 'date', required: true },
-  { key: 'shift_time', label: 'Shift Time', type: 'text', required: true },
-  { key: 'manager_name', label: 'Manager on Duty', type: 'text', required: false },
-  yn('هل التزام الفريق بالزي والنظافة الشخصية صحيح', 'team_uniform_hygiene_ok'),
-  yn('هل جميع درجة حرارة الثلاجات صحيحة', 'kitchen_fridge_temp_ok'),
-  yn('هل المطبخ ومعداته نظيفة', 'kitchen_clean'),
-  yn('هل تم حفظ المواد الغذائية بشكل سليم', 'food_storage_ok'),
-  yn('هل تواريخ الصلاحية واضحة ومحدثة', 'expiry_labels_ok'),
-  yn('هل جميع المصارف نظيفة', 'drains_clean'),
-  yn('هل منطقة التحضير مرتبة وآمنة', 'prep_area_safe'),
-  yn('هل منطقة التسليم نظيفة ومرتبة', 'delivery_area_clean'),
-  yn('هل أدوات السلامة متوفرة (قفازات/مطهر/طفاية)', 'safety_tools_available'),
+const QC_SHARED_TAIL_FIELDS: FormFieldDef[] = [
   {
     key: 'customer_service_rating',
     label: 'Customer Service Rating',
@@ -36,6 +22,45 @@ const QC_BASE_FIELDS: FormFieldDef[] = [
   { key: 'weaknesses', label: 'Weaknesses (نقاط الضعف)', type: 'textarea', required: false },
   { key: 'recommendations', label: 'Recommendations (توصيات للتحسين)', type: 'textarea', required: false },
   { key: 'follow_up_required', label: 'Follow-up required in next visit', type: 'checkbox', required: false },
+];
+
+const QC_HEADER_FIELDS: FormFieldDef[] = [
+  { key: 'evaluator_name', label: 'Evaluator Name', type: 'text', required: true },
+  { key: 'branch_name', label: 'Branch Name', type: 'text', required: true },
+  { key: 'visit_date', label: 'Visit Date', type: 'date', required: true },
+  { key: 'shift_time', label: 'Shift Time', type: 'text', required: true },
+  { key: 'manager_name', label: 'Manager on Duty', type: 'text', required: false },
+];
+
+const QC_KITCHEN_FIELDS: FormFieldDef[] = [
+  yn('هل جميع درجة حرارة الثلاجات صحيحة', 'kitchen_fridge_temp_ok'),
+  yn('هل المطبخ ومعداته نظيفة', 'kitchen_clean'),
+  yn('هل تم حفظ المواد الغذائية بشكل سليم', 'food_storage_ok'),
+  yn('هل تواريخ الصلاحية واضحة ومحدثة', 'expiry_labels_ok'),
+];
+
+const QC_SERVICE_AREA_FIELDS: FormFieldDef[] = [
+  yn('هل التزام الفريق بالزي والنظافة الشخصية صحيح', 'team_uniform_hygiene_ok'),
+  yn('هل جميع المصارف نظيفة', 'drains_clean'),
+  yn('هل منطقة التحضير مرتبة وآمنة', 'prep_area_safe'),
+  yn('هل منطقة التسليم نظيفة ومرتبة', 'delivery_area_clean'),
+  yn('هل أدوات السلامة متوفرة (قفازات/مطهر/طفاية)', 'safety_tools_available'),
+];
+
+/** Full QC visit (branches with kitchen). */
+const QC_BASE_FIELDS: FormFieldDef[] = [
+  ...QC_HEADER_FIELDS,
+  ...QC_SERVICE_AREA_FIELDS.slice(0, 1),
+  ...QC_KITCHEN_FIELDS,
+  ...QC_SERVICE_AREA_FIELDS.slice(1),
+  ...QC_SHARED_TAIL_FIELDS,
+];
+
+/** HU branch — barista / service only (no kitchen). */
+export const QC_HU_FIELDS: FormFieldDef[] = [
+  ...QC_HEADER_FIELDS,
+  ...QC_SERVICE_AREA_FIELDS,
+  ...QC_SHARED_TAIL_FIELDS,
 ];
 
 function yn(label: string, key: string): FormFieldDef {
@@ -68,8 +93,8 @@ export const DEFAULT_FORM_TEMPLATES: DefaultTemplate[] = [
   {
     category: 'qc',
     title: 'Quality Control Visit Report - HU',
-    description: 'Comprehensive QC shift audit for kitchen, service, and hygiene (HU).',
-    fields: QC_BASE_FIELDS,
+    description: 'QC shift audit for HU (barista & service — no kitchen).',
+    fields: QC_HU_FIELDS,
   },
   {
     category: 'qc',

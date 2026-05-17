@@ -48,6 +48,20 @@ const insert = `        });
                 const t = await res.text().catch(() => "");
                 console.error("[scheduled] cron failed", res.status, t.slice(0, 200));
             }
+            const healthUrl = new URL("https://internal/api/health/ready");
+            for (let i = 0; i < 3; i++) {
+                const hres = await ref.fetch(new Request(healthUrl, { method: "GET" }));
+                if (!hres.ok) {
+                    const ht = await hres.text().catch(() => "");
+                    console.error("[scheduled] health/ready failed", hres.status, ht.slice(0, 120));
+                    break;
+                }
+                const body = await hres.json().catch(() => ({}));
+                if (body?.db !== true) {
+                    console.error("[scheduled] health/ready db:false", JSON.stringify(body));
+                    break;
+                }
+            }
         } catch (e) {
             console.error("[scheduled] cron error", e);
         }

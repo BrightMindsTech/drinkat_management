@@ -151,14 +151,22 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
     after(async () => {
       try {
+        const senderName =
+          thread != null
+            ? senderDisplayNameInThread(thread, session.user.id) ?? 'Someone'
+            : 'Someone';
+        const preview =
+          body.length > 100 ? `${body.slice(0, 97)}…` : body;
+        const pushTitle = isDirectPost ? senderName : thread?.title?.trim() || 'Group chat';
+        const pushBody = preview;
         await notifyUsers(prisma, recipientIds, {
           category: 'chat_message',
-          title: 'You have new messages',
-          body: 'Open the app to read your chat.',
+          title: pushTitle,
+          body: pushBody,
           dataJson: JSON.stringify({ type: 'chat_message', href: deepLink, threadId }),
           push: {
-            title: 'You have new messages',
-            body: 'Open the app to read your chat.',
+            title: pushTitle,
+            body: pushBody,
             data: { type: 'chat_message', url: deepLink, threadId },
           },
         });

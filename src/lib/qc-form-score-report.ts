@@ -1,3 +1,9 @@
+import type { QcScoringProfile } from '@/lib/qc-scoring-profile';
+import { resolveQcScoringProfileForSubmission } from '@/lib/qc-scoring-profile';
+import type { FormFieldDef } from '@/lib/formTemplate';
+
+export type { QcScoringProfile } from '@/lib/qc-scoring-profile';
+
 export type QcCategoryScore = {
   label: string;
   score: number;
@@ -11,9 +17,17 @@ export type QcScoreReport = {
   qcOfficer: string;
   categories: QcCategoryScore[];
   finalScore: number;
+  scoringProfile: QcScoringProfile;
   keyWeaknesses: string;
   recommendedActions: string;
   branchManager: string;
+};
+
+export type QcScoreReportContext = {
+  branchName?: string;
+  qcOfficer?: string;
+  templateTitle?: string;
+  templateFields?: FormFieldDef[];
 };
 
 function isYes(value: string | undefined): boolean {
@@ -41,62 +55,102 @@ function scoreCustomerService(answer: string | undefined): number {
   return 0;
 }
 
-export function isQcScoreableFormAnswers(answers: Record<string, string>): boolean {
-  return (
-    typeof answers === 'object' &&
-    answers !== null &&
-    'customer_service_rating' in answers &&
-    'team_uniform_hygiene_ok' in answers &&
-    'kitchen_clean' in answers
-  );
+export function isQcScoreableFormAnswers(
+  answers: Record<string, string>,
+  profile: QcScoringProfile = 'standard'
+): boolean {
+  if (typeof answers !== 'object' || answers === null) return false;
+  if (!('customer_service_rating' in answers) || !('team_uniform_hygiene_ok' in answers)) {
+    return false;
+  }
+  if (profile === 'no-kitchen') return true;
+  return 'kitchen_clean' in answers;
 }
 
 export function buildQcScoreReport(
   answers: Record<string, string>,
-  fallback: { branchName?: string; qcOfficer?: string } = {}
+  context: QcScoreReportContext | QcScoringProfile = {},
+  explicitProfile?: QcScoringProfile
 ): QcScoreReport {
-  const organizationCleanliness =
-    scoreFromYesNo(answers.team_uniform_hygiene_ok, 5) +
-    scoreFromYesNo(answers.kitchen_clean, 8) +
-    scoreFromYesNo(answers.drains_clean, 6) +
-    scoreFromYesNo(answers.prep_area_safe, 6) +
-    scoreFromYesNo(answers.delivery_area_clean, 5);
+  let profile: QcScoringProfile;
+  let branchName: string | undefined;
+  let qcOfficer: string | undefined;
+
+  if (context === 'standard' || context === 'no-kitchen') {
+    profile = explicitProfile ?? context;
+    branchName = undefined;
+    qcOfficer = undefined;
+  } else {
+    profile =
+      explicitProfile ??
+      resolveQcScoringProfileForSubmission({
+        title: context.templateTitle,
+        fields: context.templateFields,
+        answers,
+      });
+    branchName = context.branchName;
+    qcOfficer = context.qcOfficer;
+  }
 
   const customerService = scoreCustomerService(answers.customer_service_rating);
-
   const productQualityBarista =
     scoreFromYesNo(answers.team_uniform_hygiene_ok, 10) +
     scoreFromYesNo(answers.delivery_area_clean, 10);
-
-  const productQualityKitchen =
-    scoreFromYesNo(answers.kitchen_fridge_temp_ok, 5) +
-    scoreFromYesNo(answers.food_storage_ok, 5) +
-    scoreFromYesNo(answers.expiry_labels_ok, 5) +
-    scoreFromYesNo(answers.kitchen_clean, 5);
-
   const managementOrganization =
     scoreFromYesNo(answers.safety_tools_available, 5) +
     (isCriticalIssue(answers.critical_issue) ? 0 : 5);
 
-  const categories: QcCategoryScore[] = [
-    { label: 'Organization & Cleanliness', score: organizationCleanliness, max: 30 },
-    { label: 'Customer Service', score: customerService, max: 20 },
-    { label: 'Product Quality (Barista)', score: productQualityBarista, max: 20 },
-    { label: 'Product Quality (Kitchen)', score: productQualityKitchen, max: 20 },
-    { label: 'Management & Organization', score: managementOrganization, max: 10 },
-  ];
+  let organizationCleanliness: number;
+  let organizationMax: number;
+  let categories: QcCategoryScore[];
+
+  if (profile === 'no-kitchen') {
+    organizationCleanliness =
+      scoreFromYesNo(answers.team_uniform_hygiene_ok, 5) +
+      scoreFromYesNo(answers.drains_clean, 6) +
+      scoreFromYesNo(answers.prep_area_safe, 6) +
+      scoreFromYesNo(answers.delivery_area_clean, 5);
+    organizationMax = 22;
+    categories = [
+      { label: 'Organization & Cleanliness', score: organizationCleanliness, max: organizationMax },
+      { label: 'Customer Service', score: customerService, max: 20 },
+      { label: 'Product Quality (Barista)', score: productQualityBarista, max: 20 },
+      { label: 'Management & Organization', score: managementOrganization, max: 10 },
+    ];
+  } else {
+    organizationCleanliness =
+      scoreFromYesNo(answers.team_uniform_hygiene_ok, 5) +
+      scoreFromYesNo(answers.kitchen_clean, 8) +
+      scoreFromYesNo(answers.drains_clean, 6) +
+      scoreFromYesNo(answers.prep_area_safe, 6) +
+      scoreFromYesNo(answers.delivery_area_clean, 5);
+    organizationMax = 30;
+    const productQualityKitchen =
+      scoreFromYesNo(answers.kitchen_fridge_temp_ok, 5) +
+      scoreFromYesNo(answers.food_storage_ok, 5) +
+      scoreFromYesNo(answers.expiry_labels_ok, 5) +
+      scoreFromYesNo(answers.kitchen_clean, 5);
+    categories = [
+      { label: 'Organization & Cleanliness', score: organizationCleanliness, max: organizationMax },
+      { label: 'Customer Service', score: customerService, max: 20 },
+      { label: 'Product Quality (Barista)', score: productQualityBarista, max: 20 },
+      { label: 'Product Quality (Kitchen)', score: productQualityKitchen, max: 20 },
+      { label: 'Management & Organization', score: managementOrganization, max: 10 },
+    ];
+  }
 
   const totalScore = categories.reduce((sum, row) => sum + row.score, 0);
   const totalMax = categories.reduce((sum, row) => sum + row.max, 0);
   const finalScore = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
 
   return {
-    branchName: answers.branch_name?.trim() || fallback.branchName || '—',
+    branchName: answers.branch_name?.trim() || branchName || '—',
     visitDate: answers.visit_date?.trim() || '—',
     visitTime: answers.shift_time?.trim() || '—',
-    qcOfficer: answers.evaluator_name?.trim() || fallback.qcOfficer || '—',
+    qcOfficer: answers.evaluator_name?.trim() || qcOfficer || '—',
     categories,
     finalScore,
+    scoringProfile: profile,
     keyWeaknesses: answers.weaknesses?.trim() || '—',
     recommendedActions: answers.recommendations?.trim() || '—',
     branchManager: answers.manager_name?.trim() || '—',

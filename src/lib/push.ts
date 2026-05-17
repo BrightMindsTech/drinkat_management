@@ -113,10 +113,12 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
   const primaryHost = useSandbox ? 'api.sandbox.push.apple.com' : 'api.push.apple.com';
   const fallbackHost = useSandbox ? 'api.push.apple.com' : 'api.sandbox.push.apple.com';
   const tok = normalizeApnsDeviceToken(deviceToken);
+  const expiresAt = Math.floor(Date.now() / 1000) + 300;
   const body: Record<string, unknown> = {
     aps: {
       alert: { title: payload.title, body: payload.body },
       sound: 'default',
+      'content-available': 1,
     },
   };
   if (payload.data) {
@@ -133,6 +135,7 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
         'apns-topic': bundleId,
         'apns-push-type': 'alert',
         'apns-priority': '10',
+        'apns-expiration': String(expiresAt),
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
@@ -191,6 +194,9 @@ export async function sendPushToSubscription(
     if (!ensureVapid()) return 'failed';
     try {
       const keys = JSON.parse(sub.keysJson) as { auth: string; p256dh: string };
+      const topic =
+        payload.data?.type?.slice(0, 32) ??
+        payload.title.slice(0, 32).replace(/\s+/g, '_');
       await webpush.sendNotification(
         {
           endpoint: sub.endpoint,
@@ -201,7 +207,11 @@ export async function sendPushToSubscription(
           body: payload.body,
           data: payload.data ?? {},
         }),
-        { TTL: 86400 }
+        {
+          TTL: 300,
+          urgency: 'high',
+          topic,
+        }
       );
       return 'ok';
     } catch (e) {

@@ -193,6 +193,8 @@ export function ManagementFormsView({
           buildQcScoreReport(data.answers, {
             branchName: data.branch?.name,
             qcOfficer: data.answers?.evaluator_name,
+            templateTitle: template.title,
+            templateFields: template.fields,
           })
         );
       }
@@ -816,6 +818,8 @@ export function ManagementFormsView({
                       setQcReportModal(
                         buildQcScoreReport(s.answers, {
                           branchName: s.branch.name,
+                          templateTitle: s.template.title,
+                          templateFields: s.template.fields,
                         })
                       )
                     }
@@ -900,6 +904,8 @@ export function ManagementFormsView({
                               buildQcScoreReport(s.answers, {
                                 branchName: s.branch.name,
                                 qcOfficer: s.employee.name,
+                                templateTitle: s.template.title,
+                                templateFields: s.template.fields,
                               })
                             )
                           }

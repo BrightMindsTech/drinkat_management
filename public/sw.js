@@ -1,42 +1,55 @@
 /* global self, clients */
+function parsePushPayload(event) {
+  const fallback = { title: 'DrinkatHR', body: '', data: {} };
+  if (!event.data) return Promise.resolve(fallback);
+  return event.data.text().then((t) => {
+    if (!t) return fallback;
+    try {
+      return JSON.parse(t);
+    } catch {
+      return { ...fallback, body: t };
+    }
+  });
+}
+
 self.addEventListener('push', (event) => {
   const show = (payload) => {
     const title = payload.title || 'DrinkatHR';
+    const body = payload.body || '';
+    const tag = payload.data?.type || payload.data?.threadId || 'drinkat-alert';
     const opts = {
-      body: payload.body || '',
+      body,
+      tag,
+      renotify: true,
+      requireInteraction: false,
+      silent: false,
+      vibrate: [120, 60, 120],
       data: { ...(payload.data || {}), url: payload.data?.url || payload.url },
       icon: '/favicon.ico',
+      badge: '/favicon.ico',
     };
     return self.registration.showNotification(title, opts);
   };
-  if (event.data) {
-    event.waitUntil(
-      event.data.text().then((t) => {
-        let payload = { title: 'DrinkatHR', body: '', data: {} };
-        try {
-          if (t) payload = JSON.parse(t);
-        } catch {
-          /* ignore */
-        }
-        return show(payload);
-      })
-    );
-  } else {
-    event.waitUntil(show({ title: 'DrinkatHR', body: '' }));
-  }
+
+  event.waitUntil(parsePushPayload(event).then(show));
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = event.notification.data?.url;
-  if (url) {
-    event.waitUntil(
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-        for (const c of windowClients) {
-          if (c.url.startsWith(new URL(url).origin) && 'focus' in c) return c.focus();
+  if (!url) return;
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const c of windowClients) {
+        if (c.url.startsWith(new URL(url, self.location.origin).origin) && 'focus' in c) {
+          if ('navigate' in c && typeof c.navigate === 'function') {
+            return c.navigate(url).then(() => c.focus());
+          }
+          return c.focus();
         }
-        if (clients.openWindow) return clients.openWindow(url);
-      })
-    );
-  }
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })
+  );
 });

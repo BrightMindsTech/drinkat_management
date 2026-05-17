@@ -4,7 +4,10 @@
 //
 // IMPORTANT: On Workers, always use env.DB (see prisma-resolve-runtime.ts). Do NOT detect Workers
 // via navigator/document — nodejs_compat can define `document` and skip D1 with DATABASE_URL="".
-import { cache } from 'react';
+//
+// GUARDRAIL — Do NOT use React `cache()` for the D1 client. On route handlers it reuses the client
+// across HTTP requests on the same isolate → intermittent 503, frozen UI, login "invalid credentials".
+// CI blocks regressions: `npm run verify:prisma-guardrails`. See docs/DEPLOY.md.
 import { PrismaClient as PrismaClientNode } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import { PrismaD1 } from '@prisma/adapter-d1';
@@ -13,24 +16,36 @@ import { prismaRuntimeError, resolvePrismaRuntime } from '@/lib/prisma-resolve-r
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
+type CloudflareRequestContext = {
+  env: { DB?: Parameters<typeof PrismaD1>[0] };
+  ctx: unknown;
+  cf: unknown;
+};
+
+/** One Prisma client per OpenNext ALS request context (not shared across HTTP requests). */
+const workerPrismaByRequest = new WeakMap<CloudflareRequestContext, PrismaClient>();
+
 /** OpenNext dev may polyfill `navigator` — use Node’s version string to pick the native Prisma engine. */
 function isNodeJsRuntime(): boolean {
   return typeof process !== 'undefined' && typeof process.versions?.node === 'string';
 }
 
-/** Prefer D1 when the Worker binding exists (do not rely on navigator/document heuristics). */
-function hasD1Binding(): boolean {
+function readCloudflareContext(): CloudflareRequestContext | null {
   try {
-    const { env } = getCloudflareContext({ async: false });
-    return Boolean(env?.DB);
+    return getCloudflareContext({ async: false }) as CloudflareRequestContext;
   } catch {
-    return false;
+    return null;
   }
 }
 
-function createWorkerPrismaClient(): PrismaClient {
-  const { env } = getCloudflareContext();
-  const d1 = env.DB;
+/** Prefer D1 when the Worker binding exists (do not rely on navigator/document heuristics). */
+function hasD1Binding(): boolean {
+  const ctx = readCloudflareContext();
+  return Boolean(ctx?.env?.DB);
+}
+
+function createWorkerPrismaClient(cfContext: CloudflareRequestContext): PrismaClient {
+  const d1 = cfContext.env.DB;
   if (!d1) {
     throw new Error(
       'D1 binding "DB" is missing. Add d1_databases in wrangler.jsonc and attach the database to this Worker.'
@@ -42,8 +57,17 @@ function createWorkerPrismaClient(): PrismaClient {
   return new PrismaWasm({ adapter: new PrismaD1(d1) }) as PrismaClient;
 }
 
-/** Per-request D1 client on Workers (OpenNext: do not reuse a global pool across requests). */
-const getWorkerPrisma = cache((): PrismaClient => createWorkerPrismaClient());
+function getWorkerPrisma(): PrismaClient {
+  const cfContext = readCloudflareContext();
+  if (!cfContext) {
+    throw new Error('Cloudflare request context is not available (cannot open D1).');
+  }
+  const cached = workerPrismaByRequest.get(cfContext);
+  if (cached) return cached;
+  const client = createWorkerPrismaClient(cfContext);
+  workerPrismaByRequest.set(cfContext, client);
+  return client;
+}
 
 function getClient(): PrismaClient {
   const url = process.env.DATABASE_URL ?? '';

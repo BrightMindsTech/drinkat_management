@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 
 type PendingItem = {
   id: string;
@@ -41,11 +42,19 @@ export function PendingReviewNotice({ role }: { role: string }) {
       }
     }
 
-    load();
-    const id = window.setInterval(load, 20000);
+    const onWake = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+
+    void load();
+    const id = window.setInterval(onWake, 12000);
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener(APP_RESUME_EVENT, onWake);
     return () => {
       mounted = false;
       window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener(APP_RESUME_EVENT, onWake);
     };
   }, [role]);
 

@@ -5,6 +5,7 @@ import { normalizeUserRole } from '@/lib/formVisibility';
 import { isQcReviewerUser } from '@/lib/qc-reviewer';
 import { prisma } from '@/lib/prisma';
 import { TimeClockGeofenceProvider } from '@/contexts/TimeClockGeofenceContext';
+import { AppResumeSync } from '@/components/AppResumeSync';
 import { DashboardLayoutClient } from '@/components/dashboard/DashboardLayoutClient';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -46,6 +47,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <TimeClockGeofenceProvider role={navRole}>
+      <AppResumeSync />
       <DashboardLayoutClient role={uiRole} email={session.user.email ?? ''} headcountSummary={headcountSummary}>
         {children}
       </DashboardLayoutClient>
