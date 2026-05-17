@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { attachPullToRefresh } from '@/lib/attach-pull-to-refresh';
+import { useGuardedAction } from '@/contexts/AsyncActionContext';
 
 type ThreadRow = {
   id: string;
@@ -75,6 +76,7 @@ function formatListTime(iso: string | null): string {
 export function MessagesClient({ currentUserId }: { currentUserId: string }) {
   const { t } = useLanguage();
   const c = t.chat;
+  const { run, isBusy } = useGuardedAction();
   const router = useRouter();
   const searchParams = useSearchParams();
   const threadFromUrl = searchParams.get('thread');
@@ -90,7 +92,6 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
   const [peerLastReadAt, setPeerLastReadAt] = useState<string | null>(null);
   const [messagesErr, setMessagesErr] = useState<string | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState('');
   const [typingNames, setTypingNames] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,7 +108,6 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [peersErr, setPeersErr] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
 
   const [groupModalOpen, setGroupModalOpen] = useState(false);
   const [groupPeers, setGroupPeers] = useState<PeerUser[]>([]);
@@ -116,7 +116,6 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
   const [groupTitleDraft, setGroupTitleDraft] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
   const [groupErr, setGroupErr] = useState<string | null>(null);
-  const [creatingGroup, setCreatingGroup] = useState(false);
 
   const activeThreadId = selectedId ?? threadFromUrl;
 
@@ -336,14 +335,13 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
     });
   }
 
-  async function createGroupChat() {
+  function createGroupChat() {
     if (groupSelectedIds.size < 2) {
       setGroupErr(c.groupNeedTwoOthers);
       return;
     }
-    setCreatingGroup(true);
-    setGroupErr(null);
-    try {
+    void run('chat-group', async () => {
+      setGroupErr(null);
       const res = await fetch('/api/chat/threads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -364,17 +362,12 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
       setThreadInUrl(j.threadId);
       await loadThreads({ silent: true });
       await loadMessages(j.threadId, { silent: false });
-    } catch {
-      setGroupErr(c.groupCreateFailed);
-    } finally {
-      setCreatingGroup(false);
-    }
+    });
   }
 
-  async function startWithUser(otherUserId: string) {
-    setStarting(true);
-    setPeersErr(null);
-    try {
+  function startWithUser(otherUserId: string) {
+    void run('chat-start', async () => {
+      setPeersErr(null);
       const res = await fetch('/api/chat/threads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -391,19 +384,14 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
       setThreadInUrl(j.threadId);
       await loadThreads({ silent: true });
       await loadMessages(j.threadId, { silent: false });
-    } catch {
-      setPeersErr(c.startThreadFailed);
-    } finally {
-      setStarting(false);
-    }
+    });
   }
 
-  async function sendMessage() {
+  function sendMessage() {
     const text = draft.trim();
-    if (!activeThreadId || !text || sending) return;
-    setSending(true);
-    setMessagesErr(null);
-    try {
+    if (!activeThreadId || !text) return;
+    void run('chat-send', async () => {
+      setMessagesErr(null);
       const res = await fetch(`/api/chat/threads/${encodeURIComponent(activeThreadId)}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -430,11 +418,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
         });
       }
       void loadThreads({ silent: true });
-    } catch {
-      setMessagesErr(c.sendFailed);
-    } finally {
-      setSending(false);
-    }
+    });
   }
 
   function touchTyping(active: boolean) {
@@ -686,7 +670,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                         <li key={p.id}>
                           <button
                             type="button"
-                            disabled={starting}
+                            disabled={isBusy('chat-start')}
                             onClick={() => void startWithUser(p.id)}
                             className="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-gray-100/90 dark:hover:bg-ios-dark-fill/80 disabled:opacity-50"
                           >
@@ -822,12 +806,12 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                 />
                 <button
                   type="button"
-                  disabled={sending || !draft.trim()}
+                  disabled={isBusy('chat-send') || !draft.trim()}
                   onClick={() => void sendMessage()}
                   className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-600 text-white shadow disabled:opacity-40"
                   aria-label={c.send}
                 >
-                  {sending ? (
+                  {isBusy('chat-send') ? (
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 translate-x-px">
@@ -863,7 +847,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                 <li key={u.id}>
                   <button
                     type="button"
-                    disabled={starting}
+                    disabled={isBusy('chat-start')}
                     onClick={() => void startWithUser(u.id)}
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-ios-dark-fill disabled:opacity-50"
                   >
@@ -888,7 +872,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
           role="dialog"
           aria-modal
           onClick={(e) => {
-            if (e.target === e.currentTarget && !creatingGroup) setGroupModalOpen(false);
+            if (e.target === e.currentTarget && !isBusy('chat-group')) setGroupModalOpen(false);
           }}
         >
           <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl bg-white shadow-2xl dark:bg-ios-dark-elevated sm:rounded-2xl">
@@ -897,7 +881,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
               <button
                 type="button"
                 className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-ios-dark-fill"
-                disabled={creatingGroup}
+                disabled={isBusy('chat-group')}
                 onClick={() => setGroupModalOpen(false)}
               >
                 {t.common.close}
@@ -915,7 +899,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                 onChange={(e) => setGroupTitleDraft(e.target.value)}
                 maxLength={120}
                 placeholder={c.groupNamePlaceholder}
-                disabled={creatingGroup}
+                disabled={isBusy('chat-group')}
                 className="w-full rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-fill px-3 py-2 text-sm"
               />
             </label>
@@ -926,7 +910,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                 value={groupSearch}
                 onChange={(e) => setGroupSearch(e.target.value)}
                 placeholder={c.searchPeople}
-                disabled={creatingGroup}
+                disabled={isBusy('chat-group')}
                 className="w-full rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-fill px-3 py-2 text-sm"
               />
             </label>
@@ -944,7 +928,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                       <li key={u.id}>
                         <button
                           type="button"
-                          disabled={creatingGroup}
+                          disabled={isBusy('chat-group')}
                           onClick={() => toggleGroupMember(u.id)}
                           className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors disabled:opacity-50 ${
                             sel ? 'bg-teal-50 dark:bg-teal-950/30' : 'hover:bg-gray-50 dark:hover:bg-ios-dark-fill'
@@ -972,11 +956,11 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
             <div className="flex gap-2 border-t border-gray-100 p-4 dark:border-ios-dark-separator">
               <button
                 type="button"
-                disabled={creatingGroup || groupPeersLoading || groupSelectedIds.size < 2}
+                disabled={isBusy('chat-group') || groupPeersLoading || groupSelectedIds.size < 2}
                 onClick={() => void createGroupChat()}
                 className="flex-1 rounded-xl bg-teal-600 py-3 text-center text-sm font-semibold text-white disabled:opacity-40"
               >
-                {creatingGroup ? c.sending : c.createGroup}
+                {isBusy('chat-group') ? c.sending : c.createGroup}
               </button>
             </div>
           </div>

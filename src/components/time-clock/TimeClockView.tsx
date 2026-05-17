@@ -6,6 +6,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useTimeClockGeofence } from '@/contexts/TimeClockGeofenceContext';
 import type { TimeClockStatus } from '@/components/time-clock/geofence-shared';
 import { ensurePushRegistered } from '@/lib/push-registration-client';
+import { useAsyncActionLock, useSubmitLock } from '@/lib/use-async-action-lock';
+import { useGuardedAction } from '@/contexts/AsyncActionContext';
 
 type ManagerLog = {
   id: string;
@@ -107,9 +109,8 @@ export function TimeClockView({
 }) {
   const { t, locale } = useLanguage();
   const { status, refresh, err, setErr, pos } = useTimeClockGeofence();
+  const { run, isBusy } = useGuardedAction();
   const [loading, setLoading] = useState(false);
-  const [reportingLogId, setReportingLogId] = useState<string | null>(null);
-  const [reportingAlertId, setReportingAlertId] = useState<string | null>(null);
   const [managerLogsState, setManagerLogsState] = useState<ManagerLog[]>(managerLogs);
   const [reportedLogIds, setReportedLogIds] = useState<Set<string>>(new Set());
   const [reportedAlertIds, setReportedAlertIds] = useState<Set<string>>(new Set());
@@ -240,13 +241,12 @@ export function TimeClockView({
                   <button
                     type="button"
                     disabled={
-                      reportingAlertId === a.id || reportedAlertIds.has(a.id) || !a.employeeId || !a.employeeName
+                      isBusy(`tc-report-alert-${a.id}`) || reportedAlertIds.has(a.id) || !a.employeeId || !a.employeeName
                     }
                     className="mt-2 rounded-lg border border-ios-blue/40 px-2.5 py-1 text-xs font-medium text-ios-blue disabled:opacity-50"
-                    onClick={async () => {
+                    onClick={() => {
                       if (!a.employeeId || !a.employeeName) return;
-                      setReportingAlertId(a.id);
-                      try {
+                      void run(`tc-report-alert-${a.id}`, async () => {
                         const res = await fetch('/api/time-clock/report-to-owner', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
@@ -269,9 +269,7 @@ export function TimeClockView({
                           next.add(a.id);
                           return next;
                         });
-                      } finally {
-                        setReportingAlertId(null);
-                      }
+                      });
                     }}
                   >
                     {reportedAlertIds.has(a.id) ? t.timeClock.reportedToOwner : t.timeClock.reportToOwner}
@@ -304,28 +302,30 @@ export function TimeClockView({
                         <button
                           type="button"
                           className="rounded-lg border border-red-300/70 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-300"
-                          onClick={async () => {
+                          onClick={() => {
                             const employeeId = group.rows[0]?.employeeId;
                             if (!employeeId) return;
-                            try {
-                              const res = await fetch('/api/time-clock/manager-log-hidden', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ employeeId }),
-                              });
-                              if (!res.ok) {
-                                const e = (await res.json().catch(() => ({}))) as { error?: string };
-                                setErr(e.error ?? t.timeClock.reportToOwnerFailed);
+                            void run(`tc-clear-logs-${employeeId}`, async () => {
+                              try {
+                                const res = await fetch('/api/time-clock/manager-log-hidden', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ employeeId }),
+                                });
+                                if (!res.ok) {
+                                  const e = (await res.json().catch(() => ({}))) as { error?: string };
+                                  setErr(e.error ?? t.timeClock.reportToOwnerFailed);
+                                }
+                              } catch {
+                                /* local fallback below */
                               }
-                            } catch {
-                              // Keep local fallback to avoid blocking UX when network fails.
-                            }
-                            if (managerUserId) {
-                              const hidden = readHiddenEmployeeIds(managerUserId);
-                              hidden.add(employeeId);
-                              writeHiddenEmployeeIds(managerUserId, hidden);
-                            }
-                            setManagerLogsState((prev) => prev.filter((x) => x.employeeId !== employeeId));
+                              if (managerUserId) {
+                                const hidden = readHiddenEmployeeIds(managerUserId);
+                                hidden.add(employeeId);
+                                writeHiddenEmployeeIds(managerUserId, hidden);
+                              }
+                              setManagerLogsState((prev) => prev.filter((x) => x.employeeId !== employeeId));
+                            });
                           }}
                         >
                           {t.timeClock.clearReports}
@@ -341,11 +341,10 @@ export function TimeClockView({
                           </p>
                           <button
                             type="button"
-                            disabled={reportingLogId === r.id || reportedLogIds.has(r.id)}
+                            disabled={isBusy(`tc-report-log-${r.id}`) || reportedLogIds.has(r.id)}
                             className="mt-2 rounded-lg border border-ios-blue/40 px-2.5 py-1 text-xs font-medium text-ios-blue disabled:opacity-50"
-                            onClick={async () => {
-                              setReportingLogId(r.id);
-                              try {
+                            onClick={() => {
+                              void run(`tc-report-log-${r.id}`, async () => {
                                 const res = await fetch('/api/time-clock/report-to-owner', {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
@@ -368,9 +367,7 @@ export function TimeClockView({
                                   next.add(r.id);
                                   return next;
                                 });
-                              } finally {
-                                setReportingLogId(null);
-                              }
+                              });
                             }}
                           >
                             {reportedLogIds.has(r.id) ? t.timeClock.reportedToOwner : t.timeClock.reportToOwner}
@@ -392,9 +389,9 @@ export function TimeClockView({
 
 function ConsentBlock({ status, onUpdated }: { status: TimeClockStatus; onUpdated: () => void }) {
   const { t } = useLanguage();
+  const submitLock = useSubmitLock();
   const [loc, setLoc] = useState(!!status.consent?.location);
   const [push, setPush] = useState(!!status.consent?.push);
-  const [busy, setBusy] = useState(false);
 
   if (status.consent?.location && status.consent?.push) return null;
 
@@ -412,11 +409,10 @@ function ConsentBlock({ status, onUpdated }: { status: TimeClockStatus; onUpdate
       </label>
       <button
         type="button"
-        disabled={busy || !loc || !push}
+        disabled={submitLock.busy || !loc || !push}
         className="rounded-lg bg-ios-blue px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        onClick={async () => {
-          setBusy(true);
-          try {
+        onClick={() => {
+          void submitLock.run(async () => {
             await new Promise<void>((res, rej) => {
               navigator.geolocation.getCurrentPosition(() => res(), rej, { timeout: 20000 });
             });
@@ -429,11 +425,7 @@ function ConsentBlock({ status, onUpdated }: { status: TimeClockStatus; onUpdate
               await ensurePushRegistered({ requestPermission: true });
             }
             await onUpdated();
-          } catch {
-            setBusy(false);
-            return;
-          }
-          setBusy(false);
+          });
         }}
       >
         {t.timeClock.saveConsent}
@@ -461,6 +453,7 @@ function ClockActions({
 }) {
   const [cashFormGateHref, setCashFormGateHref] = useState<string | null>(null);
   const [weeklyRatingsGateHref, setWeeklyRatingsGateHref] = useState<string | null>(null);
+  const actionLock = useAsyncActionLock();
 
   if (!status.consent?.location) return null;
   if (!status.geofenceExempt && !status.branch?.hasGeofence) {
@@ -480,36 +473,41 @@ function ClockActions({
       {!status.clock ? (
         <button
           type="button"
-          disabled={loading || !canAct}
+          disabled={loading || !canAct || actionLock.isLocked()}
           className="rounded-xl bg-green-600 px-5 py-2.5 text-white font-medium disabled:opacity-50"
-          onClick={async () => {
+          onClick={() => {
             if (!pos) return;
-            setLoading(true);
-            setErr(null);
-            const r = await fetch('/api/time-clock/clock-in', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ lat: pos.lat, lng: pos.lng }),
-            });
-            setLoading(false);
-            if (!r.ok) {
-              const e = (await r.json().catch(() => ({}))) as {
-                error?: string;
-                code?: string;
-                ratingsPath?: string;
-              };
-              if (e.code === 'weekly_rating_required') {
-                setWeeklyRatingsGateHref(
-                  typeof e.ratingsPath === 'string' && e.ratingsPath.length > 0
-                    ? e.ratingsPath
-                    : '/dashboard/ratings'
-                );
-                return;
+            void actionLock.run(async () => {
+              setLoading(true);
+              setErr(null);
+              try {
+                const r = await fetch('/api/time-clock/clock-in', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ lat: pos.lat, lng: pos.lng }),
+                });
+                if (!r.ok) {
+                  const e = (await r.json().catch(() => ({}))) as {
+                    error?: string;
+                    code?: string;
+                    ratingsPath?: string;
+                  };
+                  if (e.code === 'weekly_rating_required') {
+                    setWeeklyRatingsGateHref(
+                      typeof e.ratingsPath === 'string' && e.ratingsPath.length > 0
+                        ? e.ratingsPath
+                        : '/dashboard/ratings'
+                    );
+                    return;
+                  }
+                  setErr(e.error ?? t.timeClock.clockInFailed);
+                  return;
+                }
+                await onRefresh();
+              } finally {
+                setLoading(false);
               }
-              setErr(e.error ?? t.timeClock.clockInFailed);
-              return;
-            }
-            await onRefresh();
+            });
           }}
         >
           {t.timeClock.clockIn}
@@ -517,45 +515,50 @@ function ClockActions({
       ) : (
         <button
           type="button"
-          disabled={loading || !canAct}
+          disabled={loading || !canAct || actionLock.isLocked()}
           className="rounded-xl bg-gray-700 dark:bg-ios-dark-fill px-5 py-2.5 text-white font-medium disabled:opacity-50"
-          onClick={async () => {
+          onClick={() => {
             if (!pos) return;
-            setLoading(true);
-            setErr(null);
-            const r = await fetch('/api/time-clock/clock-out', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ lat: pos.lat, lng: pos.lng }),
+            void actionLock.run(async () => {
+              setLoading(true);
+              setErr(null);
+              try {
+                const r = await fetch('/api/time-clock/clock-out', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ lat: pos.lat, lng: pos.lng }),
+                });
+                if (!r.ok) {
+                  const e = (await r.json().catch(() => ({}))) as {
+                    error?: string;
+                    code?: string;
+                    formsPath?: string;
+                    ratingsPath?: string;
+                  };
+                  if (e.code === 'weekly_rating_required') {
+                    setWeeklyRatingsGateHref(
+                      typeof e.ratingsPath === 'string' && e.ratingsPath.length > 0
+                        ? e.ratingsPath
+                        : '/dashboard/ratings'
+                    );
+                    return;
+                  }
+                  if (e.code === 'cash_form_required') {
+                    setCashFormGateHref(
+                      typeof e.formsPath === 'string' && e.formsPath.length > 0
+                        ? e.formsPath
+                        : '/dashboard/forms#section-forms-available'
+                    );
+                    return;
+                  }
+                  setErr(e.error ?? t.timeClock.clockOutFailed);
+                  return;
+                }
+                await onRefresh();
+              } finally {
+                setLoading(false);
+              }
             });
-            setLoading(false);
-            if (!r.ok) {
-              const e = (await r.json().catch(() => ({}))) as {
-                error?: string;
-                code?: string;
-                formsPath?: string;
-                ratingsPath?: string;
-              };
-              if (e.code === 'weekly_rating_required') {
-                setWeeklyRatingsGateHref(
-                  typeof e.ratingsPath === 'string' && e.ratingsPath.length > 0
-                    ? e.ratingsPath
-                    : '/dashboard/ratings'
-                );
-                return;
-              }
-              if (e.code === 'cash_form_required') {
-                setCashFormGateHref(
-                  typeof e.formsPath === 'string' && e.formsPath.length > 0
-                    ? e.formsPath
-                    : '/dashboard/forms#section-forms-available'
-                );
-                return;
-              }
-              setErr(e.error ?? t.timeClock.clockOutFailed);
-              return;
-            }
-            await onRefresh();
           }}
         >
           {t.timeClock.clockOut}

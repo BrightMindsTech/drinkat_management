@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Checklist, ChecklistItem, ChecklistAssignment, Employee, Branch, Department, QcSubmission, SubmissionPhoto } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { useGuardedAction } from '@/contexts/AsyncActionContext';
 
 type ChecklistWithItems = Checklist & { branch: Branch | null; items: ChecklistItem[] };
 type AssignmentWithRelations = ChecklistAssignment & {
@@ -30,6 +31,7 @@ export function QCReviewView({
   employees: (Employee & { branch: Branch; department?: Department | null })[];
 }) {
   const { t } = useLanguage();
+  const { run, isBusy } = useGuardedAction();
   const [checklists, setChecklists] = useState(initialChecklists);
   const [assignments, setAssignments] = useState(initialAssignments);
   const [submissions, setSubmissions] = useState(initialSubmissions);
@@ -41,6 +43,7 @@ export function QCReviewView({
   const [expandedSubmissionDetails, setExpandedSubmissionDetails] = useState<Record<string, boolean>>({});
 
   async function createChecklist(name: string, branchId: string | null, repeatsDaily: boolean, deadlineTime: string, items: { title: string }[]) {
+    await run('qc', async () => {
     const res = await fetch('/api/checklists', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -57,9 +60,11 @@ export function QCReviewView({
       setChecklists((prev) => [...prev, data]);
       setShowNewChecklist(false);
     }
+    });
   }
 
   async function updateChecklist(id: string, data: { name: string; branchId: string | null; repeatsDaily: boolean; deadlineTime: string }) {
+    await run('qc', async () => {
     const res = await fetch(`/api/checklists/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -72,18 +77,22 @@ export function QCReviewView({
         prev.map((a) => (a.checklistId === id ? { ...a, checklist: { ...a.checklist, ...updated } } : a))
       );
     }
+    });
   }
 
   async function deleteChecklist(id: string) {
+    await run('qc', async () => {
     const res = await fetch(`/api/checklists/${id}`, { method: 'DELETE' });
     if (res.ok) {
       setChecklists((prev) => prev.filter((c) => c.id !== id));
       setAssignments((prev) => prev.filter((a) => a.checklistId !== id));
       setEditingChecklistId(null);
     }
+    });
   }
 
   async function addChecklistItem(checklistId: string, title: string) {
+    await run('qc', async () => {
     const checklist = checklists.find((c) => c.id === checklistId);
     if (!checklist) return;
     const res = await fetch(`/api/checklists/${checklistId}/items`, {
@@ -97,9 +106,11 @@ export function QCReviewView({
         prev.map((c) => (c.id === checklistId ? { ...c, items: [...c.items, item] } : c))
       );
     }
+    });
   }
 
   async function removeChecklistItem(checklistId: string, itemId: string) {
+    await run('qc', async () => {
     const res = await fetch(`/api/checklists/${checklistId}/items/${itemId}`, { method: 'DELETE' });
     if (res.ok) {
       setChecklists((prev) =>
@@ -108,6 +119,7 @@ export function QCReviewView({
         )
       );
     }
+    });
   }
 
   async function assignChecklistToPeople(
@@ -115,6 +127,8 @@ export function QCReviewView({
     employeeIds: string[],
     dueDate?: string
   ): Promise<{ created: AssignmentWithRelations[]; skipped: { employeeId: string; reason: string }[] }> {
+    let result = { created: [] as AssignmentWithRelations[], skipped: [] as { employeeId: string; reason: string }[] };
+    await run('qc', async () => {
     const res = await fetch('/api/assignments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -129,10 +143,13 @@ export function QCReviewView({
       throw new Error(typeof data.error === 'string' ? data.error : 'Assignment failed');
     }
     setAssignments((prev) => [...prev, ...data.created!]);
-    return { created: data.created, skipped: data.skipped ?? [] };
+    result = { created: data.created, skipped: data.skipped ?? [] };
+    });
+    return result;
   }
 
   async function reviewSubmission(id: string, status: 'approved' | 'denied', rating?: number, comments?: string) {
+    await run('qc', async () => {
     const res = await fetch(`/api/qc/submissions/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -140,6 +157,7 @@ export function QCReviewView({
     });
     const data = await res.json();
     if (res.ok) setSubmissions((prev) => prev.map((s) => (s.id === id ? data : s)));
+    });
   }
 
   const pending = submissions.filter((s) => s.status === 'pending');

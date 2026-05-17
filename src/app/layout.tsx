@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { SessionProvider } from '@/components/SessionProvider';
 import { ModalScrollIntoViewListener } from '@/components/ModalScrollIntoViewListener';
 import { MobileZoomResetGesture } from '@/components/MobileZoomResetGesture';
+import { AsyncActionProvider } from '@/contexts/AsyncActionContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import './globals.css';
@@ -36,11 +37,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen w-full max-w-[100dvw] overflow-x-hidden bg-ios-gray dark:bg-ios-gray-dark text-app-primary antialiased transition-colors">
         <ThemeProvider>
           <LanguageProvider initialLocale={locale}>
+            <AsyncActionProvider>
             <SessionProvider>
               <ModalScrollIntoViewListener />
               <MobileZoomResetGesture />
               {children}
             </SessionProvider>
+            </AsyncActionProvider>
           </LanguageProvider>
         </ThemeProvider>
       </body>

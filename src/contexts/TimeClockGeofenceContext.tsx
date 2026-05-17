@@ -29,23 +29,34 @@ const AUTO_CLOCK_IN_RETRY_MS = 2500;
 /** While inside geofence and not clocked in, retry auto clock-in periodically. */
 const AUTO_CLOCK_IN_RECONCILE_MS = 30_000;
 
+let autoClockInInFlight = false;
+
 async function postAutoClockInWithRetries(lat: number, lng: number): Promise<boolean> {
-  for (let attempt = 0; attempt < AUTO_CLOCK_IN_MAX_ATTEMPTS; attempt++) {
-    try {
-      const cin = await fetch('/api/time-clock/clock-in', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat, lng }),
-      });
-      if (cin.ok) return true;
-    } catch {
-      /* retry */
+  if (autoClockInInFlight) return false;
+  autoClockInInFlight = true;
+  try {
+    for (let attempt = 0; attempt < AUTO_CLOCK_IN_MAX_ATTEMPTS; attempt++) {
+      try {
+        const cin = await fetch('/api/time-clock/clock-in', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lng }),
+        });
+        if (cin.ok) return true;
+        const body = (await cin.json().catch(() => ({}))) as { alreadyClockedIn?: boolean };
+        if (body.alreadyClockedIn) return true;
+        if (cin.status === 400 || cin.status === 403) return false;
+      } catch {
+        /* retry */
+      }
+      if (attempt < AUTO_CLOCK_IN_MAX_ATTEMPTS - 1) {
+        await new Promise((r) => setTimeout(r, AUTO_CLOCK_IN_RETRY_MS));
+      }
     }
-    if (attempt < AUTO_CLOCK_IN_MAX_ATTEMPTS - 1) {
-      await new Promise((r) => setTimeout(r, AUTO_CLOCK_IN_RETRY_MS));
-    }
+    return false;
+  } finally {
+    autoClockInInFlight = false;
   }
-  return false;
 }
 
 async function postLocationEvent(kind: 'enter' | 'exit', lat: number, lng: number) {
@@ -91,6 +102,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   const [awaySubmitting, setAwaySubmitting] = useState(false);
   const [endShiftSubmitting, setEndShiftSubmitting] = useState(false);
   const exitCheckRaisedRef = useRef(false);
+  const awayActionInFlightRef = useRef(false);
 
   const timeClockHref = '/dashboard/time-clock';
   const ratingsHref = '/dashboard/ratings';
@@ -396,6 +408,8 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
       {forceAwayOpen && status?.clock && !status.away && (
         <ForcedAwayModal
           onEndShift={async () => {
+            if (endShiftSubmitting || awayActionInFlightRef.current) return;
+            awayActionInFlightRef.current = true;
             setEndShiftSubmitting(true);
             try {
               const coords = await readCurrentPosition();
@@ -430,11 +444,14 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
             } catch {
               setErr(t.timeClock.endShiftFailed);
             } finally {
+              awayActionInFlightRef.current = false;
               setEndShiftSubmitting(false);
             }
           }}
           endShiftLoading={endShiftSubmitting}
           onPick={async (kind: 'break' | 'bathroom' | 'other', note?: string) => {
+            if (awaySubmitting || awayActionInFlightRef.current) return;
+            awayActionInFlightRef.current = true;
             setAwaySubmitting(true);
             try {
               const ctl = new AbortController();
@@ -464,6 +481,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
             } catch {
               setErr(t.timeClock.awaySubmitFailed);
             } finally {
+              awayActionInFlightRef.current = false;
               setAwaySubmitting(false);
             }
           }}

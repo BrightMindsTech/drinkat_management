@@ -8,7 +8,7 @@ export default async function DashboardHome() {
   const session = await getServerSession(authOptions);
   const role = normalizeUserRole(session?.user?.role);
   const email = session?.user?.email ?? '';
-  const userId = session?.user?.id;
+  const userId = (session?.user as { id?: string } | undefined)?.id;
 
   let displayName = email.includes('@') ? (email.split('@')[0] ?? email) : email;
   if (userId) {

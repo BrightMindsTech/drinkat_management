@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { LeaveRequest } from '@prisma/client';
 import type { Employee } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSubmitLock } from '@/lib/use-async-action-lock';
 
 type LeaveWithEmployee = LeaveRequest & { employee: Employee & { branch: { name: string } } };
 
@@ -13,7 +14,7 @@ export function RequestLeaveForm({ onRequested }: { onRequested: (l: LeaveWithEm
   const [endDate, setEndDate] = useState('');
   const [type, setType] = useState<'sick' | 'annual' | 'other'>('annual');
   const [note, setNote] = useState('');
-  const [loading, setLoading] = useState(false);
+  const submitLock = useSubmitLock();
   const [error, setError] = useState('');
   const leaveDays =
     startDate && endDate
@@ -26,15 +27,14 @@ export function RequestLeaveForm({ onRequested }: { onRequested: (l: LeaveWithEm
         )
       : 0;
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!startDate || !endDate) {
       setError(t.leave.selectDates);
       return;
     }
-    setError('');
-    setLoading(true);
-    try {
+    void submitLock.run(async () => {
+      setError('');
       const res = await fetch('/api/leave', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -49,9 +49,7 @@ export function RequestLeaveForm({ onRequested }: { onRequested: (l: LeaveWithEm
       setStartDate('');
       setEndDate('');
       setNote('');
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   return (
@@ -108,8 +106,8 @@ export function RequestLeaveForm({ onRequested }: { onRequested: (l: LeaveWithEm
         />
       </div>
       {error && <p className="text-sm text-red-600 w-full mt-2">{error}</p>}
-      <button type="submit" disabled={loading} className="mt-3 rounded-ios bg-ios-blue text-white px-4 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50">
-        {loading ? t.leave.submitting : t.leave.submit}
+      <button type="submit" disabled={submitLock.busy} className="mt-3 rounded-ios bg-ios-blue text-white px-4 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50">
+        {submitLock.busy ? t.leave.submitting : t.leave.submit}
       </button>
     </form>
   );

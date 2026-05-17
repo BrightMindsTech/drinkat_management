@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import type { Advance, Employee } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { useSubmitLock } from '@/lib/use-async-action-lock';
 
 type AdvanceWithEmployee = Advance & { employee: Employee & { branch: { name: string } } };
 
@@ -18,7 +19,7 @@ export function RequestAdvanceForm({
   const { t } = useLanguage();
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [loading, setLoading] = useState(false);
+  const submitLock = useSubmitLock();
   const [error, setError] = useState('');
 
   const remaining = advanceLimit != null ? advanceLimit - approvedSum : null;
@@ -28,7 +29,7 @@ export function RequestAdvanceForm({
     return !Number.isNaN(num) && num > 0 && num > remaining;
   }, [amount, advanceLimit, remaining]);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const num = parseFloat(amount);
     if (Number.isNaN(num) || num <= 0) {
@@ -39,9 +40,8 @@ export function RequestAdvanceForm({
       setError(t.advances.limitExceeded);
       return;
     }
-    setError('');
-    setLoading(true);
-    try {
+    void submitLock.run(async () => {
+      setError('');
       const res = await fetch('/api/advances', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,9 +55,7 @@ export function RequestAdvanceForm({
       onRequested(data);
       setAmount('');
       setNote('');
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   return (
@@ -120,10 +118,10 @@ export function RequestAdvanceForm({
       <div className="mt-3 flex items-center justify-end">
         <button
           type="submit"
-          disabled={loading || wouldExceed}
+          disabled={submitLock.busy || wouldExceed}
           className="rounded-ios bg-ios-blue text-white px-4 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50"
         >
-          {loading ? t.advances.submitting : t.advances.requestAdvance}
+          {submitLock.busy ? t.advances.submitting : t.advances.requestAdvance}
         </button>
       </div>
     </form>

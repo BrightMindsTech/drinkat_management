@@ -608,6 +608,9 @@ export const en = {
   },
   qc: {
     title: 'QC',
+    underReviewTitle: 'Under review',
+    underReviewBody: 'QC is being updated and will be available soon. Thanks for your patience.',
+    underReviewBack: 'Back to home',
     submissionsTitle: 'QC Submissions',
     checklists: 'Checklists',
     newChecklist: 'New checklist',

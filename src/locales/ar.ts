@@ -609,6 +609,9 @@ export const ar: LocaleMessages = {
   },
   qc: {
     title: 'مراقبة الجودة',
+    underReviewTitle: 'قيد المراجعة',
+    underReviewBody: 'قسم مراقبة الجودة قيد التحديث وسيكون متاحاً قريباً. شكراً لصبركم.',
+    underReviewBack: 'العودة للرئيسية',
     submissionsTitle: 'تقديمات مراقبة الجودة',
     checklists: 'قوائم التحقق',
     newChecklist: 'قائمة تحقق جديدة',

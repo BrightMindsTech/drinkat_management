@@ -18,6 +18,7 @@ import { FormAssignmentsPanel } from './FormAssignmentsPanel';
 import { CreateFormPanel } from './CreateFormPanel';
 import { ImportGoogleFormPastePanel } from './ImportGoogleFormPastePanel';
 import { FormEmployeeAssignmentsPanel } from './FormEmployeeAssignmentsPanel';
+import { useGuardedAction } from '@/contexts/AsyncActionContext';
 
 export type FormsTemplateRow = {
   id: string;
@@ -87,12 +88,9 @@ export function ManagementFormsView({
   const [myList, setMyList] = useState(initialMySubmissions);
   const [openId, setOpenId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
-  const [submitting, setSubmitting] = useState(false);
+  const { run, isBusy } = useGuardedAction();
   const [ownerTemplates, setOwnerTemplates] = useState<FormsTemplateRow[]>(allTemplatesForOwner ?? []);
   const [ownerEditId, setOwnerEditId] = useState<string | null>(null);
-  const [ownerSaving, setOwnerSaving] = useState(false);
-  const [importingDefaults, setImportingDefaults] = useState(false);
-  const [importingBarista, setImportingBarista] = useState(false);
   const [qcReportModal, setQcReportModal] = useState<QcScoreReport | null>(null);
   const [tableReport, setTableReport] = useState<ReportTableData | null>(null);
   const [expandedReviewAnswers, setExpandedReviewAnswers] = useState<Record<string, boolean>>({});
@@ -160,9 +158,8 @@ export function ManagementFormsView({
     return d.url ?? null;
   }
 
-  async function handleSubmit(template: FormsTemplateRow) {
-    setSubmitting(true);
-    try {
+  function handleSubmit(template: FormsTemplateRow) {
+    void run('forms-submit', async () => {
       const res = await fetch('/api/forms/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -199,9 +196,7 @@ export function ManagementFormsView({
           })
         );
       }
-    } finally {
-      setSubmitting(false);
-    }
+    });
   }
 
   function startOwnerEdit(tpl: FormsTemplateRow) {
@@ -220,7 +215,7 @@ export function ManagementFormsView({
     );
   }
 
-  async function saveOwnerEdit() {
+  function saveOwnerEdit() {
     if (!editingTemplate) return;
     const title = ownerTitle.trim();
     if (!title) return;
@@ -254,8 +249,7 @@ export function ManagementFormsView({
         ...(options ? { options } : {}),
       };
     });
-    setOwnerSaving(true);
-    try {
+    void run('forms-owner-save', async () => {
       const res = await fetch(`/api/forms/templates/${editingTemplate.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -282,9 +276,7 @@ export function ManagementFormsView({
       };
       setOwnerTemplates((prev) => prev.map((tpl) => (tpl.id === updated.id ? updated : tpl)));
       setOwnerEditId(null);
-    } finally {
-      setOwnerSaving(false);
-    }
+    });
   }
 
   function submissionToCsvInput(s: FormsReviewSubmission): SubmissionReportCsvInput {
@@ -313,9 +305,8 @@ export function ManagementFormsView({
     );
   }
 
-  async function importDefaultTemplates() {
-    setImportingDefaults(true);
-    try {
+  function importDefaultTemplates() {
+    void run('forms-import-defaults', async () => {
       const res = await fetch('/api/forms/templates/import-defaults', {
         method: 'POST',
       });
@@ -325,14 +316,11 @@ export function ManagementFormsView({
         return;
       }
       router.refresh();
-    } finally {
-      setImportingDefaults(false);
-    }
+    });
   }
 
-  async function importBaristaTemplates() {
-    setImportingBarista(true);
-    try {
+  function importBaristaTemplates() {
+    void run('forms-import-barista', async () => {
       const res = await fetch('/api/forms/templates/import-barista', { method: 'POST' });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -356,14 +344,12 @@ export function ManagementFormsView({
       ].filter(Boolean);
       alert(lines.join('\n\n'));
       router.refresh();
-    } finally {
-      setImportingBarista(false);
-    }
+    });
   }
 
   function renderField(f: FormFieldDef, tplId: string) {
     const v = answers[f.key];
-    const disabled = submitting || openId !== tplId;
+    const disabled = isBusy('forms-submit') || openId !== tplId;
 
     const setVal = (val: unknown) => setAnswers((a) => ({ ...a, [f.key]: val }));
 
@@ -520,18 +506,18 @@ export function ManagementFormsView({
               <button
                 type="button"
                 onClick={importDefaultTemplates}
-                disabled={importingDefaults || importingBarista}
+                disabled={isBusy('forms-import-defaults') || isBusy('forms-import-barista')}
                 className="app-btn-secondary"
               >
-                {importingDefaults ? t.forms.importDefaultTemplatesWorking : t.forms.importDefaultTemplates}
+                {isBusy('forms-import-defaults') ? t.forms.importDefaultTemplatesWorking : t.forms.importDefaultTemplates}
               </button>
               <button
                 type="button"
                 onClick={importBaristaTemplates}
-                disabled={importingBarista || importingDefaults}
+                disabled={isBusy('forms-import-barista') || isBusy('forms-import-defaults')}
                 className="app-btn-secondary"
               >
-                {importingBarista ? t.forms.importBaristaTemplatesWorking : t.forms.importBaristaTemplates}
+                {isBusy('forms-import-barista') ? t.forms.importBaristaTemplatesWorking : t.forms.importBaristaTemplates}
               </button>
             </div>
             <ImportGoogleFormPastePanel />
@@ -664,8 +650,8 @@ export function ManagementFormsView({
                       <button type="button" onClick={() => setOwnerEditId(null)} className="app-btn-secondary">
                         {t.common.cancel}
                       </button>
-                      <button type="button" onClick={saveOwnerEdit} disabled={ownerSaving} className="app-btn-primary">
-                        {ownerSaving ? t.common.loading : t.common.save}
+                      <button type="button" onClick={saveOwnerEdit} disabled={isBusy('forms-owner-save')} className="app-btn-primary">
+                        {isBusy('forms-owner-save') ? t.common.loading : t.common.save}
                       </button>
                     </div>
                   </div>
@@ -764,11 +750,11 @@ export function ManagementFormsView({
                               </button>
                               <button
                                 type="button"
-                                disabled={submitting}
+                                disabled={isBusy('forms-submit')}
                                 onClick={() => handleSubmit(tpl)}
                                 className="app-btn-primary"
                               >
-                                {submitting ? t.forms.submitting : t.forms.submit}
+                                {isBusy('forms-submit') ? t.forms.submitting : t.forms.submit}
                               </button>
                             </div>
                           </div>

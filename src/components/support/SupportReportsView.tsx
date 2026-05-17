@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { MAX_SCREENSHOTS } from '@/lib/support-reports';
+import { useGuardedAction } from '@/contexts/AsyncActionContext';
 
 type ReportRow = {
   id: string;
@@ -26,9 +27,7 @@ export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [screenshotPaths, setScreenshotPaths] = useState<string[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { run, isBusy } = useGuardedAction();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,15 +52,14 @@ export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
     void load();
   }, [load]);
 
-  async function onPickScreenshots(e: React.ChangeEvent<HTMLInputElement>) {
+  function onPickScreenshots(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files?.length) return;
     const remaining = MAX_SCREENSHOTS - screenshotPaths.length;
     if (remaining <= 0) return;
 
-    setUploading(true);
-    setErr(null);
-    try {
+    void run('support-upload', async () => {
+      setErr(null);
       const added: string[] = [];
       for (const file of Array.from(files).slice(0, remaining)) {
         if (!file.type.startsWith('image/')) continue;
@@ -79,21 +77,18 @@ export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
       if (added.length > 0) {
         setScreenshotPaths((prev) => [...prev, ...added].slice(0, MAX_SCREENSHOTS));
       }
-    } finally {
-      setUploading(false);
       e.target.value = '';
-    }
+    });
   }
 
   function removeScreenshot(path: string) {
     setScreenshotPaths((prev) => prev.filter((p) => p !== path));
   }
 
-  async function submitReport(e: React.FormEvent) {
+  function submitReport(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitting(true);
-    setErr(null);
-    try {
+    void run('support-submit', async () => {
+      setErr(null);
       const res = await fetch('/api/support/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,18 +104,13 @@ export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
       setDescription('');
       setScreenshotPaths([]);
       await load();
-    } catch {
-      setErr(t.support.submitFailed);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   }
 
-  async function deleteReport(id: string) {
+  function deleteReport(id: string) {
     if (!confirm(t.support.deleteConfirm)) return;
-    setDeletingId(id);
-    setErr(null);
-    try {
+    void run(`support-del-${id}`, async () => {
+      setErr(null);
       const res = await fetch(`/api/support/reports/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         credentials: 'include',
@@ -131,11 +121,7 @@ export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
         return;
       }
       setReports((prev) => prev.filter((r) => r.id !== id));
-    } catch {
-      setErr(t.support.deleteFailed);
-    } finally {
-      setDeletingId(null);
-    }
+    });
   }
 
   const sectionClass = 'app-section';
@@ -182,7 +168,7 @@ export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
             type="file"
             accept="image/*"
             multiple
-            disabled={uploading || screenshotPaths.length >= MAX_SCREENSHOTS}
+            disabled={isBusy('support-upload') || screenshotPaths.length >= MAX_SCREENSHOTS}
             className="mt-2 block w-full text-sm"
             onChange={onPickScreenshots}
           />
@@ -211,10 +197,10 @@ export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
         </div>
         <button
           type="submit"
-          disabled={submitting || uploading}
+          disabled={isBusy('support-submit') || isBusy('support-upload')}
           className="app-btn-primary disabled:opacity-50"
         >
-          {submitting ? t.support.submitting : t.support.submitButton}
+          {isBusy('support-submit') ? t.support.submitting : t.support.submitButton}
         </button>
       </form>
 
@@ -250,11 +236,11 @@ export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
                   {isOwner ? (
                     <button
                       type="button"
-                      disabled={deletingId === r.id}
+                      disabled={isBusy(`support-del-${r.id}`)}
                       className="shrink-0 rounded-lg border border-red-300 dark:border-red-500/50 px-3 py-1.5 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
                       onClick={() => void deleteReport(r.id)}
                     >
-                      {deletingId === r.id ? t.common.deleting : t.common.delete}
+                      {isBusy(`support-del-${r.id}`) ? t.common.deleting : t.common.delete}
                     </button>
                   ) : null}
                 </div>

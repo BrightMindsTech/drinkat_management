@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useGuardedAction } from '@/contexts/AsyncActionContext';
 import type { Department } from '@prisma/client';
 
 type DepartmentWithCount = Department & { _count?: { employees: number } };
@@ -16,7 +17,7 @@ export function DepartmentSection({
   const { t } = useLanguage();
   const [departments, setDepartments] = useState<DepartmentWithCount[]>(initialDepartments);
   const [newName, setNewName] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { run, isBusy } = useGuardedAction();
 
   useEffect(() => {
     fetch('/api/departments')
@@ -28,11 +29,10 @@ export function DepartmentSection({
       .catch(() => {});
   }, [onDepartmentsChange]);
 
-  async function handleAdd(e: React.FormEvent) {
+  function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!newName.trim()) return;
-    setLoading(true);
-    try {
+    void run('dept-add', async () => {
       const res = await fetch('/api/departments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -45,16 +45,13 @@ export function DepartmentSection({
         onDepartmentsChange?.(next);
         setNewName('');
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
-  async function handleDelete(id: string, name: string) {
+  function handleDelete(id: string, name: string) {
     const ok = confirm(t.hr.deleteDepartmentConfirm.replace('{name}', name));
     if (!ok) return;
-    setLoading(true);
-    try {
+    void run(`dept-del-${id}`, async () => {
       const res = await fetch(`/api/departments/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         alert(t.hr.failedDeleteDepartment);
@@ -63,9 +60,7 @@ export function DepartmentSection({
       const next = departments.filter((d) => d.id !== id);
       setDepartments(next);
       onDepartmentsChange?.(next);
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   return (
@@ -81,7 +76,7 @@ export function DepartmentSection({
         />
         <button
           type="submit"
-          disabled={loading || !newName.trim()}
+          disabled={isBusy() || !newName.trim()}
           className="rounded-ios bg-ios-blue text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
           {t.common.create}
@@ -96,7 +91,7 @@ export function DepartmentSection({
               <button
                 type="button"
                 onClick={() => handleDelete(d.id, d.name)}
-                disabled={loading}
+                disabled={isBusy(`dept-del-${d.id}`)}
                 className="text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
               >
                 {t.common.delete}

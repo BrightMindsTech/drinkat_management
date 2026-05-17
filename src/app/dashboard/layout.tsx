@@ -11,10 +11,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await getServerSession(authOptions);
   if (!session) redirect('/login');
 
+  const userId = (session.user as { id?: string }).id;
+  if (!userId) redirect('/login');
+
   const navRole = normalizeUserRole(session.user.role);
 
   const userForNav = await prisma.user.findUnique({
-    where: { id: session.user.id },
+    where: { id: userId },
     include: { employee: { include: { department: true } } },
   });
   /** Staff in QC dept get manager-style nav; owner keeps owner nav (still full QC on `/dashboard/qc`). */

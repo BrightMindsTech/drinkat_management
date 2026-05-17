@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { Branch, Department } from '@prisma/client';
 import type { Employee } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSubmitLock } from '@/lib/use-async-action-lock';
 
 type EmployeeWithRelations = Employee & { branch: Branch; department?: Department | null; user: { email: string } | null };
 
@@ -32,19 +33,17 @@ export function RegisterStaffForm({
   const [advanceLimit, setAdvanceLimit] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [uploadingIdCard, setUploadingIdCard] = useState(false);
+  const submitLock = useSubmitLock();
   const [error, setError] = useState('');
   const [idCardFrontFile, setIdCardFrontFile] = useState<File | null>(null);
   const [idCardFrontPreviewUrl, setIdCardFrontPreviewUrl] = useState<string | null>(null);
   const [idCardBackFile, setIdCardBackFile] = useState<File | null>(null);
   const [idCardBackPreviewUrl, setIdCardBackPreviewUrl] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
+    void submitLock.run(async () => {
+      setError('');
       const salaryNum = salaryAmount.trim() ? Number(salaryAmount) : NaN;
       const salaryValue = Number.isNaN(salaryNum) ? undefined : salaryNum;
 
@@ -60,7 +59,6 @@ export function RegisterStaffForm({
         return;
       }
 
-      setUploadingIdCard(true);
       // Upload front
       {
         const formData = new FormData();
@@ -127,10 +125,7 @@ export function RegisterStaffForm({
       setIdCardFrontPreviewUrl(null);
       setIdCardBackFile(null);
       setIdCardBackPreviewUrl(null);
-    } finally {
-      setUploadingIdCard(false);
-      setLoading(false);
-    }
+    });
   }
 
   return (
@@ -301,7 +296,7 @@ export function RegisterStaffForm({
               setIdCardFrontPreviewUrl(f ? URL.createObjectURL(f) : null);
             }}
             className="block w-full text-sm text-app-muted file:mr-2 file:rounded file:border-0 file:bg-gray-200 dark:border-ios-dark-separator/20 file:px-3 file:py-1 file:text-app-primary"
-            disabled={loading || uploadingIdCard}
+            disabled={submitLock.busy}
           />
           {idCardFrontPreviewUrl && (
             <div className="mt-2">
@@ -322,7 +317,7 @@ export function RegisterStaffForm({
               setIdCardBackPreviewUrl(f ? URL.createObjectURL(f) : null);
             }}
             className="block w-full text-sm text-app-muted file:mr-2 file:rounded file:border-0 file:bg-gray-200 dark:border-ios-dark-separator/20 file:px-3 file:py-1 file:text-app-primary"
-            disabled={loading || uploadingIdCard}
+            disabled={submitLock.busy}
           />
           {idCardBackPreviewUrl && (
             <div className="mt-2">
@@ -337,10 +332,10 @@ export function RegisterStaffForm({
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={loading}
+          disabled={submitLock.busy}
           className="rounded-ios bg-ios-blue text-white px-4 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50"
         >
-          {loading ? (uploadingIdCard ? t.common.uploading : t.registerStaff.creating) : t.common.create}
+          {submitLock.busy ? t.registerStaff.creating : t.common.create}
         </button>
         <button type="button" onClick={onCancel} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">
           {t.common.cancel}

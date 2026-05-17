@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import type { FormFieldDef } from '@/lib/formTemplate';
+import { useSubmitLock } from '@/lib/use-async-action-lock';
 
 type DraftField = {
   id: string;
@@ -64,7 +65,7 @@ export function CreateFormPanel() {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<'qc' | 'marketing' | 'kitchen' | 'cash'>('qc');
   const [fields, setFields] = useState<DraftField[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const submitLock = useSubmitLock();
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -124,8 +125,7 @@ export function CreateFormPanel() {
       throw e;
     }
 
-    setSubmitting(true);
-    try {
+    void submitLock.run(async () => {
       const res = await fetch('/api/forms/templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,9 +147,7 @@ export function CreateFormPanel() {
       setFields([]);
       setOpen(false);
       router.refresh();
-    } finally {
-      setSubmitting(false);
-    }
+    });
   }
 
   const ft = t.forms.fieldTypes;
@@ -285,11 +283,11 @@ export function CreateFormPanel() {
 
           <button
             type="button"
-            disabled={submitting}
+            disabled={submitLock.busy}
             onClick={submit}
             className="w-full sm:w-auto px-4 py-2.5 rounded-ios bg-ios-blue text-white text-sm font-semibold disabled:opacity-50"
           >
-            {submitting ? t.forms.creatingForm : t.forms.createFormSubmit}
+            {submitLock.busy ? t.forms.creatingForm : t.forms.createFormSubmit}
           </button>
         </div>
       )}

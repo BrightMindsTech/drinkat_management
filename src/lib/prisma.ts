@@ -1,23 +1,31 @@
 // Local Node dev must use `@prisma/client` (native query engine). `@prisma/client/wasm` fails to
 // initialize in Node (401 on login). Cloudflare Workers + D1 still use WASM + adapter — load wasm
 // only when `env.DB` is present so the wasm bundle is never executed locally.
+//
+// IMPORTANT: On Workers, always use env.DB (see prisma-resolve-runtime.ts). Do NOT detect Workers
+// via navigator/document — nodejs_compat can define `document` and skip D1 with DATABASE_URL="".
 import { cache } from 'react';
 import { PrismaClient as PrismaClientNode } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import { PrismaD1 } from '@prisma/adapter-d1';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
+import { prismaRuntimeError, resolvePrismaRuntime } from '@/lib/prisma-resolve-runtime';
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
-
-/** Workers have `navigator` but no `document`; Node local dev has neither (or no document). */
-function isCloudflareWorkerRuntime(): boolean {
-  const g = globalThis as { navigator?: unknown; document?: unknown };
-  return typeof g.navigator !== 'undefined' && typeof g.document === 'undefined';
-}
 
 /** OpenNext dev may polyfill `navigator` — use Node’s version string to pick the native Prisma engine. */
 function isNodeJsRuntime(): boolean {
   return typeof process !== 'undefined' && typeof process.versions?.node === 'string';
+}
+
+/** Prefer D1 when the Worker binding exists (do not rely on navigator/document heuristics). */
+function hasD1Binding(): boolean {
+  try {
+    const { env } = getCloudflareContext({ async: false });
+    return Boolean(env?.DB);
+  } catch {
+    return false;
+  }
 }
 
 function createWorkerPrismaClient(): PrismaClient {
@@ -39,32 +47,26 @@ const getWorkerPrisma = cache((): PrismaClient => createWorkerPrismaClient());
 
 function getClient(): PrismaClient {
   const url = process.env.DATABASE_URL ?? '';
+  const kind = resolvePrismaRuntime({
+    databaseUrl: url,
+    isNodeJs: isNodeJsRuntime(),
+    hasD1Binding: hasD1Binding(),
+  });
 
-  if (url.startsWith('file:') && isNodeJsRuntime()) {
-    if (!globalForPrisma.prisma) {
-      globalForPrisma.prisma = new PrismaClientNode();
+  switch (kind) {
+    case 'node-file':
+    case 'node-url': {
+      if (!globalForPrisma.prisma) {
+        globalForPrisma.prisma = new PrismaClientNode();
+      }
+      return globalForPrisma.prisma;
     }
-    return globalForPrisma.prisma;
+    case 'd1':
+      return getWorkerPrisma();
+    case 'misconfigured':
+    default:
+      throw new Error(prismaRuntimeError(kind));
   }
-
-  if (isCloudflareWorkerRuntime()) {
-    return getWorkerPrisma();
-  }
-
-  if (url.startsWith('file:')) {
-    throw new Error(
-      'Prisma would use bundled file DATABASE_URL on Cloudflare instead of D1. env.DB was not available from getCloudflareContext().'
-    );
-  }
-  if (url) {
-    if (!globalForPrisma.prisma) {
-      globalForPrisma.prisma = new PrismaClientNode();
-    }
-    return globalForPrisma.prisma;
-  }
-  throw new Error(
-    'Database not configured: set DATABASE_URL to a file: URL for local dev, or deploy with D1 binding "DB".'
-  );
 }
 
 /**
