@@ -3,10 +3,38 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import * as bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
 
+/** Keep session cookie and JWT lifetimes aligned (30 days). */
+const SESSION_MAX_AGE_SEC = 30 * 24 * 60 * 60;
+
+const useSecureCookies =
+  process.env.NEXTAUTH_URL?.startsWith('https://') ?? process.env.NODE_ENV === 'production';
+
+function resolveAuthSecret(): string {
+  const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
+  if (secret) return secret;
+  // Local dev only — production Workers must set NEXTAUTH_SECRET via wrangler secret.
+  return 'dev-insecure-nextauth-secret';
+}
+
 export const authOptions: NextAuthOptions = {
   // Required in production; OpenNext copies Worker secrets into process.env per request init.
-  secret: process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET,
-  session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 },
+  secret: resolveAuthSecret(),
+  trustHost: true,
+  session: { strategy: 'jwt', maxAge: SESSION_MAX_AGE_SEC },
+  jwt: { maxAge: SESSION_MAX_AGE_SEC },
+  useSecureCookies,
+  cookies: {
+    sessionToken: {
+      name: useSecureCookies ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: useSecureCookies,
+        maxAge: SESSION_MAX_AGE_SEC,
+      },
+    },
+  },
   pages: { signIn: '/login' },
   providers: [
     CredentialsProvider({
