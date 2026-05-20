@@ -6,6 +6,7 @@ import { parseTemplateFields } from '@/lib/formTemplate';
 import {
   canManagerAssignTemplate,
   isTemplateVisibleInFillCatalog,
+  managerManagementFormSubmissionWhere,
   normalizeUserRole,
   type FormViewContext,
 } from '@/lib/formVisibility';
@@ -154,9 +155,7 @@ export default async function FormsPage() {
 
       const managerEmployee = userWithEmployee.employee;
       const list = await prisma.managementFormSubmission.findMany({
-        where: {
-          employee: { reportsToEmployeeId: managerEmployee.id },
-        },
+        where: managerManagementFormSubmissionWhere(managerEmployee),
         include: {
           template: { include: { departmentAssignments: true } },
           employee: {

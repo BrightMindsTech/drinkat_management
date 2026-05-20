@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
-import { normalizeUserRole } from '@/lib/formVisibility';
+import { managerManagementFormSubmissionWhere, normalizeUserRole } from '@/lib/formVisibility';
 import { parseTemplateFields, type FormFieldDef } from '@/lib/formTemplate';
 
 const EXPORT_LIMIT = 10_000;
@@ -80,7 +80,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     list = await prisma.managementFormSubmission.findMany({
       where: {
         ...whereBase,
-        employee: { reportsToEmployeeId: mgr.id },
+        ...managerManagementFormSubmissionWhere(mgr),
       },
       include: {
         employee: {

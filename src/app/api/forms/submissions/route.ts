@@ -2,9 +2,15 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { parseTemplateFields, validateAnswersAgainstFields } from '@/lib/formTemplate';
-import { canUserFillTemplate, normalizeUserRole, type FormViewContext } from '@/lib/formVisibility';
+import {
+  canUserFillTemplate,
+  managerManagementFormSubmissionWhere,
+  normalizeUserRole,
+  type FormViewContext,
+} from '@/lib/formVisibility';
 import {
   createInboxForUsers,
+  getManagerUserIdForEmployee,
   getOwnerUserIds,
 } from '@/lib/time-clock-helpers';
 import { sendPushToUser } from '@/lib/push';
@@ -54,9 +60,7 @@ export async function GET(req: NextRequest) {
     if (!user?.employee) return Response.json([]);
     const mgr = user.employee;
     const list = await prisma.managementFormSubmission.findMany({
-      where: {
-        employee: { reportsToEmployeeId: mgr.id },
-      },
+      where: managerManagementFormSubmissionWhere(mgr),
       include: {
         template: true,
         employee: { include: { branch: true, department: true, reportsToEmployee: { select: { id: true, name: true } } } },
@@ -196,6 +200,22 @@ export async function POST(req: NextRequest) {
       dataJson: inboxData,
     });
     for (const id of ownerIds) notifiedUserIds.add(id);
+  }
+
+  if (template.category === 'qc' && emp.branchId) {
+    const branchManagerUserId = await getManagerUserIdForEmployee({
+      reportsToEmployeeId: null,
+      branchId: emp.branchId,
+    });
+    if (branchManagerUserId && !notifiedUserIds.has(branchManagerUserId)) {
+      await createInboxForUsers([branchManagerUserId], {
+        category: 'forms_submission_branch_manager',
+        title: inboxTitle,
+        body: inboxBody,
+        dataJson: inboxData,
+      });
+      notifiedUserIds.add(branchManagerUserId);
+    }
   }
 
   if (notifiedUserIds.size > 0) {

@@ -144,3 +144,13 @@ export function isTemplateVisibleInFillCatalog(
 export function canReviewManagementSubmission(_userRole: string | undefined | null, _templateCategory: string): boolean {
   return false;
 }
+
+/** Managers see direct-report submissions plus QC forms filed at their branch. */
+export function managerManagementFormSubmissionWhere(manager: { id: string; branchId: string }) {
+  return {
+    OR: [
+      { employee: { reportsToEmployeeId: manager.id } },
+      { template: { category: 'qc' }, branchId: manager.branchId },
+    ],
+  };
+}
