@@ -538,6 +538,9 @@ export const ar: LocaleMessages = {
     expand: 'تعبئة',
     collapse: 'إغلاق',
     selectOption: 'اختر…',
+    takePhoto: 'التقاط صورة',
+    retakePhoto: 'إعادة التقاط',
+    cameraOnlyHint: 'استخدم الكاميرا مباشرة — لا يُقبل رفع صور من المعرض لهذا الحقل.',
     categories: {
       qc: 'مراقبة الجودة',
       marketing: 'التسويق',

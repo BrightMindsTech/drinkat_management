@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
@@ -88,6 +88,8 @@ export function ManagementFormsView({
   const [myList, setMyList] = useState(initialMySubmissions);
   const [openId, setOpenId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
+  const photoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [uploadingPhotoKey, setUploadingPhotoKey] = useState<string | null>(null);
   const { run, isBusy } = useGuardedAction();
   const [ownerTemplates, setOwnerTemplates] = useState<FormsTemplateRow[]>(allTemplatesForOwner ?? []);
   const [ownerEditId, setOwnerEditId] = useState<string | null>(null);
@@ -153,9 +155,13 @@ export function ManagementFormsView({
   async function uploadPhoto(file: File): Promise<string | null> {
     const form = new FormData();
     form.set('file', file);
-    const r = await fetch('/api/upload', { method: 'POST', body: form });
+    const r = await fetch('/api/upload', { method: 'POST', body: form, credentials: 'include' });
     const d = await r.json();
     return d.url ?? null;
+  }
+
+  function triggerPhotoCapture(fieldKey: string) {
+    photoInputRefs.current[fieldKey]?.click();
   }
 
   function handleSubmit(template: FormsTemplateRow) {
@@ -442,7 +448,8 @@ export function ManagementFormsView({
             />
           </label>
         );
-      case 'photo':
+      case 'photo': {
+        const photoBusy = disabled || uploadingPhotoKey === f.key;
         return (
           <div key={f.key} className="text-sm">
             <span className="text-app-label font-medium block mb-1">
@@ -450,18 +457,43 @@ export function ManagementFormsView({
               {f.required ? ' *' : ''}
             </span>
             <input
+              ref={(el) => {
+                photoInputRefs.current[f.key] = el;
+              }}
               type="file"
               accept="image/*"
-              disabled={disabled}
+              capture="environment"
+              className="sr-only"
+              aria-hidden
+              tabIndex={-1}
+              disabled={photoBusy}
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                const url = await uploadPhoto(file);
-                if (url) setVal(url);
-                e.target.value = '';
+                setUploadingPhotoKey(f.key);
+                try {
+                  const url = await uploadPhoto(file);
+                  if (url) setVal(url);
+                } finally {
+                  setUploadingPhotoKey(null);
+                  e.target.value = '';
+                }
               }}
-              className="block w-full text-sm text-app-muted file:mr-2 file:rounded file:border-0 file:bg-ios-blue/10 file:px-3 file:py-1.5 file:text-ios-blue"
             />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={photoBusy}
+                onClick={() => triggerPhotoCapture(f.key)}
+                className="text-sm px-3 py-2 rounded-ios bg-ios-blue text-white disabled:opacity-50"
+              >
+                {typeof v === 'string' && v ? t.forms.retakePhoto : t.forms.takePhoto}
+              </button>
+              {uploadingPhotoKey === f.key && (
+                <span className="text-xs text-app-muted">{t.common.uploading}</span>
+              )}
+            </div>
+            <p className="text-xs text-app-muted mt-1.5">{t.forms.cameraOnlyHint}</p>
             {typeof v === 'string' && v && (
               <a href={v} target="_blank" rel="noopener noreferrer" className="text-ios-blue text-xs mt-1 inline-block">
                 {t.common.photo}
@@ -469,6 +501,7 @@ export function ManagementFormsView({
             )}
           </div>
         );
+      }
       default:
         return (
           <label key={f.key} className="block text-sm">

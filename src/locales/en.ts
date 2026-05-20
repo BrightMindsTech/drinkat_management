@@ -537,6 +537,9 @@ export const en = {
     expand: 'Fill',
     collapse: 'Close',
     selectOption: 'Choose…',
+    takePhoto: 'Take photo',
+    retakePhoto: 'Retake photo',
+    cameraOnlyHint: 'Use your camera — photos from the gallery are not accepted for this field.',
     categories: {
       qc: 'Quality control',
       marketing: 'Marketing',
