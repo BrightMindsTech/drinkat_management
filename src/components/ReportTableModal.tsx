@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReportTableData } from '@/lib/report-table';
+import { prepareModalViewport } from '@/lib/modal-present';
 
 export type { ReportTableData } from '@/lib/report-table';
 
@@ -19,20 +21,38 @@ export function ReportTableModal({
   screenshotHint?: string;
 }) {
   const modalCardRef = useRef<HTMLDivElement | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    requestAnimationFrame(() => {
-      modalCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const restore = prepareModalViewport('smooth');
+    const id = window.requestAnimationFrame(() => {
+      modalCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
     });
+    return () => {
+      window.cancelAnimationFrame(id);
+      restore();
+    };
   }, [open, report]);
 
-  if (!open || !report) return null;
+  if (!mounted || !open || !report) return null;
 
   const colCount = report.headers.length;
 
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4 overscroll-none"
+      role="dialog"
+      aria-modal="true"
+      data-app-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
         ref={modalCardRef}
         className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated shadow-2xl"
@@ -104,6 +124,7 @@ export function ReportTableModal({
           </table>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

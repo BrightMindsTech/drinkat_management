@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { QcScoreReport } from '@/lib/qc-form-score-report';
+import { prepareModalViewport } from '@/lib/modal-present';
 
 export function QcScoreReportModal({
   open,
@@ -13,21 +15,36 @@ export function QcScoreReportModal({
   onClose: () => void;
 }) {
   const modalCardRef = useRef<HTMLDivElement | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    requestAnimationFrame(() => {
-      modalCardRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
+    const restore = prepareModalViewport('smooth');
+    const id = window.requestAnimationFrame(() => {
+      modalCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
     });
+    return () => {
+      window.cancelAnimationFrame(id);
+      restore();
+    };
   }, [open, report]);
 
-  if (!open || !report) return null;
+  if (!mounted || !open || !report) return null;
 
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4 overscroll-none"
+      role="dialog"
+      aria-modal="true"
+      data-app-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
         ref={modalCardRef}
         className="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-xl border border-gray-300 bg-[#20c8d8] p-5 text-black shadow-2xl"
@@ -74,6 +91,7 @@ export function QcScoreReportModal({
         <p className="mt-2"><span className="font-semibold">Recommended Actions:</span> {report.recommendedActions}</p>
         <p className="mt-2"><span className="font-semibold">Branch Manager:</span> {report.branchManager}</p>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
