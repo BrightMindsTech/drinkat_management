@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { AppModal } from '@/components/AppModal';
 import { isInsideBranchRadius } from '@/lib/geo';
 
 export type TimeClockStatus = {
@@ -134,8 +135,13 @@ export function ForcedAwayModal({
 }) {
   const busy = loading || endShiftLoading;
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal>
-      <div className="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4">
+    <AppModal
+      open
+      onClose={onClose}
+      zIndexClass="z-[200]"
+      panelClassName="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4"
+      closeOnBackdrop={false}
+    >
         {notice ? (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-app-label">{t.timeClock.whereGoing}</h2>
@@ -202,7 +208,6 @@ export function ForcedAwayModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+    </AppModal>
   );
 }

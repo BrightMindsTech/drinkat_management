@@ -227,7 +227,10 @@ export async function POST(req: NextRequest) {
         await sendPushToUser(uid, userSubs, {
           title: inboxTitle,
           body: inboxBody,
-          data: { type: 'management_form_submitted' },
+          data: {
+            type: 'management_form_submitted',
+            submissionId: submission.id,
+          },
         });
       }
     } catch {

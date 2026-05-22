@@ -1,5 +1,6 @@
 import type { PushSubscription } from '@prisma/client';
 import webpush from 'web-push';
+import { enrichPushData } from '@/lib/push-navigation';
 
 export type PushPayload = {
   title: string;
@@ -88,13 +89,36 @@ async function makeApnsJwt(keyId: string, teamId: string, pem: string): Promise<
   return `${signingInput}.${base64UrlEncode(joseSig)}`;
 }
 
-async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise<boolean> {
+const APNS_EXPIRED_REASONS = new Set([
+  'BadDeviceToken',
+  'Unregistered',
+  'ExpiredToken',
+  'DeviceTokenNotForTopic',
+  'InvalidProviderToken',
+]);
+
+function apnsFailureIsExpired(status: number, reasonRaw: string): boolean {
+  if (status === 410) return true;
+  if (status !== 400) return false;
+  const trimmed = reasonRaw.trim();
+  if (!trimmed) return false;
+  if (APNS_EXPIRED_REASONS.has(trimmed)) return true;
+  try {
+    const parsed = JSON.parse(trimmed) as { reason?: string };
+    if (parsed.reason && APNS_EXPIRED_REASONS.has(parsed.reason)) return true;
+  } catch {
+    /* plain-text reason */
+  }
+  return false;
+}
+
+async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise<PushDeliveryResult> {
   const keyId = process.env.APNS_KEY_ID;
   const teamId = process.env.APNS_TEAM_ID;
   const rawKey = process.env.APNS_PRIVATE_KEY?.replace(/\\n/g, '\n');
   const bundleId = process.env.APNS_BUNDLE_ID ?? 'com.bmtechs.drinkat';
   const useSandbox = process.env.APNS_USE_SANDBOX === '1' || process.env.APNS_USE_SANDBOX === 'true';
-  if (!keyId || !teamId || !rawKey) return false;
+  if (!keyId || !teamId || !rawKey) return 'failed';
 
   let jwt: string;
   try {
@@ -107,7 +131,7 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
       privateKeyLength: rawKey.length,
       error: e instanceof Error ? e.message : String(e),
     });
-    return false;
+    return 'failed';
   }
 
   const primaryHost = useSandbox ? 'api.sandbox.push.apple.com' : 'api.push.apple.com';
@@ -127,7 +151,7 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
     }
   }
 
-  const sendToHost = async (host: string) => {
+  const sendToHost = async (host: string): Promise<PushDeliveryResult> => {
     const res = await fetch(`https://${host}/3/device/${tok}`, {
       method: 'POST',
       headers: {
@@ -140,27 +164,31 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
       },
       body: JSON.stringify(body),
     });
-    if (!res.ok) {
-      const reason = await res.text().catch(() => '');
-      console.error('[push/apns] delivery failed', {
-        host,
-        status: res.status,
-        bundleId,
-        reason,
-      });
-    }
-    return res.ok;
+    if (res.ok) return 'ok';
+    const reasonBody = await res.text().catch(() => '');
+    const reasonHeader = res.headers.get('apns-reason') ?? '';
+    const reason = reasonHeader || reasonBody;
+    const expired = apnsFailureIsExpired(res.status, reason);
+    console.error('[push/apns] delivery failed', {
+      host,
+      status: res.status,
+      bundleId,
+      expired,
+      reason: reason.slice(0, 200),
+    });
+    return expired ? 'expired' : 'failed';
   };
 
   try {
-    if (await sendToHost(primaryHost)) return true;
+    const primary = await sendToHost(primaryHost);
+    if (primary === 'ok') return 'ok';
+    if (primary === 'expired') return 'expired';
   } catch (e) {
     console.error('[push/apns] primary host request failed', {
       host: primaryHost,
       bundleId,
       error: e instanceof Error ? e.message : String(e),
     });
-    // Continue to fallback host below.
   }
   try {
     return await sendToHost(fallbackHost);
@@ -170,7 +198,7 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
       bundleId,
       error: e instanceof Error ? e.message : String(e),
     });
-    return false;
+    return 'failed';
   }
 }
 
@@ -190,22 +218,27 @@ export async function sendPushToSubscription(
   sub: PushSubscription,
   payload: PushPayload
 ): Promise<PushDeliveryResult> {
+  const enriched: PushPayload = {
+    ...payload,
+    data: enrichPushData(payload.data),
+  };
+
   if (sub.provider === 'web' && sub.keysJson) {
     if (!ensureVapid()) return 'failed';
     try {
       const keys = JSON.parse(sub.keysJson) as { auth: string; p256dh: string };
       const topic =
-        payload.data?.type?.slice(0, 32) ??
-        payload.title.slice(0, 32).replace(/\s+/g, '_');
+        enriched.data?.type?.slice(0, 32) ??
+        enriched.title.slice(0, 32).replace(/\s+/g, '_');
       await webpush.sendNotification(
         {
           endpoint: sub.endpoint,
           keys,
         },
         JSON.stringify({
-          title: payload.title,
-          body: payload.body,
-          data: payload.data ?? {},
+          title: enriched.title,
+          body: enriched.body,
+          data: enriched.data ?? {},
         }),
         {
           TTL: 300,
@@ -235,8 +268,8 @@ export async function sendPushToSubscription(
         body: JSON.stringify({
           to: token,
           priority: 'high',
-          notification: { title: payload.title, body: payload.body },
-          data: payload.data ?? {},
+          notification: { title: enriched.title, body: enriched.body },
+          data: enriched.data ?? {},
         }),
       });
       if (res.status === 404 || res.status === 410) return 'expired';
@@ -249,24 +282,28 @@ export async function sendPushToSubscription(
   if (sub.provider === 'apns' && sub.endpoint.startsWith('apns:')) {
     const deviceToken = sub.endpoint.slice(5);
     if (deviceToken.length < 10) return 'failed';
-    const ok = await sendApnsAlert(deviceToken, payload);
-    return ok ? 'ok' : 'failed';
+    return sendApnsAlert(deviceToken, enriched);
   }
 
   return 'failed';
 }
 
-/** @returns count of subscriptions that accepted the push */
+export type PushUserSendResult = {
+  delivered: number;
+  expiredRemoved: number;
+};
+
+/** @returns delivery count and how many stale subscription rows were deleted */
 export async function sendPushToUser(
   userId: string,
   subs: PushSubscription[],
   payload: PushPayload
-): Promise<number> {
-  let sent = 0;
+): Promise<PushUserSendResult> {
+  let delivered = 0;
   const expiredIds: string[] = [];
   for (const s of subs) {
     const result = await sendPushToSubscription(s, payload);
-    if (result === 'ok') sent += 1;
+    if (result === 'ok') delivered += 1;
     else if (result === 'expired') expiredIds.push(s.id);
   }
   if (expiredIds.length > 0) {
@@ -274,5 +311,5 @@ export async function sendPushToUser(
     await prisma.pushSubscription.deleteMany({ where: { id: { in: expiredIds } } });
     console.log('[push] removed expired subscriptions', { userId, count: expiredIds.length });
   }
-  return sent;
+  return { delivered, expiredRemoved: expiredIds.length };
 }

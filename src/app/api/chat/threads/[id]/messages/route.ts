@@ -19,14 +19,6 @@ const postSchema = z.object({
 
 const PAGE = 50;
 
-function originFromRequest(req: Request) {
-  const u = new URL(req.url);
-  const host = req.headers.get('x-forwarded-host') ?? u.host;
-  const proto = (req.headers.get('x-forwarded-proto') ?? u.protocol.replace(':', '')).split(',')[0]?.trim();
-  const p = proto && proto.length > 0 ? proto : 'https';
-  return `${p}://${host}`;
-}
-
 type RouteCtx = { params: Promise<{ id: string }> };
 
 export async function GET(req: Request, ctx: RouteCtx) {
@@ -146,8 +138,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
     const isDirectPost = thread ? chatThreadIsDirect(thread) : true;
     const recipientIds =
       thread?.participants.filter((p) => p.userId !== session.user.id).map((p) => p.userId) ?? [];
-    const origin = originFromRequest(req);
-    const deepLink = `${origin}/dashboard/messages?thread=${encodeURIComponent(threadId)}`;
+    const deepLink = `/dashboard/messages?thread=${encodeURIComponent(threadId)}`;
 
     after(async () => {
       try {

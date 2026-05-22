@@ -1,6 +1,7 @@
 'use client';
 
 import { Capacitor } from '@capacitor/core';
+import { openPushDestination } from '@/lib/push-open-client';
 
 /** True when running inside the Capacitor iOS shell (not Mobile Safari). */
 export function isCapacitorIos(): boolean {
@@ -22,14 +23,6 @@ let deliveryListenersAttached = false;
 let pendingFinish: ((ok: boolean) => void) | null = null;
 let inFlightPromise: Promise<boolean> | null = null;
 
-function openUrlFromPushData(data: Record<string, unknown> | undefined) {
-  if (typeof window === 'undefined' || !data) return;
-  const url = data.url;
-  if (typeof url === 'string' && url.length > 0) {
-    window.location.href = url;
-  }
-}
-
 /**
  * Tap-to-open deep links + keep push channel warm when returning to foreground.
  */
@@ -40,7 +33,7 @@ export async function setupNativePushDelivery(): Promise<void> {
 
   await PushNotifications.addListener('pushNotificationActionPerformed', (event) => {
     const data = event.notification.data as Record<string, unknown> | undefined;
-    openUrlFromPushData(data);
+    openPushDestination(data);
   });
 
   await PushNotifications.addListener('pushNotificationReceived', (notification) => {

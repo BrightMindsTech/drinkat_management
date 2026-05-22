@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 import { purgeExpiredChat } from '@/lib/chat-retention';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
+import { sendClockInRemindersIfInWindow } from '@/lib/clock-in-reminder';
 import { sendClockOutRemindersIfInWindow } from '@/lib/clock-out-reminder';
 import { sendWeeklyRatingRemindersIfDue } from '@/lib/weekly-rating-reminders';
 import { maybeRunAutoClockOutIfDue } from '@/lib/auto-clock-out-daily';
@@ -12,7 +13,7 @@ import { maybeRunAutoClockOutIfDue } from '@/lib/auto-clock-out-daily';
  * Runs away-session expiry **and** chat retention purge.
  * Chat retention also runs automatically (throttled) when anyone loads Messages — no URL schedule required.
  * This endpoint is optional: use it if you already ping it for away-session processing.
- * For ~30m-before-shift clock-out push reminders, call this (or a dedicated schedule) on an interval
+ * For ~30m-before-shift clock-in / clock-out push reminders, call this (or a dedicated schedule) on an interval
  * of a few minutes so the 24–36 minute window is hit reliably.
  *
  * **Daily 4:00 AM auto clock-out** normally runs from app traffic via `maybeRunAutoClockOutIfDue` (watermark —
@@ -48,6 +49,7 @@ export async function GET(req: Request) {
   let chat: { messagesDeleted: number; threadsDeleted: number; typingDeleted: number } | null = null;
   let weeklyRatings: { sentUsers: number; weekKey: string; skipped: boolean } | null = null;
   let clockOutReminders: { sent: number; checked: number } | null = null;
+  let clockInReminders: { sent: number; checked: number } | null = null;
   try {
     chat = await purgeExpiredChat(prisma);
   } catch (e) {
@@ -62,6 +64,11 @@ export async function GET(req: Request) {
     clockOutReminders = await sendClockOutRemindersIfInWindow();
   } catch (e) {
     console.error('[cron/time-clock] clock-out shift reminders failed', e);
+  }
+  try {
+    clockInReminders = await sendClockInRemindersIfInWindow();
+  } catch (e) {
+    console.error('[cron/time-clock] clock-in reminders failed', e);
   }
 
   try {
@@ -78,5 +85,6 @@ export async function GET(req: Request) {
     chat,
     weeklyRatings,
     clockOutReminders,
+    clockInReminders,
   });
 }

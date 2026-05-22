@@ -1,4 +1,6 @@
 /* global self, clients */
+importScripts('/push-navigation-sw.js');
+
 function parsePushPayload(event) {
   const fallback = { title: 'DrinkatHR', body: '', data: {} };
   if (!event.data) return Promise.resolve(fallback);
@@ -17,6 +19,7 @@ self.addEventListener('push', (event) => {
     const title = payload.title || 'DrinkatHR';
     const body = payload.body || '';
     const tag = payload.data?.type || payload.data?.threadId || 'drinkat-alert';
+    const data = enrichPushData(payload.data || {});
     const opts = {
       body,
       tag,
@@ -24,7 +27,7 @@ self.addEventListener('push', (event) => {
       requireInteraction: false,
       silent: false,
       vibrate: [120, 60, 120],
-      data: { ...(payload.data || {}), url: payload.data?.url || payload.url },
+      data,
       icon: '/favicon.ico',
       badge: '/favicon.ico',
     };
@@ -36,20 +39,25 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data?.url;
-  if (!url) return;
+  const raw = event.notification.data || {};
+  const path = resolvePushNavigationUrl(raw);
+  if (!path) return;
+
+  const targetUrl = path.startsWith('/')
+    ? new URL(path, self.location.origin).href
+    : path;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       for (const c of windowClients) {
-        if (c.url.startsWith(new URL(url, self.location.origin).origin) && 'focus' in c) {
+        if (c.url.startsWith(self.location.origin) && 'focus' in c) {
           if ('navigate' in c && typeof c.navigate === 'function') {
-            return c.navigate(url).then(() => c.focus());
+            return c.navigate(targetUrl).then(() => c.focus());
           }
           return c.focus();
         }
       }
-      if (clients.openWindow) return clients.openWindow(url);
+      if (clients.openWindow) return clients.openWindow(targetUrl);
     })
   );
 });

@@ -189,3 +189,60 @@ export function isShiftEndedOrWithin30Min(
 ): boolean {
   return minutesUntilShiftEnd(now, shift, timeZone, branch) <= 30;
 }
+
+function minutesUntilMorningShiftStart(now: Date, shift: ShiftDefinition, tz: string): number {
+  const startToday = utcAtLocalWallTime(now, tz, shift.startMinute);
+  if (now.getTime() < startToday.getTime()) {
+    return (startToday.getTime() - now.getTime()) / 60000;
+  }
+  const L = localMinutesFromDate(now, tz);
+  if (L < shift.endMinute) return -1;
+  const ymd = formatInTimeZone(now, tz, 'yyyy-MM-dd');
+  const tomorrow = addDays(parse(ymd, 'yyyy-MM-dd', new Date(0)), 1);
+  const startTomorrow = utcAtLocalWallTime(tomorrow, tz, shift.startMinute);
+  return (startTomorrow.getTime() - now.getTime()) / 60000;
+}
+
+function minutesUntilStandardNightShiftStart(now: Date, shift: ShiftDefinition, tz: string): number {
+  const L = localMinutesFromDate(now, tz);
+  const S = shift.startMinute;
+  const E = shift.endMinute;
+  if (L < E) return -1;
+  if (L < S) {
+    const startToday = utcAtLocalWallTime(now, tz, S);
+    return (startToday.getTime() - now.getTime()) / 60000;
+  }
+  return -1;
+}
+
+function minutesUntilAirportNightShiftStart(now: Date, tz: string): number {
+  const segs = buildAirportNightSegmentsAround(now, tz);
+  let best = 99999;
+  for (const { start, end } of segs) {
+    if (now.getTime() >= start.getTime() && now.getTime() < end.getTime()) return -1;
+    if (start.getTime() > now.getTime()) {
+      const mins = (start.getTime() - now.getTime()) / 60000;
+      if (mins < best) best = mins;
+    }
+  }
+  return best;
+}
+
+/**
+ * Minutes until the next shift start (negative = shift already underway).
+ * Mirrors {@link minutesUntilShiftEnd} for clock-in reminders.
+ */
+export function minutesUntilShiftStart(
+  now: Date,
+  shift: ShiftDefinition,
+  timeZone: string,
+  branch?: BranchShiftContext
+): number {
+  if (!shift.crossesMidnight) {
+    return minutesUntilMorningShiftStart(now, shift, timeZone);
+  }
+  if (shift.key === 'night' && branch?.shiftProfile === 'airport') {
+    return minutesUntilAirportNightShiftStart(now, timeZone);
+  }
+  return minutesUntilStandardNightShiftStart(now, shift, timeZone);
+}

@@ -147,6 +147,8 @@ export const ar: LocaleMessages = {
       'نحتاج إلى موقعك أثناء فتح التطبيق (وفي الخلفية حسب ما يسمح به النظام) وإذن الإشعارات لتذكيرك بتسجيل الدخول والخروج والخروج المؤقت. يمكنك تغيير ذلك لاحقاً من إعدادات الجهاز.',
     consentLocation: 'أوافق على استخدام الموقع للحضور والنطاق الجغرافي',
     consentPush: 'أوافق على إشعارات تذكير تسجيل الدخول والخروج',
+    clockInReminderPushHint:
+      'قد يصلك تذكير يومي قبل بدء ورديتك إذا لم تكن قد سجّلت حضورك بعد.',
     saveConsent: 'حفظ ومتابعة',
     branchPendingCoords: 'لم يتم ضبط إحداثيات الفرع بعد. اطلب من المسؤول ضبط خط العرض والطول للفرع من الموارد البشرية.',
     clockIn: 'تسجيل دخول',
@@ -361,6 +363,42 @@ export const ar: LocaleMessages = {
     daysRemaining: '{count} يوم متبقي',
     deleteDepartmentConfirm: 'حذف القسم "{name}"؟',
     failedDeleteDepartment: 'فشل حذف القسم',
+    pushBroadcastTitle: 'إعلانات (إشعار الهاتف)',
+    pushBroadcastIntro:
+      'يرسل إشعاراً على الهاتف فقط. يجب تفعيل الإشعارات من بصمة الحضور على الجهاز؛ من لا يفعّلها لن يستلم الرسالة.',
+    pushBroadcastStatTotal: '{count} حساب مستخدم في النظام',
+    pushBroadcastStatCanPush:
+      'يمكنهم استلام هذا الإشعار: {users} حساباً ({devices} جهازاً مسجّلاً)',
+    pushBroadcastStatNoPush:
+      'بدون إشعار مسجّل: {count} حساباً — يفعّلون الإشعارات من بصمة الحضور على كل هاتف',
+    pushBroadcastTitleLabel: 'العنوان',
+    pushBroadcastTitlePlaceholder: 'مثال: تحديث جدول العمل',
+    pushBroadcastBodyLabel: 'النص',
+    pushBroadcastBodyPlaceholder: 'اكتب الإعلان…',
+    pushBroadcastLinkLabel: 'رابط عند الضغط (اختياري)',
+    pushBroadcastLinkHint: 'مسار داخل التطبيق عند فتح الإشعار، مثال: /dashboard/time-clock',
+    pushBroadcastSend: 'إرسال للجميع',
+    pushBroadcastSending: 'جاري الإرسال…',
+    pushBroadcastConfirm:
+      'إرسال إشعار الهاتف؟\n\n· حتى {withPush} من {total} حساباً لديهم إشعار مفعّل\n· {withoutPush} حساباً لن يستلموا شيئاً (لا جهاز مسجّل)',
+    pushBroadcastSuccessTitle: 'تم إرسال الإشعار',
+    pushBroadcastSuccessPhone:
+      'الهاتف: {reached} من {withPush} حساباً لديهم إشعار مفعّل ({deliveries} تسليم(ات) ناجح(ة) للأجهزة)',
+    pushBroadcastSuccessNoDevice:
+      'بدون تنبيه هاتف: {count} حساباً بدون إشعار مسجّل (التفعيل من بصمة الحضور على كل جهاز)',
+    pushBroadcastSuccessFailed:
+      'ما زال هناك فشل بعد التنظيف: {count} جهازاً (تحقق من إعدادات Apple أو اطلب إعادة تفعيل الإشعارات)',
+    pushBroadcastSuccessPruned:
+      'تم حذف {count} تسجيل جهاز مكرر/قديم قبل الإرسال',
+    pushBroadcastSuccessExpiredRemoved:
+      'تم حذف {count} رمز Apple منتهٍ — يفضّل أن يفتح هؤلاء التطبيق مرة لإعادة الربط',
+    pushBroadcastReconnectHint:
+      'اطلب من الموظفين فتح التطبيق، الدخول إلى بصمة الحضور، والتأكد من تفعيل الإشعارات حتى يظهر «تم ربط الإشعارات».',
+    pushBroadcastCleanup: 'تنظيف الأجهزة القديمة',
+    pushBroadcastCleanupDone: 'تم حذف {count} تسجيل جهاز مكرر أو قديم.',
+    pushBroadcastFailed: 'تعذّر إرسال الإعلان.',
+    pushBroadcastValidation: 'أدخل العنوان والنص.',
+    pushBroadcastCooldown: 'انتظر {seconds} ثانية قبل إرسال إعلان آخر.',
     branchGeofenceTitle: 'مواقع الفروع (بصمة الحضور)',
     branchGeofenceHelp: 'أدخل إحداثيات WGS84 ونصف القطر (افتراضي ~20 م) لتسجيل الدخول ضمن النطاق.',
     latitude: 'خط العرض',

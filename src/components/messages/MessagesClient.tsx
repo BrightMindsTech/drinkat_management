@@ -6,6 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { attachPullToRefresh } from '@/lib/attach-pull-to-refresh';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
+import { AppModal } from '@/components/AppModal';
 
 type ThreadRow = {
   id: string;
@@ -830,16 +831,14 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
         ) : null}
       </div>
 
-      {pickerOpen ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4"
-          role="dialog"
-          aria-modal
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setPickerOpen(false);
-          }}
-        >
-          <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl bg-white shadow-2xl dark:bg-ios-dark-elevated sm:rounded-2xl">
+      <AppModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        zIndexClass="z-[100]"
+        overlayClassName="fixed inset-0 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4 overscroll-none"
+        panelClassName="flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl bg-white shadow-2xl dark:bg-ios-dark-elevated sm:rounded-2xl"
+        aria-label={c.chooseContact}
+      >
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-ios-dark-separator">
               <h2 className="text-base font-semibold">{c.chooseContact}</h2>
               <button type="button" className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-ios-dark-fill" onClick={() => setPickerOpen(false)}>
@@ -867,20 +866,18 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                 </li>
               ))}
             </ul>
-          </div>
-        </div>
-      ) : null}
+      </AppModal>
 
-      {groupModalOpen ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4"
-          role="dialog"
-          aria-modal
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !isBusy('chat-group')) setGroupModalOpen(false);
-          }}
-        >
-          <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl bg-white shadow-2xl dark:bg-ios-dark-elevated sm:rounded-2xl">
+      <AppModal
+        open={groupModalOpen}
+        onClose={() => {
+          if (!isBusy('chat-group')) setGroupModalOpen(false);
+        }}
+        zIndexClass="z-[100]"
+        overlayClassName="fixed inset-0 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4 overscroll-none"
+        panelClassName="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl bg-white shadow-2xl dark:bg-ios-dark-elevated sm:rounded-2xl"
+        aria-label={c.chooseGroupMembers}
+      >
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-ios-dark-separator">
               <h2 className="text-base font-semibold">{c.chooseGroupMembers}</h2>
               <button
@@ -968,9 +965,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                 {isBusy('chat-group') ? c.sending : c.createGroup}
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+      </AppModal>
     </div>
   );
 }

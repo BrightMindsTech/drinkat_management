@@ -13,6 +13,7 @@ import { LeaveRequestsSection } from './LeaveRequestsSection';
 import { ManagerAssignmentsSection } from './ManagerAssignmentsSection';
 import { BranchGeofenceSection } from './BranchGeofenceSection';
 import { OwnerLiveAttendanceSection } from './OwnerLiveAttendanceSection';
+import { OwnerPushBroadcastSection } from './OwnerPushBroadcastSection';
 import type { OwnerLiveAttendanceRow } from '@/lib/time-clock-owner-live';
 
 type EmployeeWithRelations = Employee & { branch: Branch; department?: Department | null; user: { email: string } | null };
@@ -140,6 +141,7 @@ export function HROwnerView({
 
   return (
     <div className="app-page">
+      <OwnerPushBroadcastSection />
       <BranchGeofenceSection branches={branches} />
       <OwnerLiveAttendanceSection initialRows={initialLiveAttendance} />
       <section id="hr-owner-staff" className={sectionClass}>

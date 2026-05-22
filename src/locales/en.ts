@@ -145,6 +145,8 @@ export const en = {
       'To use the time clock and branch geofence, we need your location while the app is open (and in the background where the OS allows) and permission to send reminders. You can change this later in your device settings.',
     consentLocation: 'I allow location access for attendance and geofencing',
     consentPush: 'I allow push notifications for clock-in/out and away reminders',
+    clockInReminderPushHint:
+      'You may receive a daily reminder shortly before your shift starts if you have not clocked in yet.',
     saveConsent: 'Save & continue',
     branchPendingCoords: 'Branch GPS coordinates are not set yet. Ask an administrator to set latitude and longitude for your branch in HR.',
     clockIn: 'Clock in',
@@ -360,6 +362,42 @@ export const en = {
     daysRemaining: '{count} days remaining',
     deleteDepartmentConfirm: 'Delete department "{name}"?',
     failedDeleteDepartment: 'Failed to delete department',
+    pushBroadcastTitle: 'Push announcements',
+    pushBroadcastIntro:
+      'Sends a phone push notification only. Users must have push enabled under Time clock on their device; others will not receive this message.',
+    pushBroadcastStatTotal: '{count} user accounts in the system',
+    pushBroadcastStatCanPush:
+      'Can receive this push: {users} accounts ({devices} registered device(s) total)',
+    pushBroadcastStatNoPush:
+      'No push on file: {count} accounts — they must enable notifications under Time clock on each phone',
+    pushBroadcastTitleLabel: 'Title',
+    pushBroadcastTitlePlaceholder: 'e.g. Schedule update',
+    pushBroadcastBodyLabel: 'Message',
+    pushBroadcastBodyPlaceholder: 'Write the announcement…',
+    pushBroadcastLinkLabel: 'Open link (optional)',
+    pushBroadcastLinkHint: 'Path inside the app when they tap the notification, e.g. /dashboard/time-clock',
+    pushBroadcastSend: 'Send to all users',
+    pushBroadcastSending: 'Sending…',
+    pushBroadcastConfirm:
+      'Send push notification?\n\n· Up to {withPush} of {total} accounts have push enabled\n· {withoutPush} accounts will not receive anything (no device registered)',
+    pushBroadcastSuccessTitle: 'Push sent',
+    pushBroadcastSuccessPhone:
+      'Phone alerts: {reached} of {withPush} accounts with push enabled ({deliveries} successful device delivery(ies))',
+    pushBroadcastSuccessNoDevice:
+      'No phone alert: {count} accounts have no push registered (enable under Time clock on each device)',
+    pushBroadcastSuccessFailed:
+      'Still failing after cleanup: {count} device(s) (check APNs config or ask user to re-enable push)',
+    pushBroadcastSuccessPruned:
+      'Removed {count} duplicate/old device registration(s) before sending',
+    pushBroadcastSuccessExpiredRemoved:
+      'Removed {count} dead Apple push token(s) — those users should open the app once to reconnect',
+    pushBroadcastReconnectHint:
+      'Ask affected staff to open the app, go to Time clock, and confirm push notifications are on. They should see “Push connected” once.',
+    pushBroadcastCleanup: 'Clean stale devices',
+    pushBroadcastCleanupDone: 'Removed {count} duplicate or outdated device registration(s).',
+    pushBroadcastFailed: 'Could not send the announcement.',
+    pushBroadcastValidation: 'Enter a title and message.',
+    pushBroadcastCooldown: 'Wait {seconds}s before sending another broadcast.',
     branchGeofenceTitle: 'Branch GPS (time clock)',
     branchGeofenceHelp: 'Set WGS84 coordinates and radius (~20 m default) so employees can clock in within the geofence.',
     latitude: 'Latitude',

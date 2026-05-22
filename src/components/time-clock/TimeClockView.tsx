@@ -8,6 +8,7 @@ import type { TimeClockStatus } from '@/components/time-clock/geofence-shared';
 import { ensurePushRegistered } from '@/lib/push-registration-client';
 import { useAsyncActionLock, useSubmitLock } from '@/lib/use-async-action-lock';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
+import { AppModal } from '@/components/AppModal';
 
 type ManagerLog = {
   id: string;
@@ -403,9 +404,12 @@ function ConsentBlock({ status, onUpdated }: { status: TimeClockStatus; onUpdate
         <input type="checkbox" checked={loc} onChange={(e) => setLoc(e.target.checked)} />
         {t.timeClock.consentLocation}
       </label>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} />
-        {t.timeClock.consentPush}
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-0.5" checked={push} onChange={(e) => setPush(e.target.checked)} />
+        <span>
+          {t.timeClock.consentPush}
+          <span className="block text-xs text-app-muted mt-0.5 font-normal">{t.timeClock.clockInReminderPushHint}</span>
+        </span>
       </label>
       <button
         type="button"
@@ -565,68 +569,66 @@ function ClockActions({
         </button>
       )}
     </div>
-    {weeklyRatingsGateHref ? (
-      <div
-        className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="weekly-rating-gate-title"
-      >
-        <div className="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4">
-          <h2 id="weekly-rating-gate-title" className="text-lg font-semibold text-app-label">
-            {t.timeClock.weeklyRatingRequiredTitle}
-          </h2>
-          <p className="text-sm text-app-secondary">{t.timeClock.weeklyRatingRequiredBody}</p>
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              className="rounded-xl border border-gray-300 dark:border-ios-dark-separator px-4 py-2.5 text-sm font-medium text-app-primary"
-              onClick={() => setWeeklyRatingsGateHref(null)}
-            >
-              {t.common.cancel}
-            </button>
-            <Link
-              href={weeklyRatingsGateHref}
-              className="rounded-xl bg-ios-blue px-4 py-2.5 text-center text-sm font-semibold text-white"
-              onClick={() => setWeeklyRatingsGateHref(null)}
-            >
-              {t.timeClock.weeklyRatingGoToRatings}
-            </Link>
-          </div>
-        </div>
+    <AppModal
+      open={!!weeklyRatingsGateHref}
+      onClose={() => setWeeklyRatingsGateHref(null)}
+      zIndexClass="z-[220]"
+      panelClassName="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4"
+      aria-labelledby="weekly-rating-gate-title"
+    >
+      <h2 id="weekly-rating-gate-title" className="text-lg font-semibold text-app-label">
+        {t.timeClock.weeklyRatingRequiredTitle}
+      </h2>
+      <p className="text-sm text-app-secondary">{t.timeClock.weeklyRatingRequiredBody}</p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          className="rounded-xl border border-gray-300 dark:border-ios-dark-separator px-4 py-2.5 text-sm font-medium text-app-primary"
+          onClick={() => setWeeklyRatingsGateHref(null)}
+        >
+          {t.common.cancel}
+        </button>
+        {weeklyRatingsGateHref ? (
+          <Link
+            href={weeklyRatingsGateHref}
+            className="rounded-xl bg-ios-blue px-4 py-2.5 text-center text-sm font-semibold text-white"
+            onClick={() => setWeeklyRatingsGateHref(null)}
+          >
+            {t.timeClock.weeklyRatingGoToRatings}
+          </Link>
+        ) : null}
       </div>
-    ) : null}
-    {cashFormGateHref ? (
-      <div
-        className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="cash-form-gate-title"
-      >
-        <div className="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4">
-          <h2 id="cash-form-gate-title" className="text-lg font-semibold text-app-label">
-            {t.timeClock.cashFormRequiredTitle}
-          </h2>
-          <p className="text-sm text-app-secondary">{t.timeClock.cashFormRequiredBody}</p>
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              className="rounded-xl border border-gray-300 dark:border-ios-dark-separator px-4 py-2.5 text-sm font-medium text-app-primary"
-              onClick={() => setCashFormGateHref(null)}
-            >
-              {t.common.cancel}
-            </button>
-            <Link
-              href={cashFormGateHref}
-              className="rounded-xl bg-ios-blue px-4 py-2.5 text-center text-sm font-semibold text-white"
-              onClick={() => setCashFormGateHref(null)}
-            >
-              {t.timeClock.cashFormGoToForms}
-            </Link>
-          </div>
-        </div>
+    </AppModal>
+    <AppModal
+      open={!!cashFormGateHref}
+      onClose={() => setCashFormGateHref(null)}
+      zIndexClass="z-[220]"
+      panelClassName="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4"
+      aria-labelledby="cash-form-gate-title"
+    >
+      <h2 id="cash-form-gate-title" className="text-lg font-semibold text-app-label">
+        {t.timeClock.cashFormRequiredTitle}
+      </h2>
+      <p className="text-sm text-app-secondary">{t.timeClock.cashFormRequiredBody}</p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          className="rounded-xl border border-gray-300 dark:border-ios-dark-separator px-4 py-2.5 text-sm font-medium text-app-primary"
+          onClick={() => setCashFormGateHref(null)}
+        >
+          {t.common.cancel}
+        </button>
+        {cashFormGateHref ? (
+          <Link
+            href={cashFormGateHref}
+            className="rounded-xl bg-ios-blue px-4 py-2.5 text-center text-sm font-semibold text-white"
+            onClick={() => setCashFormGateHref(null)}
+          >
+            {t.timeClock.cashFormGoToForms}
+          </Link>
+        ) : null}
       </div>
-    ) : null}
+    </AppModal>
     </>
   );
 }

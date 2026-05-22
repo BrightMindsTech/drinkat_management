@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
 import { sendPushToSubscription } from '@/lib/push';
+import { replaceOtherApnsSubscriptions } from '@/lib/push-subscription-maintenance';
 
 async function claimEndpointForUser(userId: string, endpoint: string) {
   await prisma.pushSubscription.deleteMany({
@@ -103,6 +104,14 @@ export async function POST(req: Request) {
       },
       update: { updatedAt: new Date() },
     });
+
+    const removedStale = await replaceOtherApnsSubscriptions(prisma, session.user.id, apnsEndpoint);
+    if (removedStale > 0) {
+      console.log('[push/register] removed stale apns tokens', {
+        userId: session.user.id,
+        removedStale,
+      });
+    }
 
     // One-time self-test when APNs token is first seen for this user.
     if (!existed) {

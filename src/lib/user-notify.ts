@@ -35,7 +35,8 @@ export async function notifyUsers(
   for (const userId of unique) {
     const subs = await prisma.pushSubscription.findMany({ where: { userId } });
     if (subs.length === 0) continue;
-    pushSent += await sendPushToUser(userId, subs, input.push);
+    const { delivered } = await sendPushToUser(userId, subs, input.push);
+    pushSent += delivered;
   }
   return { inbox: unique.length, pushSent };
 }
