@@ -202,6 +202,65 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
   }
 }
 
+/** Silent background push — wakes iOS briefly so the app can refresh its APNs token. */
+export async function sendApnsBackgroundPush(
+  deviceToken: string,
+  data: Record<string, string>
+): Promise<PushDeliveryResult> {
+  const keyId = process.env.APNS_KEY_ID;
+  const teamId = process.env.APNS_TEAM_ID;
+  const rawKey = process.env.APNS_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  const bundleId = process.env.APNS_BUNDLE_ID ?? 'com.bmtechs.drinkat';
+  const useSandbox = process.env.APNS_USE_SANDBOX === '1' || process.env.APNS_USE_SANDBOX === 'true';
+  if (!keyId || !teamId || !rawKey) return 'failed';
+
+  let jwt: string;
+  try {
+    jwt = await makeApnsJwt(keyId, teamId, rawKey);
+  } catch {
+    return 'failed';
+  }
+
+  const primaryHost = useSandbox ? 'api.sandbox.push.apple.com' : 'api.push.apple.com';
+  const fallbackHost = useSandbox ? 'api.push.apple.com' : 'api.sandbox.push.apple.com';
+  const tok = normalizeApnsDeviceToken(deviceToken);
+  const body: Record<string, unknown> = {
+    aps: { 'content-available': 1 },
+    ...data,
+  };
+
+  const sendToHost = async (host: string): Promise<PushDeliveryResult> => {
+    const res = await fetch(`https://${host}/3/device/${tok}`, {
+      method: 'POST',
+      headers: {
+        authorization: `bearer ${jwt}`,
+        'apns-topic': bundleId,
+        'apns-push-type': 'background',
+        'apns-priority': '5',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return 'ok';
+    const reasonHeader = res.headers.get('apns-reason') ?? '';
+    const reasonBody = await res.text().catch(() => '');
+    const expired = apnsFailureIsExpired(res.status, reasonHeader || reasonBody);
+    return expired ? 'expired' : 'failed';
+  };
+
+  try {
+    const primary = await sendToHost(primaryHost);
+    if (primary === 'ok' || primary === 'expired') return primary;
+  } catch {
+    /* try fallback */
+  }
+  try {
+    return await sendToHost(fallbackHost);
+  } catch {
+    return 'failed';
+  }
+}
+
 function ensureVapid() {
   const pub = process.env.WEB_PUSH_VAPID_PUBLIC_KEY;
   const priv = process.env.WEB_PUSH_VAPID_PRIVATE_KEY;
@@ -282,6 +341,9 @@ export async function sendPushToSubscription(
   if (sub.provider === 'apns' && sub.endpoint.startsWith('apns:')) {
     const deviceToken = sub.endpoint.slice(5);
     if (deviceToken.length < 10) return 'failed';
+    if (enriched.data?.type === 'push_keepalive') {
+      return sendApnsBackgroundPush(deviceToken, enriched.data);
+    }
     return sendApnsAlert(deviceToken, enriched);
   }
 

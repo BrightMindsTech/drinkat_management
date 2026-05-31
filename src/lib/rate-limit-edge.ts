@@ -12,8 +12,18 @@ const LIMITS: Record<LimitTier, { max: number; windowMs: number }> = {
   /** Normal reads */
   read: { max: 240, windowMs: 60_000 },
   /** Large reports + frequent geofence posts */
-  heavy: { max: 45, windowMs: 60_000 },
+  heavy: { max: 120, windowMs: 60_000 },
 };
+
+/** Never rate-limit routes that gate login or clock presence — shared shop Wi‑Fi hits one IP. */
+const RATE_LIMIT_EXEMPT_PATHS = new Set([
+  '/api/auth/session',
+  '/api/auth/csrf',
+  '/api/time-clock/status',
+  '/api/time-clock/presence-check',
+  '/api/push/consent-status',
+  '/api/push/opt-in',
+]);
 
 const globalStore = globalThis as typeof globalThis & {
   __drinkatRateLimit?: Map<string, Bucket>;
@@ -40,7 +50,7 @@ function tierForRequest(pathname: string, method: string): LimitTier | null {
     return null;
   }
   // Session/csrf polling must never 429 — shared IPs + focus refetch caused apparent random logouts.
-  if (pathname === '/api/auth/session' || pathname === '/api/auth/csrf') {
+  if (RATE_LIMIT_EXEMPT_PATHS.has(pathname)) {
     return null;
   }
   if (pathname.startsWith('/api/auth/')) return 'auth';

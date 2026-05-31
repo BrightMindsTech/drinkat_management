@@ -9,6 +9,16 @@ export const en = {
     error: 'Invalid email or password',
     emailPlaceholder: 'you@drinkat.com',
   },
+  session: {
+    recoveryRestoring: 'Restoring your session…',
+    recoveryAttempt: 'Attempt {n}…',
+    recoveryFailedTitle: 'Connection interrupted',
+    recoveryFailedBody:
+      'We could not verify your login right now. Retry to stay signed in, or sign in again only if retry does not work.',
+    recoveryRetry: 'Retry connection',
+    recoveryRetrying: 'Retrying…',
+    recoverySignIn: 'Sign in again',
+  },
   common: {
     loading: 'Loading…',
     signOut: 'Sign out',
@@ -142,7 +152,7 @@ export const en = {
     notApplicable: 'Time clock is not available for this account.',
     consentTitle: 'Location & notifications',
     consentBody:
-      'To use the time clock and branch geofence, we need your location while the app is open (and in the background where the OS allows) and permission to send reminders. You can change this later in your device settings.',
+      'For attendance and branch geofence, DrinkatHR needs location while the app is open. If you are clocked in on iPhone, iOS may ask for "Always" location so shift tracking continues when you switch apps or lock the screen. Push reminders are separate and can be enabled at sign-in.',
     consentLocation: 'I allow location access for attendance and geofencing',
     consentPush: 'I allow push notifications for clock-in/out and away reminders',
     clockInReminderPushHint:
@@ -202,6 +212,12 @@ export const en = {
     clockInRequiredTitle: 'Clock in required',
     clockInRequiredBody: 'You need to clock in before using the app. Open the time clock to register your attendance.',
     goToClockIn: 'Go to clock in',
+    stillAtWork: 'Still at work — dismiss',
+    pushDisconnectedTitle: 'Phone notifications disconnected',
+    pushDisconnectedBody:
+      'This phone is not receiving alerts yet. Tap Reconnect and allow notifications when iOS asks.',
+    pushReconnectNow: 'Reconnect now',
+    pushReconnecting: 'Reconnecting…',
   },
   ratings: {
     pageTitle: 'Weekly ratings',

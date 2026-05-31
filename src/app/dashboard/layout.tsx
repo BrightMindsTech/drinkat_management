@@ -1,21 +1,23 @@
 import { getServerSession } from 'next-auth';
-import { redirect } from 'next/navigation';
 import { authOptions } from '@/lib/auth';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { isQcReviewerUser } from '@/lib/qc-reviewer';
 import { prisma } from '@/lib/prisma';
 import { TimeClockGeofenceProvider } from '@/contexts/TimeClockGeofenceContext';
 import { AppResumeSync } from '@/components/AppResumeSync';
+import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery';
+import { SessionKeepalive } from '@/components/SessionKeepalive';
+import { SessionStabilityGuard } from '@/components/SessionStabilityGuard';
 import { DashboardLayoutClient } from '@/components/dashboard/DashboardLayoutClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
-  if (!session) redirect('/login');
+  if (!session) return <DashboardSessionRecovery />;
 
   const userId = (session.user as { id?: string }).id;
-  if (!userId) redirect('/login');
+  if (!userId) return <DashboardSessionRecovery />;
 
   const navRole = normalizeUserRole(session.user.role);
 
@@ -49,6 +51,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <TimeClockGeofenceProvider role={navRole}>
+      <SessionStabilityGuard />
+      <SessionKeepalive />
       <AppResumeSync />
       <DashboardLayoutClient role={uiRole} email={session.user.email ?? ''} headcountSummary={headcountSummary}>
         {children}

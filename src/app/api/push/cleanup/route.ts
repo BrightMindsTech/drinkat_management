@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
 import { pruneDuplicatePushSubscriptions } from '@/lib/push-subscription-maintenance';
 
-/** Remove duplicate / outdated push device rows (owner maintenance). */
+/** Remove duplicate rows that share the same push endpoint (owner maintenance). */
 export async function POST() {
   await requireOwner();
   const before = await prisma.pushSubscription.count();

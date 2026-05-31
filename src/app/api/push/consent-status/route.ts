@@ -4,7 +4,7 @@ import { apiErrorResponse } from '@/lib/api-route-error';
 
 export const dynamic = 'force-dynamic';
 
-/** Whether the user opted in to push (time-clock consent). Used to re-register devices on app open. */
+/** Whether push is enabled for this account and how many device rows exist. */
 export async function GET() {
   try {
     const session = await requireSession();

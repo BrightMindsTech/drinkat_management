@@ -3,8 +3,9 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import * as bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
 
-/** Keep session cookie and JWT lifetimes aligned (30 days). */
-const SESSION_MAX_AGE_SEC = 30 * 24 * 60 * 60;
+/** Active users stay signed in until explicit sign-out (sliding refresh via updateAge). */
+const SESSION_MAX_AGE_SEC = 365 * 24 * 60 * 60;
+const SESSION_UPDATE_AGE_SEC = 24 * 60 * 60;
 
 const useSecureCookies =
   process.env.NEXTAUTH_URL?.startsWith('https://') ?? process.env.NODE_ENV === 'production';
@@ -20,7 +21,7 @@ export const authOptions: NextAuthOptions = {
   // Required in production; OpenNext copies Worker secrets into process.env per request init.
   secret: resolveAuthSecret(),
   trustHost: true,
-  session: { strategy: 'jwt', maxAge: SESSION_MAX_AGE_SEC },
+  session: { strategy: 'jwt', maxAge: SESSION_MAX_AGE_SEC, updateAge: SESSION_UPDATE_AGE_SEC },
   jwt: { maxAge: SESSION_MAX_AGE_SEC },
   useSecureCookies,
   cookies: {
@@ -70,6 +71,9 @@ export const authOptions: NextAuthOptions = {
         token.branchId = user.branchId;
         token.branchName = user.branchName;
       }
+      // Sliding expiry: active users stay signed in until explicit sign-out.
+      const now = Math.floor(Date.now() / 1000);
+      token.exp = now + SESSION_MAX_AGE_SEC;
       return token;
     },
     session: async ({ session, token }) => {

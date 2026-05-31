@@ -9,7 +9,7 @@ export type PushRegistrationStatus = {
 };
 
 export type EnsurePushRegisteredOptions = {
-  /** When true, may call Notification.requestPermission() once (e.g. consent save). */
+  /** When true, may show the OS permission dialog. When omitted, prompts only if not yet granted. */
   requestPermission?: boolean;
 };
 
@@ -20,7 +20,11 @@ export type EnsurePushRegisteredResult = {
   registered: boolean;
 };
 
-async function fetchConsentStatus(): Promise<PushRegistrationStatus | null> {
+/** Retry when this device is not registered; re-register periodically while app is open. */
+const RETRY_WHEN_DISCONNECTED_MS = 90 * 1000;
+const REREGISTER_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+export async function fetchPushRegistrationStatus(): Promise<PushRegistrationStatus | null> {
   try {
     const res = await fetch('/api/push/consent-status', { credentials: 'include', cache: 'no-store' });
     if (!res.ok) return null;
@@ -28,6 +32,37 @@ async function fetchConsentStatus(): Promise<PushRegistrationStatus | null> {
   } catch {
     return null;
   }
+}
+
+/** Opt in to push on the server for any role (owner, remote staff, etc.). Idempotent. */
+export async function ensurePushConsentOnServer(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/push/opt-in', {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** True when this device has not granted notification permission yet. */
+export async function needsPushPermissionPrompt(): Promise<boolean> {
+  if (isCapacitorIos()) {
+    try {
+      const { PushNotifications } = await import('@capacitor/push-notifications');
+      const perm = await PushNotifications.checkPermissions();
+      return perm.receive !== 'granted';
+    } catch {
+      return true;
+    }
+  }
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    return Notification.permission === 'default';
+  }
+  return false;
 }
 
 async function registerWebPushFromBrowser(requestPermission: boolean): Promise<boolean> {
@@ -58,37 +93,70 @@ async function registerWebPushFromBrowser(requestPermission: boolean): Promise<b
 }
 
 /**
- * Re-sync or create push subscription when the user opted in (pushConsentAt).
- * Safe for App Store: only calls the OS permission dialog when requestPermission is true.
+ * Connect push for the signed-in user on this device.
+ * Auto-enables server consent on sign-in; may prompt for OS permission when needed.
  */
 export async function ensurePushRegistered(
   opts: EnsurePushRegisteredOptions = {}
 ): Promise<EnsurePushRegisteredResult> {
-  const { requestPermission = false } = opts;
-  const consent = await fetchConsentStatus();
+  await ensurePushConsentOnServer();
+
+  const consent = await fetchPushRegistrationStatus();
   if (!consent) return { done: true, registered: false };
   if (!consent.pushConsent) return { done: true, registered: false };
 
+  const requestPermission =
+    opts.requestPermission !== undefined ? opts.requestPermission : await needsPushPermissionPrompt();
+
   if (isCapacitorIos()) {
-    const registered = await registerIosPushWithBackend();
+    const registered = await registerIosPushWithBackend({ requestPermission });
     return { done: true, registered };
   }
-
-  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied') {
-    return { done: true, registered: consent.subscriptionCount > 0 };
-  }
-
-  const registered = await registerWebPushFromBrowser(requestPermission);
-  if (registered) return { done: true, registered: true };
-
-  const after = await fetchConsentStatus();
-  const hasSub = (after?.subscriptionCount ?? 0) > 0;
-  if (hasSub) return { done: true, registered: true };
 
   if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied') {
     return { done: true, registered: false };
   }
 
-  // Consent on but no token yet — retry later (transient failure or permission still default).
+  const registered = await registerWebPushFromBrowser(requestPermission);
+  if (registered) return { done: true, registered: true };
+
+  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied') {
+    return { done: true, registered: false };
+  }
+
   return { done: false, registered: false };
+}
+
+/**
+ * Keeps push registration fresh: retry when disconnected, periodic re-register while dashboard is open.
+ */
+export function bindPushRegistrationKeepalive(): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  let disposed = false;
+  let retryTimer: number | null = null;
+  let periodicTimer: number | null = null;
+
+  const sync = () => {
+    if (disposed) return;
+    void ensurePushRegistered();
+  };
+
+  const retryIfNeeded = async () => {
+    if (disposed) return;
+    await ensurePushConsentOnServer();
+    const status = await fetchPushRegistrationStatus();
+    if (!status?.pushConsent) return;
+    void ensurePushRegistered();
+  };
+
+  sync();
+  retryTimer = window.setInterval(() => void retryIfNeeded(), RETRY_WHEN_DISCONNECTED_MS);
+  periodicTimer = window.setInterval(sync, REREGISTER_INTERVAL_MS);
+
+  return () => {
+    disposed = true;
+    if (retryTimer != null) window.clearInterval(retryTimer);
+    if (periodicTimer != null) window.clearInterval(periodicTimer);
+  };
 }

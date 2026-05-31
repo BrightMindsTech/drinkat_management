@@ -22,6 +22,8 @@ export default withAuth(
     callbacks: {
       authorized: ({ token, req }) => {
         const pathname = req.nextUrl.pathname;
+        // Let dashboard pages load and retry session client-side — avoids false logouts from edge blips.
+        if (pathname.startsWith('/dashboard')) return true;
         if (!pathname.startsWith('/api/')) {
           return !!token;
         }

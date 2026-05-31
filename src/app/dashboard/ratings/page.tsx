@@ -1,12 +1,12 @@
-import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
-import { authOptions } from '@/lib/auth';
+import { getDashboardSession } from '@/lib/dashboard-session';
+import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { WeeklyRatingsClient } from '@/components/ratings/WeeklyRatingsClient';
 
 export default async function RatingsPage() {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect('/login');
+  const session = await getDashboardSession();
+  if (!session?.user?.id) return <DashboardSessionRecovery />;
   const role = normalizeUserRole(session.user.role);
   if (role === 'owner') redirect('/dashboard');
 

@@ -73,7 +73,10 @@ export function useGeofenceWatch(opts: {
       const prev = lastInsideRef.current;
       if (prev === null) {
         lastInsideRef.current = inside;
-        await onTransition(inside ? 'enter' : 'exit', lat, lng);
+        // First GPS fix can be wrong — never treat it as leaving the branch.
+        if (inside) {
+          await onTransition('enter', lat, lng);
+        }
         return;
       }
       if (prev !== inside) {
@@ -140,7 +143,7 @@ export function ForcedAwayModal({
       onClose={onClose}
       zIndexClass="z-[200]"
       panelClassName="max-w-md w-full rounded-2xl bg-white dark:bg-ios-dark-elevated p-6 shadow-xl space-y-4"
-      closeOnBackdrop={false}
+      closeOnBackdrop
     >
         {notice ? (
           <div className="space-y-4">
@@ -204,6 +207,14 @@ export function ForcedAwayModal({
                 onClick={onEndShift}
               >
                 {endShiftLoading ? t.timeClock.endShiftLoading : t.timeClock.endShift}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                className="w-full rounded-xl border border-gray-200 dark:border-ios-dark-separator py-3 font-medium text-app-label disabled:opacity-50"
+                onClick={onClose}
+              >
+                {t.timeClock.stillAtWork}
               </button>
             </div>
           </>

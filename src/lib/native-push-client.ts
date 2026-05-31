@@ -45,14 +45,22 @@ export async function setupNativePushDelivery(): Promise<void> {
         })
       );
     }
+    if (data?.type === 'push_keepalive') {
+      void import('@/lib/push-registration-client').then(({ ensurePushRegistered }) =>
+        ensurePushRegistered({ requestPermission: false })
+      );
+    }
   });
 }
 
 /**
  * Registers with APNs via Capacitor and stores the device token for the signed-in user.
- * Call after time-clock push consent is saved (session cookie present).
+ * Called automatically after sign-in (no time-clock visit required).
  */
-export async function registerIosPushWithBackend(): Promise<boolean> {
+export async function registerIosPushWithBackend(
+  opts: { requestPermission?: boolean } = {}
+): Promise<boolean> {
+  const requestPermission = opts.requestPermission ?? false;
   const setDebug = (patch: Record<string, unknown>) => {
     if (typeof window === 'undefined') return;
     const key = '__drinkatPushDebug';
@@ -86,6 +94,7 @@ export async function registerIosPushWithBackend(): Promise<boolean> {
 
     let perm = await PushNotifications.checkPermissions();
     if (perm.receive !== 'granted') {
+      if (!requestPermission) return false;
       perm = await PushNotifications.requestPermissions();
     }
     setDebug({ permission: perm.receive });

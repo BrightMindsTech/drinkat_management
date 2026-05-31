@@ -1,6 +1,6 @@
 'use client';
 
-import { ensurePushRegistered } from '@/lib/push-registration-client';
+import { ensurePushRegistered, bindPushRegistrationKeepalive } from '@/lib/push-registration-client';
 import { isCapacitorIos, setupNativePushDelivery } from '@/lib/native-push-client';
 
 /** Fired after login resume: refresh badges, review queue, chat, time clock. */
@@ -14,7 +14,7 @@ export async function runAppResumeSync(): Promise<void> {
     if (isCapacitorIos()) {
       await setupNativePushDelivery();
     }
-    await ensurePushRegistered({ requestPermission: false });
+    await ensurePushRegistered();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(APP_RESUME_EVENT));
     }
@@ -54,10 +54,13 @@ export function bindAppResumeSync(): () => void {
 
   void runAppResumeSync();
 
+  const stopPushKeepalive = bindPushRegistrationKeepalive();
+
   return () => {
     document.removeEventListener('visibilitychange', onVisible);
     window.removeEventListener('focus', onVisible);
     window.removeEventListener('pageshow', onVisible);
     removeAppListener?.();
+    stopPushKeepalive();
   };
 }

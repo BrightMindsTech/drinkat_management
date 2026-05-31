@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
+import { setForegroundInterval } from '@/lib/app-foreground';
 
 type PendingItem = {
   id: string;
@@ -47,12 +48,12 @@ export function PendingReviewNotice({ role }: { role: string }) {
     };
 
     void load();
-    const id = window.setInterval(onWake, 12000);
+    const stop = setForegroundInterval(onWake, 12000);
     document.addEventListener('visibilitychange', onWake);
     window.addEventListener(APP_RESUME_EVENT, onWake);
     return () => {
       mounted = false;
-      window.clearInterval(id);
+      stop();
       document.removeEventListener('visibilitychange', onWake);
       window.removeEventListener(APP_RESUME_EVENT, onWake);
     };

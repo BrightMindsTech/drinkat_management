@@ -1,45 +1,28 @@
 import type { PrismaClient } from '@prisma/client';
 
 /**
- * Keep one active APNs row per user (latest token wins). Old reinstall tokens cause repeated delivery failures.
- */
-export async function replaceOtherApnsSubscriptions(
-  prisma: PrismaClient,
-  userId: string,
-  keepEndpoint: string
-): Promise<number> {
-  const result = await prisma.pushSubscription.deleteMany({
-    where: {
-      userId,
-      provider: 'apns',
-      endpoint: { not: keepEndpoint },
-    },
-  });
-  return result.count;
-}
-
-/**
- * Per user, keep only the newest subscription per provider (removes duplicate stale devices).
+ * Remove duplicate rows that share the exact same push endpoint (data bug / re-import).
+ * Does NOT limit one device per user — multiple phones may share one login and each keeps its token.
  */
 export async function pruneDuplicatePushSubscriptions(prisma: PrismaClient): Promise<{
   removed: number;
 }> {
   const subs = await prisma.pushSubscription.findMany({
-    select: { id: true, userId: true, provider: true, updatedAt: true },
+    select: { id: true, endpoint: true, updatedAt: true },
     orderBy: { updatedAt: 'desc' },
   });
 
-  const keepIds = new Set<string>();
-  const seen = new Set<string>();
+  const seenEndpoints = new Set<string>();
+  const staleIds: string[] = [];
 
   for (const sub of subs) {
-    const key = `${sub.userId}:${sub.provider}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    keepIds.add(sub.id);
+    if (seenEndpoints.has(sub.endpoint)) {
+      staleIds.push(sub.id);
+      continue;
+    }
+    seenEndpoints.add(sub.endpoint);
   }
 
-  const staleIds = subs.filter((s) => !keepIds.has(s.id)).map((s) => s.id);
   if (staleIds.length === 0) return { removed: 0 };
 
   const result = await prisma.pushSubscription.deleteMany({

@@ -1,6 +1,6 @@
-import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
-import { authOptions } from '@/lib/auth';
+import { getDashboardSession } from '@/lib/dashboard-session';
+import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery';
 import { prisma } from '@/lib/prisma';
 import { parseTemplateFields } from '@/lib/formTemplate';
 import {
@@ -23,8 +23,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function FormsPage() {
   await maybePurgeOldManagementFormSubmissions(prisma);
-  const session = await getServerSession(authOptions);
-  if (!session) redirect('/login');
+  const session = await getDashboardSession();
+  if (!session?.user?.id) return <DashboardSessionRecovery />;
   const role = normalizeUserRole(session.user.role);
 
   const allTemplates = await prisma.managementFormTemplate.findMany({

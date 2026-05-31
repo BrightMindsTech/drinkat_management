@@ -6,8 +6,10 @@ import { Logo } from '@/components/Logo';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SignOutButton } from '@/components/SignOutButton';
+import { PushConnectionNotice } from '@/components/PushConnectionNotice';
 import { PendingReviewNotice } from '@/components/PendingReviewNotice';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
+import { isAppForeground, setForegroundInterval } from '@/lib/app-foreground';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DashboardNavLinks } from './DashboardNavLinks';
 import { DashboardPageSectionNav } from './DashboardPageSectionNav';
@@ -85,17 +87,18 @@ export function DashboardLayoutClient({
     }
 
     const onWake = () => {
-      if (document.visibilityState === 'visible') void refreshChatUnreadCount();
+      if (!isAppForeground()) return;
+      void refreshChatUnreadCount();
     };
 
-    const id = window.setInterval(onWake, 15000);
+    const stop = setForegroundInterval(onWake, 15000);
 
     document.addEventListener('visibilitychange', onWake);
     window.addEventListener(APP_RESUME_EVENT, onWake);
     void refreshChatUnreadCount();
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      stop();
       document.removeEventListener('visibilitychange', onWake);
       window.removeEventListener(APP_RESUME_EVENT, onWake);
     };
@@ -178,6 +181,7 @@ export function DashboardLayoutClient({
 
       {/* Main column */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overscroll-none">
+        <PushConnectionNotice />
         <PendingReviewNotice role={role} />
         {/* touch-none: drags on chrome must not scroll the main column / webview (iOS scroll chaining) */}
         {/* bg matches header through safe-area inset so there’s no gray “empty” strip under the status bar */}

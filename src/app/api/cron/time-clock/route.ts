@@ -7,6 +7,7 @@ import { sendClockInRemindersIfInWindow } from '@/lib/clock-in-reminder';
 import { sendClockOutRemindersIfInWindow } from '@/lib/clock-out-reminder';
 import { sendWeeklyRatingRemindersIfDue } from '@/lib/weekly-rating-reminders';
 import { maybeRunAutoClockOutIfDue } from '@/lib/auto-clock-out-daily';
+import { sendPushKeepaliveIfDue } from '@/lib/push-keepalive-cron';
 
 /**
  * Authenticated with CRON_SECRET (query `?secret=` or `Authorization: Bearer`).
@@ -77,6 +78,13 @@ export async function GET(req: Request) {
     console.error('[cron/time-clock] salary distribution failed', e);
   }
 
+  let pushKeepalive: Awaited<ReturnType<typeof sendPushKeepaliveIfDue>> | null = null;
+  try {
+    pushKeepalive = await sendPushKeepaliveIfDue(prisma);
+  } catch (e) {
+    console.error('[cron/time-clock] push keepalive failed', e);
+  }
+
   return Response.json({
     ok: true,
     db: true,
@@ -86,5 +94,6 @@ export async function GET(req: Request) {
     weeklyRatings,
     clockOutReminders,
     clockInReminders,
+    pushKeepalive,
   });
 }

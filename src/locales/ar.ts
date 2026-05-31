@@ -11,6 +11,16 @@ export const ar: LocaleMessages = {
     error: 'البريد أو كلمة المرور غير صحيحة',
     emailPlaceholder: 'you@drinkat.com',
   },
+  session: {
+    recoveryRestoring: 'جاري استعادة جلستك…',
+    recoveryAttempt: 'المحاولة {n}…',
+    recoveryFailedTitle: 'انقطع الاتصال',
+    recoveryFailedBody:
+      'تعذّر التحقق من تسجيل الدخول الآن. أعد المحاولة للبقاء مسجّلًا، أو سجّل الدخول مرة أخرى فقط إذا لم تنجح المحاولة.',
+    recoveryRetry: 'إعادة المحاولة',
+    recoveryRetrying: 'جاري إعادة المحاولة…',
+    recoverySignIn: 'تسجيل الدخول مرة أخرى',
+  },
   common: {
     loading: 'جاري التحميل…',
     signOut: 'تسجيل الخروج',
@@ -144,7 +154,7 @@ export const ar: LocaleMessages = {
     notApplicable: 'بصمة الحضور غير متاحة لهذا الحساب.',
     consentTitle: 'الموقع والإشعارات',
     consentBody:
-      'نحتاج إلى موقعك أثناء فتح التطبيق (وفي الخلفية حسب ما يسمح به النظام) وإذن الإشعارات لتذكيرك بتسجيل الدخول والخروج والخروج المؤقت. يمكنك تغيير ذلك لاحقاً من إعدادات الجهاز.',
+      'للحضور والنطاق الجغرافي للفرع، نحتاج موقعك أثناء فتح التطبيق. إذا كنت مسجّل حضورك على iPhone، قد يطلب iOS إذن «دائماً» للموقع لمواصلة تتبع الوردية عند التبديل بين التطبيقات أو قفل الشاشة. الإشعارات منفصلة ويمكن تفعيلها عند تسجيل الدخول.',
     consentLocation: 'أوافق على استخدام الموقع للحضور والنطاق الجغرافي',
     consentPush: 'أوافق على إشعارات تذكير تسجيل الدخول والخروج',
     clockInReminderPushHint:
@@ -205,6 +215,12 @@ export const ar: LocaleMessages = {
     clockInRequiredTitle: 'يلزم تسجيل الدخول',
     clockInRequiredBody: 'تحتاج إلى تسجيل الدخول (بصمة الحضور) قبل استخدام التطبيق. افتح شاشة بصمة الحضور لتسجيل حضورك.',
     goToClockIn: 'الانتقال لتسجيل الدخول',
+    stillAtWork: 'ما زلت في العمل — تجاهل',
+    pushDisconnectedTitle: 'إشعارات الهاتف غير متصلة',
+    pushDisconnectedBody:
+      'هذا الهاتف لا يستقبل التنبيهات بعد. اضغط إعادة الاتصال واسمح بالإشعارات عندما يطلب iOS ذلك.',
+    pushReconnectNow: 'إعادة الاتصال',
+    pushReconnecting: 'جاري الاتصال…',
   },
   ratings: {
     pageTitle: 'التقييمات الأسبوعية',

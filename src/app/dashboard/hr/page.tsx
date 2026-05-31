@@ -1,6 +1,6 @@
-import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
-import { authOptions } from '@/lib/auth';
+import { getDashboardSession } from '@/lib/dashboard-session';
+import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery';
 import { prisma } from '@/lib/prisma';
 import { HROwnerView } from '@/components/hr/HROwnerView';
 import { HRStaffView } from '@/components/hr/HRStaffView';
@@ -11,8 +11,8 @@ import { normalizeUserRole } from '@/lib/formVisibility';
 import { getOwnerLiveAttendanceRows } from '@/lib/time-clock-owner-live';
 
 export default async function HRPage() {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect('/login');
+  const session = await getDashboardSession();
+  if (!session?.user?.id) return <DashboardSessionRecovery />;
 
   const role = normalizeUserRole(session.user.role);
 

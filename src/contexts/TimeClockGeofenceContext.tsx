@@ -15,6 +15,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
+import { isAppForeground, setForegroundInterval } from '@/lib/app-foreground';
+import {
+  startNativeBackgroundGeofence,
+  stopNativeBackgroundGeofence,
+} from '@/lib/native-background-geofence';
 import { ensurePushRegistered } from '@/lib/push-registration-client';
 import { ForcedAwayModal, useGeofenceWatch, type TimeClockStatus } from '@/components/time-clock/geofence-shared';
 import { isInsideBranchRadius } from '@/lib/geo';
@@ -29,6 +34,11 @@ const AUTO_CLOCK_IN_MAX_ATTEMPTS = 3;
 const AUTO_CLOCK_IN_RETRY_MS = 2500;
 /** While inside geofence and not clocked in, retry auto clock-in periodically. */
 const AUTO_CLOCK_IN_RECONCILE_MS = 30_000;
+/** Require several consecutive outside readings before prompting (GPS jitter). */
+const PRESENCE_OUTSIDE_STREAK = 3;
+const PRESENCE_CHECK_INTERVAL_MS = 15_000;
+/** After dismissing "did you leave?", wait before prompting again. */
+const FORCE_AWAY_DISMISS_COOLDOWN_MS = 5 * 60 * 1000;
 
 let autoClockInInFlight = false;
 
@@ -104,6 +114,8 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   const [endShiftSubmitting, setEndShiftSubmitting] = useState(false);
   const exitCheckRaisedRef = useRef(false);
   const awayActionInFlightRef = useRef(false);
+  const outsideStreakRef = useRef(0);
+  const forceAwayDismissedUntilRef = useRef(0);
 
   const timeClockHref = '/dashboard/time-clock';
   const ratingsHref = '/dashboard/ratings';
@@ -199,6 +211,8 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
 
   const closeForcedAwayModal = useCallback(() => {
     setForceAwayOpen(false);
+    exitCheckRaisedRef.current = false;
+    outsideStreakRef.current = 0;
     if (typeof window === 'undefined') return;
     const sp = new URLSearchParams(window.location.search);
     if (sp.get('forceAway') === '1') {
@@ -208,6 +222,31 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
       router.replace(q ? `${path}?${q}` : path);
     }
   }, [router, pathname]);
+
+  const dismissForcedAwayModal = useCallback(() => {
+    forceAwayDismissedUntilRef.current = Date.now() + FORCE_AWAY_DISMISS_COOLDOWN_MS;
+    closeForcedAwayModal();
+  }, [closeForcedAwayModal]);
+
+  const considerForceAwayPrompt = useCallback(async () => {
+    if (exitCheckRaisedRef.current || forceAwayOpen) return;
+    if (Date.now() < forceAwayDismissedUntilRef.current) {
+      outsideStreakRef.current = 0;
+      return;
+    }
+    const s = await fetch('/api/time-clock/status', { cache: 'no-store', credentials: 'include' }).then(
+      (r) => r.json() as Promise<TimeClockStatus>
+    );
+    if (!s.clock || s.away || !s.branch?.hasGeofence) {
+      outsideStreakRef.current = 0;
+      return;
+    }
+    outsideStreakRef.current += 1;
+    if (outsideStreakRef.current < PRESENCE_OUTSIDE_STREAK) return;
+    exitCheckRaisedRef.current = true;
+    setAwayNotice(null);
+    setForceAwayOpen(true);
+  }, [forceAwayOpen]);
 
   const onGeoTransition = useCallback(
     async (kind: 'enter' | 'exit', lat: number, lng: number) => {
@@ -233,14 +272,11 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
             shouldPromptAway = !!j.triggerAway;
           }
         }
-        if (!shouldPromptAway) return;
-        const s = await fetch('/api/time-clock/status', { cache: 'no-store', credentials: 'include' }).then(
-          (r) => r.json() as Promise<TimeClockStatus>
-        );
-        if (s.clock && !s.away && s.branch?.hasGeofence) {
-          setAwayNotice(null);
-          setForceAwayOpen(true);
+        if (!shouldPromptAway) {
+          outsideStreakRef.current = 0;
+          return;
         }
+        await considerForceAwayPrompt();
       }
       if (kind === 'enter') {
         // Always hit reenter on enter: server no-ops if there is no active away (avoids stale client status).
@@ -253,7 +289,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
         closeForcedAwayModal();
       }
     },
-    [refresh, closeForcedAwayModal]
+    [refresh, closeForcedAwayModal, considerForceAwayPrompt]
   );
 
   const onGeoError = useCallback((message: string) => {
@@ -304,10 +340,10 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
     };
 
     void reconcile();
-    const id = window.setInterval(() => void reconcile(), AUTO_CLOCK_IN_RECONCILE_MS);
+    const stop = setForegroundInterval(() => void reconcile(), AUTO_CLOCK_IN_RECONCILE_MS);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      stop();
     };
   }, [geoWatchEnabled, pos, status?.clock, branch, refresh]);
 
@@ -325,10 +361,10 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
       );
     }
     read();
-    const id = window.setInterval(read, 30000);
+    const stop = setForegroundInterval(read, 30000);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      stop();
     };
   }, [status?.applicable, status?.geofenceExempt, locationConsentOk]);
 
@@ -337,13 +373,18 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
       exitCheckRaisedRef.current = false;
       return;
     }
-    const interval = window.setInterval(() => {
+    const stop = setForegroundInterval(() => {
+      if (!isAppForeground()) return;
       navigator.geolocation.getCurrentPosition(
         async (p) => {
           const lat = p.coords.latitude;
           const lng = p.coords.longitude;
           setPos({ lat, lng });
           if (exitCheckRaisedRef.current) return;
+          if (Date.now() < forceAwayDismissedUntilRef.current) {
+            outsideStreakRef.current = 0;
+            return;
+          }
           const r = await fetch('/api/time-clock/presence-check', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -351,17 +392,55 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
           });
           if (!r.ok) return;
           const j = (await r.json()) as { triggerAway?: boolean };
-          if (!j.triggerAway) return;
-          exitCheckRaisedRef.current = true;
-          setAwayNotice(null);
-          setForceAwayOpen(true);
+          if (!j.triggerAway) {
+            outsideStreakRef.current = 0;
+            return;
+          }
+          await considerForceAwayPrompt();
         },
         () => {},
         { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
       );
-    }, 3000);
-    return () => window.clearInterval(interval);
-  }, [geoWatchEnabled, status?.clock, status?.away, forceAwayOpen]);
+    }, PRESENCE_CHECK_INTERVAL_MS);
+    return () => stop();
+  }, [geoWatchEnabled, status?.clock, status?.away, forceAwayOpen, considerForceAwayPrompt]);
+
+  /** iOS native background GPS while clocked in (survives app switch / screen lock). */
+  useEffect(() => {
+    if (
+      !geoWatchEnabled ||
+      !status?.clock ||
+      status.away ||
+      branch?.latitude == null ||
+      branch?.longitude == null
+    ) {
+      void stopNativeBackgroundGeofence();
+      return;
+    }
+
+    void startNativeBackgroundGeofence({
+      branchLat: branch.latitude,
+      branchLng: branch.longitude,
+      radiusM: branch.geofenceRadiusM ?? 25,
+      onTransition: onGeoTransition,
+      onError: (code) => {
+        if (code === 'NOT_AUTHORIZED') setErr(t.timeClock.geoPermissionDenied);
+      },
+    });
+
+    return () => {
+      void stopNativeBackgroundGeofence();
+    };
+  }, [
+    geoWatchEnabled,
+    status?.clock,
+    status?.away,
+    branch?.latitude,
+    branch?.longitude,
+    branch?.geofenceRadiusM,
+    onGeoTransition,
+    t.timeClock.geoPermissionDenied,
+  ]);
 
   useEffect(() => {
     if (!pushConsentOk) return;
@@ -494,7 +573,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
           setOtherText={setOtherText}
           loading={awaySubmitting}
           notice={awayNotice}
-          onClose={closeForcedAwayModal}
+          onClose={dismissForcedAwayModal}
           t={t}
         />
       )}

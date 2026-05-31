@@ -57,6 +57,7 @@
     "cap:ios:run": "node node_modules/@capacitor/cli/bin/capacitor run ios"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.26",
     "@capacitor/app": "^7.1.2",
     "@capacitor/core": "^7.4.0",
     "@capacitor/ios": "^7.4.0",

@@ -1,10 +1,24 @@
 'use client';
 
 import { useEffect } from 'react';
-import { bindAppResumeSync } from '@/lib/app-resume-sync';
+import { useRouter } from 'next/navigation';
+import { APP_RESUME_EVENT, bindAppResumeSync } from '@/lib/app-resume-sync';
 
-/** Mount once in dashboard: re-register push + wake polling when app resumes. */
+/** Re-register push, refresh data, and reload server UI when the app returns from background. */
 export function AppResumeSync() {
-  useEffect(() => bindAppResumeSync(), []);
+  const router = useRouter();
+
+  useEffect(() => {
+    const stop = bindAppResumeSync();
+    const onResume = () => {
+      router.refresh();
+    };
+    window.addEventListener(APP_RESUME_EVENT, onResume);
+    return () => {
+      stop();
+      window.removeEventListener(APP_RESUME_EVENT, onResume);
+    };
+  }, [router]);
+
   return null;
 }
