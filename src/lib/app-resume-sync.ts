@@ -6,30 +6,102 @@ import { isCapacitorIos, setupNativePushDelivery } from '@/lib/native-push-clien
 /** Fired after login resume: refresh badges, review queue, chat, time clock. */
 export const APP_RESUME_EVENT = 'drinkat:app-resume';
 
+/** UI: show / hide the reconnecting banner. */
+export const APP_RECONNECT_START = 'drinkat:reconnect-start';
+export const APP_RECONNECT_DONE = 'drinkat:reconnect-done';
+
+const MIN_RECONNECT_VISIBLE_MS = 600;
+
 let resumeInFlight: Promise<void> | null = null;
 
-export async function runAppResumeSync(): Promise<void> {
+export type RunAppResumeSyncOptions = {
+  /** Reload dashboard server components (Next.js RSC refresh). */
+  refreshServerUi?: () => void;
+  /** When false, skip router.refresh — client polls still run via APP_RESUME_EVENT. */
+  refreshServer?: boolean;
+};
+
+const MIN_SERVER_REFRESH_GAP_MS = 45_000;
+const MIN_BACKGROUND_FOR_REFRESH_MS = 20_000;
+
+let lastServerRefreshAt = 0;
+let backgroundSince: number | null = null;
+
+function shouldRunServerRefresh(): boolean {
+  const now = Date.now();
+  if (now - lastServerRefreshAt < MIN_SERVER_REFRESH_GAP_MS) return false;
+  lastServerRefreshAt = now;
+  return true;
+}
+
+async function pingSession(): Promise<void> {
+  try {
+    await fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' });
+  } catch {
+    /* non-fatal */
+  }
+}
+
+/** Real reconnect: session ping, push register, optional server refresh, then wake client polls. */
+export async function runAppResumeSync(opts: RunAppResumeSyncOptions = {}): Promise<void> {
   if (resumeInFlight) return resumeInFlight;
+  const startedAt = Date.now();
+  const shouldRefreshServer = opts.refreshServer !== false && !!opts.refreshServerUi;
+
   resumeInFlight = (async () => {
-    if (isCapacitorIos()) {
-      await setupNativePushDelivery();
-    }
-    await ensurePushRegistered();
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(APP_RESUME_EVENT));
+      window.dispatchEvent(new CustomEvent(APP_RECONNECT_START));
+    }
+    try {
+      await pingSession();
+      if (isCapacitorIos()) {
+        await setupNativePushDelivery();
+      }
+      await ensurePushRegistered();
+      if (shouldRefreshServer) {
+        opts.refreshServerUi?.();
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(APP_RESUME_EVENT));
+      }
+    } catch {
+      /* still hide banner below */
+    } finally {
+      const elapsed = Date.now() - startedAt;
+      const wait = Math.max(0, MIN_RECONNECT_VISIBLE_MS - elapsed);
+      if (wait > 0) {
+        await new Promise((r) => setTimeout(r, wait));
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(APP_RECONNECT_DONE));
+      }
     }
   })().finally(() => {
     resumeInFlight = null;
   });
+
   return resumeInFlight;
 }
 
 /** Re-sync push + notify UI when app returns to foreground (browser or Capacitor iOS). */
-export function bindAppResumeSync(): () => void {
+export function bindAppResumeSync(refreshServerUi?: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
 
+  const sync = (opts: { refreshServer?: boolean } = {}) => {
+    const refreshServer =
+      opts.refreshServer === true && refreshServerUi != null && shouldRunServerRefresh();
+    void runAppResumeSync({ refreshServerUi, refreshServer });
+  };
+
   const onVisible = () => {
-    if (document.visibilityState === 'visible') void runAppResumeSync();
+    if (document.visibilityState === 'hidden') {
+      backgroundSince = Date.now();
+      return;
+    }
+    const bgMs = backgroundSince != null ? Date.now() - backgroundSince : 0;
+    backgroundSince = null;
+    const longBackground = bgMs >= MIN_BACKGROUND_FOR_REFRESH_MS;
+    sync({ refreshServer: longBackground });
   };
 
   document.addEventListener('visibilitychange', onVisible);
@@ -42,7 +114,13 @@ export function bindAppResumeSync(): () => void {
     try {
       const { App } = await import('@capacitor/app');
       const handle = await App.addListener('appStateChange', ({ isActive }) => {
-        if (isActive) void runAppResumeSync();
+        if (!isActive) {
+          backgroundSince = Date.now();
+          return;
+        }
+        const bgMs = backgroundSince != null ? Date.now() - backgroundSince : 0;
+        backgroundSince = null;
+        sync({ refreshServer: bgMs >= MIN_BACKGROUND_FOR_REFRESH_MS });
       });
       removeAppListener = () => {
         void handle.remove();
@@ -52,7 +130,8 @@ export function bindAppResumeSync(): () => void {
     }
   })();
 
-  void runAppResumeSync();
+  // Cold open only — avoid re-running heavy SSR on every quick tab switch.
+  sync({ refreshServer: true });
 
   const stopPushKeepalive = bindPushRegistrationKeepalive();
 

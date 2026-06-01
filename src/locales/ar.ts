@@ -31,6 +31,7 @@ export const ar: LocaleMessages = {
     hide: 'إخفاء',
     show: 'إظهار',
     signingOut: 'جاري تسجيل الخروج…',
+    appReconnecting: 'جاري التحديث وإعادة الاتصال…',
     create: 'إنشاء',
     save: 'حفظ',
     edit: 'تعديل',
@@ -218,7 +219,19 @@ export const ar: LocaleMessages = {
     stillAtWork: 'ما زلت في العمل — تجاهل',
     pushDisconnectedTitle: 'إشعارات الهاتف غير متصلة',
     pushDisconnectedBody:
-      'هذا الهاتف لا يستقبل التنبيهات بعد. اضغط إعادة الاتصال واسمح بالإشعارات عندما يطلب iOS ذلك.',
+      'لن يستقبل هذا الهاتف تنبيهات الرسائل أو الساعة أو طلبات المراجعة حتى يتم تفعيل الإشعارات.',
+    pushDeniedBody:
+      'الإشعارات مُوقفة لتطبيق DrinkatHR من إعدادات iPhone. فعّلها ثم عد إلى التطبيق.',
+    pushOpenSettings: 'فتح الإعدادات',
+    pushReconnectFailedBody:
+      'ما زال غير متصل. افتح إعدادات iPhone → DrinkatHR → الإشعارات وتأكد من تفعيل السماح بالإشعارات، ثم اضغط إعادة الاتصال مرة أخرى.',
+    pushGrantedNotLinkedBody:
+      'الإشعارات مسموحة في iPhone، لكن هذا الجهاز لم يسجّل بعد على الخادم. اضغط إعادة الاتصال، أو أغلق التطبيق بالكامل ثم افتحه.',
+    pushGrantedNotLinkedFailedBody:
+      'الإشعارات مفعّلة في الإعدادات، لكن Apple لم تزوّدنا برمز الجهاز. أغلق DrinkatHR بالكامل، افتحه، واضغط إعادة الاتصال. إن استمرّ، قد تحتاج تحديث التطبيق من App Store.',
+    pushNativeUnavailableBody:
+      'لا يمكن لهذه النسخة من DrinkatHR الاتصال بإشعارات Apple بعد. حدّث التطبيق من App Store (أحدث إصدار)، ثم أعد فتحه واضغط إعادة الاتصال. Safari لا يستقبل هذه التنبيهات.',
+    pushDismissBanner: 'إخفاء مؤقتاً',
     pushReconnectNow: 'إعادة الاتصال',
     pushReconnecting: 'جاري الاتصال…',
   },
@@ -334,6 +347,10 @@ export const ar: LocaleMessages = {
     pullToRefreshHint: 'اسحب للأسفل للتحديث',
     pullToRefreshRelease: 'اترك للتحديث',
     pullToRefreshRefreshing: 'جاري التحديث…',
+    errorTitle: 'تعذّر تحميل الصفحة',
+    errorBody: 'حدث انقطاع مؤقت في الخادم — غالباً يُحل بإعادة المحاولة. جلستك ما زالت نشطة.',
+    errorRetry: 'إعادة المحاولة',
+    errorGoHome: 'العودة للوحة التحكم',
   },
   hr: {
     title: 'الموارد البشرية',

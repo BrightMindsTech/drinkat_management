@@ -1,24 +1,23 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { APP_RESUME_EVENT, bindAppResumeSync } from '@/lib/app-resume-sync';
+import { bindAppResumeSync } from '@/lib/app-resume-sync';
 
-/** Re-register push, refresh data, and reload server UI when the app returns from background. */
+/** Wires real resume work (session, push, refresh) on app open and foreground. */
 export function AppResumeSync() {
   const router = useRouter();
+  const [, startTransition] = useTransition();
+
+  const refreshServerUi = useCallback(() => {
+    startTransition(() => {
+      router.refresh();
+    });
+  }, [router]);
 
   useEffect(() => {
-    const stop = bindAppResumeSync();
-    const onResume = () => {
-      router.refresh();
-    };
-    window.addEventListener(APP_RESUME_EVENT, onResume);
-    return () => {
-      stop();
-      window.removeEventListener(APP_RESUME_EVENT, onResume);
-    };
-  }, [router]);
+    return bindAppResumeSync(refreshServerUi);
+  }, [refreshServerUi]);
 
   return null;
 }

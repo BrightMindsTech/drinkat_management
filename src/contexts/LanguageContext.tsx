@@ -75,6 +75,19 @@ export function useLanguage() {
   return ctx;
 }
 
+/** Same as useLanguage but safe outside LanguageProvider (e.g. global-error boundary). */
+export function useOptionalLanguage(): LanguageContextValue {
+  const ctx = useContext(LanguageContext);
+  if (ctx) return ctx;
+  const locale = getInitialLocale();
+  return {
+    locale,
+    setLocale: () => {},
+    t: messages[locale],
+    dir: locale === 'ar' ? 'rtl' : 'ltr',
+  };
+}
+
 /** Replace placeholders like {name} or {email} in a string */
 export function interpolate(str: string, params: Record<string, string | number>): string {
   return Object.entries(params).reduce(

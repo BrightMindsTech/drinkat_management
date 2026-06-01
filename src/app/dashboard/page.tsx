@@ -12,12 +12,16 @@ export default async function DashboardHome() {
 
   let displayName = email.includes('@') ? (email.split('@')[0] ?? email) : email;
   if (userId) {
-    const row = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { employee: { select: { name: true } } },
-    });
-    const n = row?.employee?.name?.trim();
-    if (n) displayName = n;
+    try {
+      const row = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { employee: { select: { name: true } } },
+      });
+      const n = row?.employee?.name?.trim();
+      if (n) displayName = n;
+    } catch {
+      // Transient D1 blip — show email-derived name instead of crashing the home screen.
+    }
   }
 
   return <DashboardHomeContent email={email} role={role} displayName={displayName} />;

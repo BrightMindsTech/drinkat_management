@@ -23,6 +23,9 @@ const RATE_LIMIT_EXEMPT_PATHS = new Set([
   '/api/time-clock/presence-check',
   '/api/push/consent-status',
   '/api/push/opt-in',
+  '/api/client-error',
+  '/api/push/device-status',
+  '/api/push/client-diagnostic',
 ]);
 
 const globalStore = globalThis as typeof globalThis & {

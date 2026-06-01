@@ -18,6 +18,14 @@ const config: CapacitorConfig = {
      * `automatic` often makes CSS safe-area env vars unreliable in WKWebView.
      */
     contentInset: 'never',
+    /**
+     * Required when Info.plist lists WKAppBoundDomains — without this, Capacitor cannot inject
+     * its native bridge and every plugin reports platform "web" (push/geolocation break).
+     * @see https://github.com/ionic-team/capacitor/issues/4721
+     */
+    limitsNavigationsToAppBoundDomains: true,
+    /** Makes Cloudflare diagnostics distinguish App Store shell vs Mobile Safari. */
+    appendUserAgent: 'DrinkatHR-Native',
   },
   plugins: {
     PushNotifications: {

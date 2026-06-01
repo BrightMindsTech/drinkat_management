@@ -13,6 +13,7 @@ import type { PrismaClient } from '@prisma/client';
 import { PrismaD1 } from '@prisma/adapter-d1';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { prismaRuntimeError, resolvePrismaRuntime } from '@/lib/prisma-resolve-runtime';
+import { withPrismaRetry } from '@/lib/prisma-retry';
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
@@ -101,7 +102,15 @@ export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
     const client = getClient();
     const value = Reflect.get(client, prop, receiver);
     if (typeof value === 'function') {
-      return (value as (...a: unknown[]) => unknown).bind(client);
+      const bound = (value as (...a: unknown[]) => unknown).bind(client);
+      const useRetry = hasD1Binding();
+      return (...args: unknown[]) => {
+        const result = bound(...args);
+        if (useRetry && result != null && typeof (result as Promise<unknown>).then === 'function') {
+          return withPrismaRetry(() => result as Promise<unknown>);
+        }
+        return result;
+      };
     }
     return value;
   },

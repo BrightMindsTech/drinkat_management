@@ -3,6 +3,7 @@ import { getDashboardSession } from '@/lib/dashboard-session';
 import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery';
 import { prisma } from '@/lib/prisma';
 import { parseTemplateFields } from '@/lib/formTemplate';
+import { safeParseJsonRecord } from '@/lib/safe-json';
 import {
   canManagerAssignTemplate,
   isTemplateVisibleInFillCatalog,
@@ -178,7 +179,7 @@ export default async function FormsPage() {
         reviewedAt: s.reviewedAt,
         rating: s.rating,
         comments: s.comments,
-        answers: JSON.parse(s.answersJson) as Record<string, string>,
+        answers: safeParseJsonRecord(s.answersJson),
         template: {
           id: s.template.id,
           category: s.template.category,
@@ -225,7 +226,7 @@ export default async function FormsPage() {
         reviewedAt: s.reviewedAt,
         rating: s.rating,
         comments: s.comments,
-        answers: JSON.parse(s.answersJson) as Record<string, string>,
+        answers: safeParseJsonRecord(s.answersJson),
         template: {
           id: s.template.id,
           category: s.template.category,
@@ -263,7 +264,7 @@ export default async function FormsPage() {
         id: s.id,
         status: s.status,
         submittedAt: s.submittedAt,
-        answers: JSON.parse(s.answersJson) as Record<string, string>,
+        answers: safeParseJsonRecord(s.answersJson),
         template: {
           id: s.template.id,
           title: s.template.title,

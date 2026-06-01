@@ -1,6 +1,16 @@
 'use client';
 
-import { isCapacitorIos, registerIosPushWithBackend } from '@/lib/native-push-client';
+import {
+  isBrokenNativeIosShell,
+  isCapacitorIos,
+  isIosUserAgent,
+  isNativePushPluginAvailable,
+  registerIosPushWithBackend,
+  attachIosPushRegistrationListeners,
+  reportPushDiagnostic,
+} from '@/lib/native-push-client';
+import { getCachedApnsDeviceToken } from '@/lib/push-apns-cache';
+import { isApnsDeviceTokenOnServer, syncApnsDeviceTokenToBackend } from '@/lib/push-apns-sync';
 import { subscribeWebPush, syncWebPushSubscriptionToBackend } from '@/lib/web-push-client';
 
 export type PushRegistrationStatus = {
@@ -23,6 +33,31 @@ export type EnsurePushRegisteredResult = {
 /** Retry when this device is not registered; re-register periodically while app is open. */
 const RETRY_WHEN_DISCONNECTED_MS = 90 * 1000;
 const REREGISTER_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+export type DevicePushState =
+  | 'connected'
+  | 'needs_permission'
+  | 'denied'
+  | 'no_consent'
+  /** iOS allowed notifications but this phone's token is not on the server yet. */
+  | 'granted_not_linked'
+  /** Native shell missing push plugin — needs App Store app update, not a web deploy. */
+  | 'native_unavailable';
+
+const BANNER_DISMISS_KEY = 'drinkat-push-banner-dismiss-until';
+
+export function isPushBannerDismissed(): boolean {
+  if (typeof window === 'undefined') return false;
+  const raw = localStorage.getItem(BANNER_DISMISS_KEY);
+  if (!raw) return false;
+  const until = Number(raw);
+  return Number.isFinite(until) && until > Date.now();
+}
+
+export function dismissPushBanner(hours = 24): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(BANNER_DISMISS_KEY, String(Date.now() + hours * 60 * 60 * 1000));
+}
 
 export async function fetchPushRegistrationStatus(): Promise<PushRegistrationStatus | null> {
   try {
@@ -66,6 +101,8 @@ export async function needsPushPermissionPrompt(): Promise<boolean> {
 }
 
 async function registerWebPushFromBrowser(requestPermission: boolean): Promise<boolean> {
+  // iOS Safari/WKWebView cannot use web push; registering sw.js can interfere with Capacitor.
+  if (isIosUserAgent()) return false;
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
 
   await navigator.serviceWorker.register('/sw.js');
@@ -92,6 +129,52 @@ async function registerWebPushFromBrowser(requestPermission: boolean): Promise<b
   return sub != null;
 }
 
+async function isIosDevicePushConnected(): Promise<boolean> {
+  try {
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    const perm = await PushNotifications.checkPermissions();
+    if (perm.receive === 'denied') return false;
+    if (perm.receive !== 'granted') return false;
+
+    const cached = getCachedApnsDeviceToken();
+    if (!cached) return false;
+    if (await isApnsDeviceTokenOnServer(cached)) return true;
+    return syncApnsDeviceTokenToBackend(cached);
+  } catch {
+    return false;
+  }
+}
+
+/** Passive check — does not call APNs register() (avoids 12s hangs on every page load). */
+export async function getDevicePushState(): Promise<DevicePushState> {
+  await ensurePushConsentOnServer();
+  const status = await fetchPushRegistrationStatus();
+  if (!status?.pushConsent) return 'no_consent';
+
+  if (isBrokenNativeIosShell()) return 'native_unavailable';
+
+  if (isCapacitorIos()) {
+    if (!isNativePushPluginAvailable()) return 'native_unavailable';
+    try {
+      const { PushNotifications } = await import('@capacitor/push-notifications');
+      const perm = await PushNotifications.checkPermissions();
+      if (perm.receive === 'denied') return 'denied';
+      if (perm.receive !== 'granted') return 'needs_permission';
+      return (await isIosDevicePushConnected()) ? 'connected' : 'granted_not_linked';
+    } catch {
+      return 'needs_permission';
+    }
+  }
+
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    if (Notification.permission === 'denied') return 'denied';
+    if (Notification.permission !== 'granted') return 'needs_permission';
+  }
+
+  const registered = await registerWebPushFromBrowser(false);
+  return registered ? 'connected' : 'needs_permission';
+}
+
 /**
  * Connect push for the signed-in user on this device.
  * Auto-enables server consent on sign-in; may prompt for OS permission when needed.
@@ -99,6 +182,7 @@ async function registerWebPushFromBrowser(requestPermission: boolean): Promise<b
 export async function ensurePushRegistered(
   opts: EnsurePushRegisteredOptions = {}
 ): Promise<EnsurePushRegisteredResult> {
+  await attachIosPushRegistrationListeners();
   await ensurePushConsentOnServer();
 
   const consent = await fetchPushRegistrationStatus();
@@ -109,6 +193,9 @@ export async function ensurePushRegistered(
     opts.requestPermission !== undefined ? opts.requestPermission : await needsPushPermissionPrompt();
 
   if (isCapacitorIos()) {
+    if (!requestPermission && (await isIosDevicePushConnected())) {
+      return { done: true, registered: true };
+    }
     const registered = await registerIosPushWithBackend({ requestPermission });
     return { done: true, registered };
   }
@@ -144,12 +231,12 @@ export function bindPushRegistrationKeepalive(): () => void {
 
   const retryIfNeeded = async () => {
     if (disposed) return;
-    await ensurePushConsentOnServer();
-    const status = await fetchPushRegistrationStatus();
-    if (!status?.pushConsent) return;
-    void ensurePushRegistered();
+    const state = await getDevicePushState();
+    if (state !== 'needs_permission') return;
+    void ensurePushRegistered({ requestPermission: false });
   };
 
+  void attachIosPushRegistrationListeners();
   sync();
   retryTimer = window.setInterval(() => void retryIfNeeded(), RETRY_WHEN_DISCONNECTED_MS);
   periodicTimer = window.setInterval(sync, REREGISTER_INTERVAL_MS);

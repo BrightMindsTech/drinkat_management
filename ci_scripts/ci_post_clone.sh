@@ -14,6 +14,9 @@ if ! npm ci; then
   npm install
 fi
 
+echo "ci_post_clone: cap sync ios (generates ios/App/App/capacitor.config.json from capacitor.config.ts)"
+npm run cap:sync
+
 echo "ci_post_clone: pod install"
 cd ios/App
 pod install

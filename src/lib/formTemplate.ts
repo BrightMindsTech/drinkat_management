@@ -13,8 +13,14 @@ export const formTemplateFieldsSchema = z.array(formFieldDefSchema);
 export type FormFieldDef = z.infer<typeof formFieldDefSchema>;
 
 export function parseTemplateFields(json: string): FormFieldDef[] {
-  const raw = JSON.parse(json) as unknown;
-  return formTemplateFieldsSchema.parse(raw);
+  const trimmed = json?.trim();
+  if (!trimmed) return [];
+  try {
+    const raw = JSON.parse(trimmed) as unknown;
+    return formTemplateFieldsSchema.parse(raw);
+  } catch {
+    return [];
+  }
 }
 
 export function validateAnswersAgainstFields(

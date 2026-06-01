@@ -8,7 +8,8 @@ function isPublicApiPath(pathname: string): boolean {
   return (
     pathname.startsWith('/api/health/ready') ||
     pathname.startsWith('/api/cron/') ||
-    pathname.startsWith('/api/auth/')
+    pathname.startsWith('/api/auth/') ||
+    pathname === '/api/client-error'
   );
 }
 

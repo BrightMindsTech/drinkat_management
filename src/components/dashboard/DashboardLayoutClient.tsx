@@ -181,11 +181,11 @@ export function DashboardLayoutClient({
 
       {/* Main column */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overscroll-none">
-        <PushConnectionNotice />
         <PendingReviewNotice role={role} />
         {/* touch-none: drags on chrome must not scroll the main column / webview (iOS scroll chaining) */}
-        {/* bg matches header through safe-area inset so there’s no gray “empty” strip under the status bar */}
+        {/* safe-pt-top once for push banner + header — banner was above this and hid under the notch */}
         <div className="safe-pt-top shrink-0 touch-none border-b border-gray-200/80 bg-white/90 backdrop-blur-xl dark:border-ios-dark-separator dark:bg-ios-dark-elevated/90">
+          <PushConnectionNotice />
           <header className="min-w-0">
             <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-wrap items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5">
             <button

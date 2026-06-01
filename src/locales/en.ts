@@ -29,6 +29,7 @@ export const en = {
     hide: 'Hide',
     show: 'Show',
     signingOut: 'Signing out…',
+    appReconnecting: 'Refreshing & reconnecting…',
     create: 'Create',
     save: 'Save',
     edit: 'Edit',
@@ -215,7 +216,19 @@ export const en = {
     stillAtWork: 'Still at work — dismiss',
     pushDisconnectedTitle: 'Phone notifications disconnected',
     pushDisconnectedBody:
-      'This phone is not receiving alerts yet. Tap Reconnect and allow notifications when iOS asks.',
+      'This phone will not get alerts for messages, clock reminders, or review requests until notifications are connected.',
+    pushDeniedBody:
+      'Notifications are turned off for DrinkatHR in iPhone Settings. Turn them on, then return here.',
+    pushOpenSettings: 'Open Settings',
+    pushReconnectFailedBody:
+      'Still not connected. Open iPhone Settings → DrinkatHR → Notifications and make sure Allow Notifications is on, then tap Reconnect again.',
+    pushGrantedNotLinkedBody:
+      'iPhone notifications are allowed, but this device has not registered with our server yet. Tap Reconnect, or force-close and reopen the app.',
+    pushGrantedNotLinkedFailedBody:
+      'Notifications are on in Settings, but Apple did not give us a device token. Force-close DrinkatHR, reopen, tap Reconnect once. If it persists, the App Store build may need an update.',
+    pushNativeUnavailableBody:
+      'This DrinkatHR build cannot connect to Apple notifications yet. Update the app from the App Store (latest version), then reopen and tap Reconnect. Safari cannot receive these alerts.',
+    pushDismissBanner: 'Dismiss for now',
     pushReconnectNow: 'Reconnect now',
     pushReconnecting: 'Reconnecting…',
   },
@@ -333,6 +346,10 @@ export const en = {
     pullToRefreshHint: 'Pull down to refresh',
     pullToRefreshRelease: 'Release to refresh',
     pullToRefreshRefreshing: 'Refreshing…',
+    errorTitle: 'Could not load this page',
+    errorBody: 'The server had a brief hiccup — often fixed by retrying. Your session is still active.',
+    errorRetry: 'Try again',
+    errorGoHome: 'Back to dashboard',
   },
   hr: {
     title: 'HR',
