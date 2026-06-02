@@ -40,7 +40,9 @@
 	"vars": {
 		"AUTH_TRUST_HOST": "1",
 		// Override OpenNext's bundled file:./dev.db so Prisma never treats production as an empty local SQLite file.
-		"DATABASE_URL": ""
+		"DATABASE_URL": "",
+		// Cron self-fetch must use the real hostname (not https://internal/) so OpenNext + D1 init correctly.
+		"WORKER_PUBLIC_URL": "https://drinkat-management.technologiesbrightminds.workers.dev"
 	},
 	// Must match `env.UPLOADS` in src/lib/upload-storage.ts
 	"r2_buckets": [

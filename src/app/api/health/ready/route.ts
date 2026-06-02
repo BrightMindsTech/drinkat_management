@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { checkDatabaseHealth } from '@/lib/db-health';
+import { logErrorThrottled } from '@/lib/log-throttle';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,8 @@ export async function GET() {
   if (health.ok) {
     return NextResponse.json({ ok: true, db: true });
   }
-  console.error('[health/ready] database check failed', health.error);
+  logErrorThrottled('db-unavailable', () => {
+    console.error('[health/ready] database check failed', health.error);
+  });
   return NextResponse.json({ ok: false, db: false }, { status: 503 });
 }

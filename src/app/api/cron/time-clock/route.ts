@@ -1,4 +1,5 @@
 import { checkDatabaseHealth } from '@/lib/db-health';
+import { logErrorThrottled } from '@/lib/log-throttle';
 import { prisma } from '@/lib/prisma';
 import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 import { purgeExpiredChat } from '@/lib/chat-retention';
@@ -34,7 +35,9 @@ export async function GET(req: Request) {
 
   const dbHealth = await checkDatabaseHealth();
   if (!dbHealth.ok) {
-    console.error('[cron/time-clock] database health failed', dbHealth.error);
+    logErrorThrottled('db-unavailable', () => {
+      console.error('[cron/time-clock] database health failed', dbHealth.error);
+    });
     return Response.json({ ok: false, db: false, error: 'database unavailable' }, { status: 503 });
   }
 

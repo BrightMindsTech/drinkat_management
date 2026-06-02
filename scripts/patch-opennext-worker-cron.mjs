@@ -15,8 +15,53 @@ if (!fs.existsSync(workerPath)) {
   process.exit(1);
 }
 
+const SCHEDULED_HANDLER = `async scheduled(event, env, ctx) {
+        const secret = env.CRON_SECRET;
+        if (!secret) return;
+        const ref = env.WORKER_SELF_REFERENCE;
+        if (!ref || typeof ref.fetch !== "function") {
+            console.error("[scheduled] WORKER_SELF_REFERENCE missing");
+            return;
+        }
+        let scheduledDbFailLoggedAt = 0;
+        const logScheduledFail = (label, detail) => {
+            const now = Date.now();
+            if (now - scheduledDbFailLoggedAt < 3600000) return;
+            scheduledDbFailLoggedAt = now;
+            console.error(label, detail);
+        };
+        const base =
+            (typeof env.WORKER_PUBLIC_URL === "string" && env.WORKER_PUBLIC_URL) ||
+            "https://drinkat-management.technologiesbrightminds.workers.dev";
+        const url = new URL(base.replace(/\\/$/, "") + "/api/cron/time-clock");
+        url.searchParams.set("secret", secret);
+        try {
+            const res = await ref.fetch(new Request(url, { method: "GET" }));
+            if (!res.ok) {
+                const t = await res.text().catch(() => "");
+                logScheduledFail("[scheduled] cron failed", res.status + " " + t.slice(0, 200));
+            }
+        } catch (e) {
+            logScheduledFail("[scheduled] cron error", e);
+        }
+    }`;
+
 let s = fs.readFileSync(workerPath, 'utf8');
-if (s.includes('async scheduled(event')) {
+
+const scheduledStart = s.indexOf('async scheduled(event');
+if (scheduledStart !== -1) {
+  const closeIdx = s.indexOf('\n    },', scheduledStart);
+  if (closeIdx === -1) {
+    console.error('[patch-opennext-worker-cron] could not find end of scheduled handler');
+    process.exit(1);
+  }
+  s = s.slice(0, scheduledStart) + SCHEDULED_HANDLER + s.slice(closeIdx);
+  fs.writeFileSync(workerPath, s);
+  console.log('[patch-opennext-worker-cron] updated scheduled handler');
+  process.exit(0);
+}
+
+if (s.includes('logScheduledFail')) {
   console.log('[patch-opennext-worker-cron] already patched');
   process.exit(0);
 }
@@ -32,40 +77,7 @@ if (idx === -1) {
 
 const insert = `        });
     },
-    async scheduled(event, env, ctx) {
-        const secret = env.CRON_SECRET;
-        if (!secret) return;
-        const ref = env.WORKER_SELF_REFERENCE;
-        if (!ref || typeof ref.fetch !== "function") {
-            console.error("[scheduled] WORKER_SELF_REFERENCE missing");
-            return;
-        }
-        const url = new URL("https://internal/api/cron/time-clock");
-        url.searchParams.set("secret", secret);
-        try {
-            const res = await ref.fetch(new Request(url, { method: "GET" }));
-            if (!res.ok) {
-                const t = await res.text().catch(() => "");
-                console.error("[scheduled] cron failed", res.status, t.slice(0, 200));
-            }
-            const healthUrl = new URL("https://internal/api/health/ready");
-            for (let i = 0; i < 3; i++) {
-                const hres = await ref.fetch(new Request(healthUrl, { method: "GET" }));
-                if (!hres.ok) {
-                    const ht = await hres.text().catch(() => "");
-                    console.error("[scheduled] health/ready failed", hres.status, ht.slice(0, 120));
-                    break;
-                }
-                const body = await hres.json().catch(() => ({}));
-                if (body?.db !== true) {
-                    console.error("[scheduled] health/ready db:false", JSON.stringify(body));
-                    break;
-                }
-            }
-        } catch (e) {
-            console.error("[scheduled] cron error", e);
-        }
-    },
+    ${SCHEDULED_HANDLER},
 };`;
 
 s = s.slice(0, idx) + insert;

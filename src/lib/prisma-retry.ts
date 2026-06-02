@@ -8,6 +8,8 @@ const TRANSIENT_PATTERNS = [
   /timeout/i,
   /timed out/i,
   /network/i,
+  /connection lost/i,
+  /Invalid array buffer length/i,
   /ECONNRESET/i,
   /503/,
   /502/,
@@ -32,7 +34,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Retry D1/Prisma reads on brief Cloudflare blips (common cause of dashboard SSR crashes). */
-export async function withPrismaRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+export async function withPrismaRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 3,
+  baseDelayMs = 80
+): Promise<T> {
   let last: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -41,7 +47,7 @@ export async function withPrismaRetry<T>(fn: () => Promise<T>, attempts = 3): Pr
       last = error;
       const retryable = isTransientDbError(error);
       if (!retryable || i === attempts - 1) throw error;
-      await sleep(80 * (i + 1));
+      await sleep(baseDelayMs * (i + 1));
     }
   }
   throw last;
