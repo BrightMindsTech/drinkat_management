@@ -26,6 +26,11 @@ export function reportClientVisibleError(payload: ClientVisibleError): void {
     body: JSON.stringify({
       ...payload,
       path,
+      href: window.location.href,
+      online: navigator.onLine,
+      visibilityState: document.visibilityState,
+      connectionType:
+        (navigator as Navigator & { connection?: { effectiveType?: string } }).connection?.effectiveType ?? null,
       userAgent: navigator.userAgent,
     }),
   }).catch(() => {

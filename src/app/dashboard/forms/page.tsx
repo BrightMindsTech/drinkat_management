@@ -22,22 +22,41 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+async function safeQuery<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    console.error(`[forms/page] ${label} failed`, error);
+    return fallback;
+  }
+}
+
 export default async function FormsPage() {
-  await maybePurgeOldManagementFormSubmissions(prisma);
+  await safeQuery('retention purge', () => maybePurgeOldManagementFormSubmissions(prisma), undefined);
   const session = await getDashboardSession();
   if (!session?.user?.id) return <DashboardSessionRecovery />;
   const role = normalizeUserRole(session.user.role);
 
-  const allTemplates = await prisma.managementFormTemplate.findMany({
-    where: role === 'owner' ? {} : { active: true },
-    include: { departmentAssignments: true, employeeAssignments: true },
-    orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
-  });
+  const allTemplates = await safeQuery(
+    'load templates',
+    () =>
+      prisma.managementFormTemplate.findMany({
+        where: role === 'owner' ? {} : { active: true },
+        include: { departmentAssignments: true, employeeAssignments: true },
+        orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+      }),
+    []
+  );
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: { employee: { include: { department: true } } },
-  });
+  const user = await safeQuery(
+    'load user profile',
+    () =>
+      prisma.user.findUnique({
+        where: { id: session.user.id },
+        include: { employee: { include: { department: true } } },
+      }),
+    null
+  );
 
   const qcReviewer = isQcReviewerUser(session.user.role, user?.employee ?? null);
 
@@ -98,17 +117,26 @@ export default async function FormsPage() {
 
   const departments =
     role === 'owner'
-      ? await prisma.department.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } })
+      ? await safeQuery(
+          'load departments',
+          () => prisma.department.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+          []
+        )
       : undefined;
 
   const assignmentEmployees =
     role === 'owner'
       ? (
-          await prisma.employee.findMany({
-            where: { status: { not: 'terminated' } },
-            include: { branch: { select: { name: true } } },
-            orderBy: { name: 'asc' },
-          })
+          await safeQuery(
+            'load assignment employees',
+            () =>
+              prisma.employee.findMany({
+                where: { status: { not: 'terminated' } },
+                include: { branch: { select: { name: true } } },
+                orderBy: { name: 'asc' },
+              }),
+            []
+          )
         ).map((e) => ({
           id: e.id,
           name: e.name,
@@ -119,23 +147,33 @@ export default async function FormsPage() {
 
   const managerEmployees =
     role === 'manager' && user?.employee
-      ? await prisma.employee.findMany({
-          where: {
-            reportsToEmployeeId: user.employee.id,
-            status: { in: ['active', 'on_leave'] },
-          },
-          select: { id: true, name: true, role: true },
-          orderBy: { name: 'asc' },
-        })
+      ? await safeQuery(
+          'load manager employees',
+          () =>
+            prisma.employee.findMany({
+              where: {
+                reportsToEmployeeId: user.employee.id,
+                status: { in: ['active', 'on_leave'] },
+              },
+              select: { id: true, name: true, role: true },
+              orderBy: { name: 'asc' },
+            }),
+          []
+        )
       : undefined;
 
   let reviewSubmissions: FormsReviewSubmission[] = [];
   if (role === 'owner' || role === 'manager') {
     if (role === 'manager') {
-      const userWithEmployee = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        include: { employee: { include: { branch: true } } },
-      });
+      const userWithEmployee = await safeQuery(
+        'load manager profile',
+        () =>
+          prisma.user.findUnique({
+            where: { id: session.user.id },
+            include: { employee: { include: { branch: true } } },
+          }),
+        null
+      );
       if (!userWithEmployee?.employee) {
         return (
           <div>
@@ -155,22 +193,27 @@ export default async function FormsPage() {
       }
 
       const managerEmployee = userWithEmployee.employee;
-      const list = await prisma.managementFormSubmission.findMany({
-        where: managerManagementFormSubmissionWhere(managerEmployee),
-        include: {
-          template: { include: { departmentAssignments: true } },
-          employee: {
+      const list = await safeQuery(
+        'load manager review submissions',
+        () =>
+          prisma.managementFormSubmission.findMany({
+            where: managerManagementFormSubmissionWhere(managerEmployee),
             include: {
+              template: { include: { departmentAssignments: true } },
+              employee: {
+                include: {
+                  branch: true,
+                  department: true,
+                  reportsToEmployee: { select: { id: true, name: true } },
+                },
+              },
               branch: true,
-              department: true,
-              reportsToEmployee: { select: { id: true, name: true } },
             },
-          },
-          branch: true,
-        },
-        orderBy: { submittedAt: 'desc' },
-        take: 300,
-      });
+            orderBy: { submittedAt: 'desc' },
+            take: 300,
+          }),
+        []
+      );
 
       reviewSubmissions = list.map((s) => ({
         id: s.id,
@@ -203,22 +246,27 @@ export default async function FormsPage() {
       }));
     } else {
       const whereSub = {};
-      const list = await prisma.managementFormSubmission.findMany({
-        where: whereSub,
-        include: {
-          template: { include: { departmentAssignments: true } },
-          employee: {
+      const list = await safeQuery(
+        'load owner review submissions',
+        () =>
+          prisma.managementFormSubmission.findMany({
+            where: whereSub,
             include: {
+              template: { include: { departmentAssignments: true } },
+              employee: {
+                include: {
+                  branch: true,
+                  department: true,
+                  reportsToEmployee: { select: { id: true, name: true } },
+                },
+              },
               branch: true,
-              department: true,
-              reportsToEmployee: { select: { id: true, name: true } },
             },
-          },
-          branch: true,
-        },
-        orderBy: { submittedAt: 'desc' },
-        take: 300,
-      });
+            orderBy: { submittedAt: 'desc' },
+            take: 300,
+          }),
+        []
+      );
       reviewSubmissions = list.map((s) => ({
         id: s.id,
         status: s.status,
@@ -254,12 +302,17 @@ export default async function FormsPage() {
   let mySubmissions: FormsMySubmission[] = [];
   if (role === 'staff' || role === 'qc' || role === 'marketing' || role === 'manager') {
     if (user?.employee) {
-      const list = await prisma.managementFormSubmission.findMany({
-        where: { employeeId: user.employee.id },
-        include: { template: true, branch: true },
-        orderBy: { submittedAt: 'desc' },
-        take: 100,
-      });
+      const list = await safeQuery(
+        'load my submissions',
+        () =>
+          prisma.managementFormSubmission.findMany({
+            where: { employeeId: user.employee.id },
+            include: { template: true, branch: true },
+            orderBy: { submittedAt: 'desc' },
+            take: 100,
+          }),
+        []
+      );
       mySubmissions = list.map((s) => ({
         id: s.id,
         status: s.status,

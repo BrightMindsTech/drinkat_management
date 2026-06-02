@@ -19,8 +19,14 @@ export async function POST(req: Request) {
     JSON.stringify({
       kind,
       path,
+      href: typeof body.href === 'string' ? body.href.slice(0, 260) : null,
       digest: digest || null,
       message: message.slice(0, 500) || null,
+      online: typeof body.online === 'boolean' ? body.online : null,
+      visibilityState:
+        typeof body.visibilityState === 'string' ? body.visibilityState.slice(0, 24) : null,
+      connectionType:
+        typeof body.connectionType === 'string' ? body.connectionType.slice(0, 24) : null,
       userAgent: typeof body.userAgent === 'string' ? body.userAgent.slice(0, 160) : null,
       at: new Date().toISOString(),
     })
