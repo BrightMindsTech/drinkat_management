@@ -14,6 +14,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { DashboardNavLinks } from './DashboardNavLinks';
 import { DashboardPageSectionNav } from './DashboardPageSectionNav';
 import { DashboardScrollMain } from './DashboardScrollMain';
+import { DashboardSearchOverlay } from './DashboardSearchOverlay';
 import { usePathname, useRouter } from 'next/navigation';
 import { roleMayUseChat } from '@/lib/chat-policy';
 
@@ -47,6 +48,7 @@ export function DashboardLayoutClient({
   children: React.ReactNode;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const swipeStartXRef = useRef<number | null>(null);
   const swipeStartYRef = useRef<number | null>(null);
@@ -202,6 +204,17 @@ export function DashboardLayoutClient({
               <Logo size={18} showPoweredBy={false} compact />
             </Link>
             <div className="ms-auto flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                aria-label="Open search"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-app-primary dark:border-ios-dark-separator dark:bg-ios-dark-fill"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden>
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
+                </svg>
+              </button>
               <ThemeToggle />
               <LanguageToggle />
               {headcountSummary ? (
@@ -300,6 +313,8 @@ export function DashboardLayoutClient({
         </div>
         <SidebarAccountBlock email={email} bottomSafeArea={false} />
       </div>
+
+      <DashboardSearchOverlay role={role} open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }

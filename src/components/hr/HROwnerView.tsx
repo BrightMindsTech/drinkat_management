@@ -52,6 +52,9 @@ export function HROwnerView({
   const [hoursBranchId, setHoursBranchId] = useState('');
   const [hoursLoading, setHoursLoading] = useState(false);
   const [hoursError, setHoursError] = useState<string | null>(null);
+  const [bulkAdvanceLimit, setBulkAdvanceLimit] = useState('');
+  const [bulkAdvanceSaving, setBulkAdvanceSaving] = useState(false);
+  const [bulkAdvanceNotice, setBulkAdvanceNotice] = useState<string | null>(null);
   const [monthlyHoursRows, setMonthlyHoursRows] = useState<
     {
       employeeId: string;
@@ -137,12 +140,51 @@ export function HROwnerView({
     setAdvances((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
   }
 
+  async function applyBulkAdvanceLimit() {
+    const trimmed = bulkAdvanceLimit.trim();
+    const parsed = trimmed ? Number(trimmed) : null;
+    if (trimmed && (Number.isNaN(parsed) || (parsed ?? 0) < 0)) {
+      setBulkAdvanceNotice(t.hr.bulkAdvanceLimitInvalid);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      trimmed
+        ? t.hr.bulkAdvanceLimitConfirm.replace('{amount}', Number(parsed).toFixed(2))
+        : t.hr.bulkAdvanceLimitClearConfirm
+    );
+    if (!confirmed) return;
+
+    setBulkAdvanceSaving(true);
+    setBulkAdvanceNotice(null);
+    try {
+      const res = await fetch('/api/employees/advance-limit', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ advanceLimit: parsed }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setBulkAdvanceNotice(data.error ?? t.hr.bulkAdvanceLimitFailed);
+        return;
+      }
+
+      const data = (await res.json()) as { updatedEmployees?: number };
+      const applied = parsed === null ? null : parsed;
+      setEmployees((prev) => prev.map((e) => ({ ...e, advanceLimit: applied })));
+      setBulkAdvanceNotice(
+        t.hr.bulkAdvanceLimitSuccess.replace('{count}', String(data.updatedEmployees ?? employees.length))
+      );
+    } finally {
+      setBulkAdvanceSaving(false);
+    }
+  }
+
   const sectionClass = 'app-section scroll-mt-28';
 
   return (
     <div className="app-page">
       <OwnerPushBroadcastSection />
-      <BranchGeofenceSection branches={branches} />
       <OwnerLiveAttendanceSection initialRows={initialLiveAttendance} />
       <section id="hr-owner-staff" className={sectionClass}>
         <div className="flex items-center justify-between mb-4">
@@ -279,7 +321,37 @@ export function HROwnerView({
 
       <section id="hr-owner-advances" className={sectionClass}>
         <h2 className="text-lg font-semibold text-app-primary mb-4">{t.hr.advances}</h2>
+        <div className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 mb-4">
+          <p className="text-sm font-semibold text-app-primary">{t.hr.bulkAdvanceLimitTitle}</p>
+          <p className="text-xs text-app-secondary mt-1">{t.hr.bulkAdvanceLimitHint}</p>
+          <div className="mt-3 flex flex-col sm:flex-row gap-2">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={bulkAdvanceLimit}
+              onChange={(e) => setBulkAdvanceLimit(e.target.value)}
+              placeholder={t.hr.bulkAdvanceLimitPlaceholder}
+              className="app-input flex-1 min-w-0"
+              disabled={bulkAdvanceSaving}
+            />
+            <button
+              type="button"
+              onClick={() => void applyBulkAdvanceLimit()}
+              disabled={bulkAdvanceSaving}
+              className="app-btn-primary disabled:opacity-50"
+            >
+              {bulkAdvanceSaving ? t.common.loading : t.hr.bulkAdvanceLimitApply}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-app-muted">{t.hr.bulkAdvanceLimitClearHint}</p>
+          {bulkAdvanceNotice ? <p className="mt-2 text-sm text-app-secondary">{bulkAdvanceNotice}</p> : null}
+        </div>
         <AdvancesList advances={advances} onUpdated={onAdvanceUpdated} ownerView />
+      </section>
+
+      <section id="hr-branch-geofence" className={sectionClass}>
+        <BranchGeofenceSection branches={branches} />
       </section>
 
       <section id="hr-owner-monthly-hours" className={sectionClass}>

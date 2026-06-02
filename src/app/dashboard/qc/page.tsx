@@ -3,7 +3,7 @@ import { getDashboardSession } from '@/lib/dashboard-session';
 import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery';
 import { prisma } from '@/lib/prisma';
 import { QCReviewView } from '@/components/qc/QCReviewView';
-import { QcUnderReviewView } from '@/components/qc/QcUnderReviewView';
+import { QCStaffView } from '@/components/qc/QCStaffView';
 import { QCPageTitle } from '@/components/QCPageTitle';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { isQcReviewerUser } from '@/lib/qc-reviewer';
@@ -22,7 +22,42 @@ export default async function QCPage() {
   const qcReview = isQcReviewerUser(session.user.role, userForQc?.employee ?? null);
 
   if (!qcReview) {
-    return <QcUnderReviewView />;
+    const employeeId = userForQc?.employee?.id;
+    if (!employeeId) return <DashboardSessionRecovery />;
+
+    const [assignments, submissions] = await Promise.all([
+      prisma.checklistAssignment.findMany({
+        where: { employeeId },
+        include: {
+          checklist: {
+            include: {
+              items: { orderBy: { sortOrder: 'asc' } },
+            },
+          },
+          branch: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.qcSubmission.findMany({
+        where: { employeeId },
+        include: {
+          assignment: {
+            include: {
+              checklist: { select: { name: true } },
+            },
+          },
+          photos: true,
+        },
+        orderBy: { submittedAt: 'desc' },
+      }),
+    ]);
+
+    return (
+      <div>
+        <QCPageTitle variant="staff" />
+        <QCStaffView assignments={assignments} submissions={submissions} />
+      </div>
+    );
   }
 
   const [checklists, assignments, submissions, branches, employees] = await Promise.all([
