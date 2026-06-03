@@ -9,6 +9,7 @@ import { ensurePushRegistered } from '@/lib/push-registration-client';
 import { useAsyncActionLock, useSubmitLock } from '@/lib/use-async-action-lock';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
 import { AppModal } from '@/components/AppModal';
+import { formatAppDateTime, formatAppDateTimeInTimeZone } from '@/lib/format-datetime';
 
 type ManagerLog = {
   id: string;
@@ -81,19 +82,19 @@ function useWallClock(timeZone: string, locale: 'en' | 'ar') {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
-  return useMemo(() => {
-    const loc = locale === 'ar' ? 'ar-JO' : 'en-GB';
-    return new Intl.DateTimeFormat(loc, {
-      timeZone,
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    }).format(now);
-  }, [now, timeZone, locale]);
+  return useMemo(
+    () =>
+      formatAppDateTimeInTimeZone(now, timeZone, locale, {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      }),
+    [now, timeZone, locale]
+  );
 }
 
 export function TimeClockView({
@@ -238,7 +239,7 @@ export function TimeClockView({
                 <div key={a.id} className="rounded-lg border border-gray-100 dark:border-ios-dark-separator px-3 py-2">
                   <p className="text-sm font-semibold text-app-label">{a.title}</p>
                   <p className="text-sm text-app-secondary mt-0.5">{a.body}</p>
-                  <p className="text-xs text-app-muted mt-1">{new Date(a.createdAt).toLocaleString()}</p>
+                  <p className="text-xs text-app-muted mt-1">{formatAppDateTime(a.createdAt, locale)}</p>
                   <button
                     type="button"
                     disabled={
@@ -338,7 +339,7 @@ export function TimeClockView({
                         <div key={r.id} className="px-3 py-2 text-sm">
                           <p className="text-app-label">{r.details}</p>
                           <p className="text-xs text-app-secondary">
-                            {new Date(r.when).toLocaleString()} · {r.type}
+                            {formatAppDateTime(r.when, locale)} · {r.type}
                           </p>
                           <button
                             type="button"

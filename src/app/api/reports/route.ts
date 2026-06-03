@@ -602,20 +602,32 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  const MIN_RATINGS_FOR_EOTM = 2;
   const monthAgg = aggregateWeeklyRatings(ratingsForMonth);
   const monthByBranch = branchesOrdered.map((b) => {
     const sorted = sortAggRows(monthAgg.filter((x) => x.branchId === b.id));
     const top = sorted[0];
+    const qualifies = top && top.count >= MIN_RATINGS_FOR_EOTM;
     return {
       branchId: b.id,
       branchName: b.name,
-      employeeOfTheMonth: top
+      ratingsInMonth: sorted.reduce((n, r) => n + r.count, 0),
+      employeeOfTheMonth: qualifies
         ? {
             employeeName: top.name,
             avgScore: top.count ? Math.round((top.sum / top.count) * 10) / 10 : 0,
             count: top.count,
           }
         : null,
+      employeeOfTheMonthCandidate:
+        top && !qualifies
+          ? {
+              employeeName: top.name,
+              avgScore: top.count ? Math.round((top.sum / top.count) * 10) / 10 : 0,
+              count: top.count,
+              needsMoreRatings: MIN_RATINGS_FOR_EOTM - top.count,
+            }
+          : null,
       leaderboard: sorted.slice(0, 20).map((r) => ({
         employeeName: r.name,
         avgScore: r.count ? Math.round((r.sum / r.count) * 10) / 10 : 0,
@@ -625,11 +637,13 @@ export async function GET(req: NextRequest) {
   });
 
   const branchNameById = new Map(branchesOrdered.map((b) => [b.id, b.name]));
-  const attendanceByBranchName = (attendance.rows ?? []).reduce(
+  const attendanceByBranchId = (attendance.rows ?? []).reduce(
     (acc, row) => {
-      if (!acc[row.branchName]) acc[row.branchName] = { expected: 0, absence: 0 };
-      acc[row.branchName].expected += row.expectedWeekdays ?? 0;
-      acc[row.branchName].absence += row.absenceDays ?? 0;
+      const bid = 'branchId' in row && typeof row.branchId === 'string' ? row.branchId : '';
+      if (!bid) return acc;
+      if (!acc[bid]) acc[bid] = { expected: 0, absence: 0 };
+      acc[bid].expected += row.expectedWeekdays ?? 0;
+      acc[bid].absence += row.absenceDays ?? 0;
       return acc;
     },
     {} as Record<string, { expected: number; absence: number }>
@@ -661,8 +675,7 @@ export async function GET(req: NextRequest) {
   );
 
   const branchOverviewWithOwnerScore = branchOverviewWithScores.map((row) => {
-    const branchName = branchNameById.get(row.id) ?? row.name;
-    const attendanceAgg = attendanceByBranchName[branchName];
+    const attendanceAgg = attendanceByBranchId[row.id];
     const attendanceScore =
       attendanceAgg && attendanceAgg.expected > 0
         ? Math.max(0, Math.min(100, Math.round((1 - attendanceAgg.absence / attendanceAgg.expected) * 100)))
@@ -806,8 +819,39 @@ export async function GET(req: NextRequest) {
     weeklyRatings: {
       periodLabel: format(start, 'yyyy-MM-dd') + ' – ' + format(end, 'yyyy-MM-dd'),
       monthLabel: format(refDate, 'yyyy-MM'),
+      minRatingsForEmployeeOfMonth: MIN_RATINGS_FOR_EOTM,
+      weeksInSelectedMonth: monthKeysForRef.length,
       periodByBranch: periodByBranch,
       monthByBranch: monthByBranch,
+    },
+    executiveSummary: {
+      totalHeadcount: employees.length,
+      pendingAdvances: advancesPending,
+      pendingAdvancesAmount: advanceAmounts.pendingAmount,
+      pendingLeave: leaveData?.totalPending ?? 0,
+      pendingQc: qcPending,
+      timeClockAlerts: ownerTimeClockAlertRows.length,
+      pendingAdvanceSamples: advances
+        .filter((a) => a.status === 'pending')
+        .slice(0, 8)
+        .map((a) => ({
+          id: a.id,
+          employeeName: a.employee.name,
+          branchName: a.employee.branch.name,
+          amount: a.amount,
+          requestedAt: a.requestedAt.toISOString(),
+        })),
+      pendingLeaveSamples: (leaveData?.logs ?? [])
+        .filter((l) => l.status === 'pending')
+        .slice(0, 8)
+        .map((l) => ({
+          id: l.id,
+          employeeName: l.employee.name,
+          branchName: l.branch.name,
+          type: l.type,
+          startDate: l.startDate.toISOString(),
+          endDate: l.endDate.toISOString(),
+        })),
     },
     activity: {
       transfers: {
@@ -1010,6 +1054,7 @@ async function getAttendanceReport(
 
     return {
       employeeId: emp.id,
+      branchId: emp.branchId,
       name: emp.name,
       branchName: emp.branch.name,
       employmentType: type,
@@ -1145,14 +1190,18 @@ async function getBranchOverview(
     _sum: { amount: true },
   });
 
-  const salaryByBranch = await prisma.salaryCopy.groupBy({
-    by: ['branchId'],
+  const fullTimeForSalary = await prisma.employee.findMany({
     where: {
-      periodMonth: format(start, 'yyyy-MM'),
+      status: { in: ['active', 'on_leave'] },
+      employmentType: { not: 'part_time' },
       ...(branchId ? { branchId } : {}),
     },
-    _sum: { amount: true },
+    select: { branchId: true, salaryAmount: true },
   });
+  const salaryByBranch = new Map<string, number>();
+  for (const e of fullTimeForSalary) {
+    salaryByBranch.set(e.branchId, (salaryByBranch.get(e.branchId) ?? 0) + (e.salaryAmount ?? 0));
+  }
 
   const empIds = advancesByBranch.map((a) => a.employeeId);
   const empBranches =
@@ -1181,7 +1230,7 @@ async function getBranchOverview(
       qcTotal: total,
       qcApproved: approved,
       qcRate: total ? Math.round((approved / total) * 100) : 0,
-      totalSalary: salaryByBranch.find((s) => s.branchId === b.id)?._sum?.amount ?? 0,
+      totalSalary: salaryByBranch.get(b.id) ?? 0,
     };
   });
 }

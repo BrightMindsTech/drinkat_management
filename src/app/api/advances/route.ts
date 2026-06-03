@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
-import { createInboxForUsers, getManagerUserIdForEmployee } from '@/lib/time-clock-helpers';
-import { sendPushToUser } from '@/lib/push';
+import { getManagerUserIdForEmployee } from '@/lib/time-clock-helpers';
+import { notifyOwnersAndManager } from '@/lib/user-notify';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { currentAdvancePeriodMonth } from '@/lib/advance-period-month';
 import { z } from 'zod';
@@ -95,29 +95,28 @@ export async function POST(req: NextRequest) {
     reportsToEmployeeId: user.employee.reportsToEmployeeId,
     branchId: user.employee.branchId,
   });
-  if (managerUserId) {
-    const href = '/dashboard/hr#hr-owner-advances';
-    await createInboxForUsers([managerUserId], {
-      category: 'advance_review',
-      title: 'Advance request needs review',
-      body: `${user.employee.name} requested ${parsed.data.amount.toFixed(2)} JOD.`,
-      dataJson: JSON.stringify({
-        type: 'advance_request_pending_review',
-        advanceId: advance.id,
-        href,
-      }),
-    });
-    const subs = await prisma.pushSubscription.findMany({ where: { userId: managerUserId } });
-    await sendPushToUser(managerUserId, subs, {
-      title: 'Advance request needs review',
-      body: `${user.employee.name} requested ${parsed.data.amount.toFixed(2)} JOD.`,
+  const href = '/dashboard/hr#hr-owner-advances';
+  const advanceTitle = 'Advance request needs review';
+  const advanceBody = `${user.employee.name} requested ${parsed.data.amount.toFixed(2)} JOD.`;
+  await notifyOwnersAndManager(prisma, managerUserId, {
+    category: 'advance_review',
+    title: advanceTitle,
+    body: advanceBody,
+    dataJson: JSON.stringify({
+      type: 'advance_request_pending_review',
+      advanceId: advance.id,
+      href,
+    }),
+    push: {
+      title: advanceTitle,
+      body: advanceBody,
       data: {
         type: 'advance_request_pending_review',
         url: href,
         advanceId: advance.id,
       },
-    });
-  }
+    },
+  });
 
   return Response.json(advance);
 }

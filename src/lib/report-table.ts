@@ -4,4 +4,7 @@ export type ReportTableData = {
   headers: string[];
   rows: string[][];
   footerRow?: string[];
+  /** Shown when rows are empty (e.g. no payroll/advances/forms for the selected month). */
+  emptyMessage?: string;
+  asOfDate?: string;
 };

@@ -13,6 +13,7 @@ import {
   assertTargetAllowedForRater,
 } from '@/lib/weekly-ratings';
 import { getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { notifyUsers } from '@/lib/user-notify';
 
 const postSchema = z.object({
   targetEmployeeId: z.string().min(1),
@@ -191,21 +192,23 @@ export async function POST(req: Request) {
       type: 'weekly_rating_submitted',
     });
 
-    for (const userId of [...new Set(ownerIds)]) {
-      try {
-        await prisma.inboxNotification.create({
-          data: {
-            id: crypto.randomUUID(),
-            userId,
-            category: 'weekly_rating_submitted',
-            title: `Weekly rating: ${score}/100`,
-            body: `${emp.name} rated ${target.name} (week ${weekStartKey}).`,
-            dataJson: payload,
-          },
-        });
-      } catch (inboxErr) {
-        console.error('[ratings/weekly POST] inbox create failed for', userId, inboxErr);
-      }
+    const ratingTitle = `Weekly rating: ${score}/100`;
+    const ratingBody = `${emp.name} rated ${target.name} (week ${weekStartKey}).`;
+    const ratingHref = '/dashboard/manager-reports';
+    try {
+      await notifyUsers(prisma, [...new Set(ownerIds)], {
+        category: 'weekly_rating_submitted',
+        title: ratingTitle,
+        body: ratingBody,
+        dataJson: payload,
+        push: {
+          title: ratingTitle,
+          body: ratingBody,
+          data: { type: 'weekly_rating_submitted', url: ratingHref },
+        },
+      });
+    } catch (inboxErr) {
+      console.error('[ratings/weekly POST] notify owners failed', inboxErr);
     }
   } catch (e) {
     console.error('[ratings/weekly POST]', e);

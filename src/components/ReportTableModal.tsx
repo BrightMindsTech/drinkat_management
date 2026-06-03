@@ -44,6 +44,14 @@ export function ReportTableModal({
       </div>
 
       <div className="overflow-auto p-4 min-h-0">
+        {report.rows.length === 0 && report.emptyMessage ? (
+          <div className="py-12 px-4 text-center">
+            <p className="text-base font-medium text-app-primary">{report.emptyMessage}</p>
+            {report.asOfDate ? (
+              <p className="text-sm text-app-muted mt-3 tabular-nums">{report.asOfDate}</p>
+            ) : null}
+          </div>
+        ) : (
         <table className="min-w-full text-sm border-collapse">
           <thead>
             <tr className="bg-gray-100 dark:bg-ios-dark-fill">
@@ -93,6 +101,7 @@ export function ReportTableModal({
             </tfoot>
           ) : null}
         </table>
+        )}
       </div>
     </AppModal>
   );

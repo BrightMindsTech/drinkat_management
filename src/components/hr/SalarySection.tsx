@@ -10,8 +10,7 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
   const { t } = useLanguage();
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const [periodMonth, setPeriodMonth] = useState(defaultMonth);
-  const [salaryCopies, setSalaryCopies] = useState<{ employeeId: string; employeeName: string; branchName: string; amount: number }[]>([]);
+  const [payrollMonth, setPayrollMonth] = useState(defaultMonth);
   const [loading, setLoading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [salaryInputs, setSalaryInputs] = useState<Record<string, string>>({});
@@ -31,19 +30,28 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
     totals: { salary: number; deduction: number; net: number };
   } | null>(null);
 
+  const fullTimeEmployees = employees.filter((e) => e.employmentType !== 'part_time');
+
   useEffect(() => {
-    fetch(`/api/salary?periodMonth=${periodMonth}`)
+    fetch('/api/salary')
       .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setSalaryCopies(data.map((s: { employee: { id: string; name: string; branch: { name: string } }; amount: number }) => ({
-          employeeId: s.employee.id,
-          employeeName: s.employee.name,
-          branchName: s.employee.branch.name,
-          amount: s.amount,
-        })));
+      .then((data: unknown) => {
+        if (!Array.isArray(data)) return;
+        const next: Record<string, string> = {};
+        for (const row of data as { employee: { id: string }; amount: number }[]) {
+          next[row.employee.id] = row.amount > 0 ? String(row.amount) : '';
+        }
+        setSalaryInputs(next);
       })
-      .catch(() => setSalaryCopies([]));
-  }, [periodMonth]);
+      .catch(() => {
+        const fallback: Record<string, string> = {};
+        for (const emp of employees) {
+          if (emp.employmentType === 'part_time') continue;
+          fallback[emp.id] = emp.salaryAmount != null && emp.salaryAmount > 0 ? String(emp.salaryAmount) : '';
+        }
+        setSalaryInputs(fallback);
+      });
+  }, [employees]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -51,25 +59,25 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
     setUploadError('');
     const form = new FormData();
     form.set('file', file);
-    form.set('periodMonth', periodMonth);
     const res = await fetch('/api/salary/upload', { method: 'POST', body: form });
     const data = await res.json();
     if (!res.ok) {
       setUploadError(data.error || t.salary.uploadFailed);
       return;
     }
-    if (data.salaryCopies) setSalaryCopies(data.salaryCopies.map((s: { employee: { id: string; name: string; branch: { name: string } }; amount: number }) => ({
-      employeeId: s.employee.id,
-      employeeName: s.employee.name,
-      branchName: s.employee.branch.name,
-      amount: s.amount,
-    })));
+    if (data.salaryCopies) {
+      const next: Record<string, string> = { ...salaryInputs };
+      for (const s of data.salaryCopies as { employee: { id: string }; amount: number }[]) {
+        next[s.employee.id] = s.amount > 0 ? String(s.amount) : '';
+      }
+      setSalaryInputs(next);
+    }
     e.target.value = '';
   }
 
   async function saveManual() {
     setLoading(true);
-    const entries = employees
+    const entries = fullTimeEmployees
       .map((emp) => ({
         employeeId: emp.id,
         amount: Number(salaryInputs[emp.id]) || 0,
@@ -78,57 +86,41 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
     const res = await fetch('/api/salary', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ periodMonth, entries, source: 'manual' }),
+      body: JSON.stringify({ entries, source: 'manual' }),
     });
     const data = await res.json();
     setLoading(false);
-    if (res.ok && Array.isArray(data)) setSalaryCopies(data.map((s: { employee: { id: string; name: string; branch: { name: string } }; amount: number }) => ({
-      employeeId: s.employee.id,
-      employeeName: s.employee.name,
-      branchName: s.employee.branch.name,
-      amount: s.amount,
-    })));
+    if (res.ok && Array.isArray(data)) {
+      const next: Record<string, string> = {};
+      for (const s of data as { employee: { id: string }; amount: number }[]) {
+        next[s.employee.id] = s.amount > 0 ? String(s.amount) : '';
+      }
+      setSalaryInputs(next);
+    }
   }
 
   async function loadDeductionReport() {
-    const res = await fetch(`/api/salary/deductions?periodMonth=${encodeURIComponent(periodMonth)}`);
+    const res = await fetch(`/api/salary/deductions?periodMonth=${encodeURIComponent(payrollMonth)}`);
     const data = await res.json();
     if (res.ok) setDeductionReport(data);
     else setDeductionReport(null);
   }
 
-  const salaryByEmployee = Object.fromEntries(salaryCopies.map((s) => [s.employeeId, s.amount]));
   const formatMoney = (value: number) => `${value.toFixed(2)} JOD`;
-  const filteredEmployees = employees.filter((emp) => {
+  const filteredEmployees = fullTimeEmployees.filter((emp) => {
     const q = staffSearch.trim().toLowerCase();
     if (!q) return true;
     return emp.name.toLowerCase().includes(q) || emp.branch.name.toLowerCase().includes(q);
   });
-  const enteredRows = employees.filter((emp) => Number(salaryInputs[emp.id]) > 0).length;
-  const enteredTotal = employees.reduce((sum, emp) => sum + (Number(salaryInputs[emp.id]) || 0), 0);
-
-  useEffect(() => {
-    const next: Record<string, string> = {};
-    for (const emp of employees) {
-      const amount = salaryByEmployee[emp.id];
-      next[emp.id] = amount != null ? String(amount) : '';
-    }
-    setSalaryInputs(next);
-  }, [periodMonth, salaryCopies, employees]);
+  const enteredRows = fullTimeEmployees.filter((emp) => Number(salaryInputs[emp.id]) > 0).length;
+  const enteredTotal = fullTimeEmployees.reduce((sum, emp) => sum + (Number(salaryInputs[emp.id]) || 0), 0);
 
   return (
     <section className="space-y-4">
       <h2 className="text-lg font-semibold text-app-primary">{t.hr.salarySection}</h2>
+      <p className="text-sm text-app-secondary">{t.salary.permanentSalaryIntro}</p>
+
       <div className="flex flex-wrap items-center gap-4">
-        <label className="text-sm font-medium text-app-primary">
-          {t.salary.periodMonth}
-          <input
-            type="month"
-            value={periodMonth}
-            onChange={(e) => setPeriodMonth(e.target.value)}
-            className="ml-2 rounded border border-gray-300 px-2 py-1"
-          />
-        </label>
         <label className="rounded-ios border border-gray-300 dark:border-ios-dark-separator px-3 py-2 text-sm cursor-pointer bg-white dark:bg-ios-dark-elevated text-ios-blue font-medium">
           {t.salary.uploadCsv}
           <input type="file" accept=".csv,.txt" onChange={handleUpload} className="hidden" />
@@ -145,14 +137,14 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
               type="search"
               value={staffSearch}
               onChange={(e) => setStaffSearch(e.target.value)}
-              placeholder={t.hr.searchStaff}
+              placeholder={t.hr.searchStaffPlaceholder}
               className="min-w-[220px] flex-1 rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2 text-sm"
             />
             <button
               type="button"
               onClick={() => {
                 const next: Record<string, string> = {};
-                for (const emp of employees) next[emp.id] = '';
+                for (const emp of fullTimeEmployees) next[emp.id] = '';
                 setSalaryInputs(next);
               }}
               className="rounded-ios border border-gray-300 dark:border-ios-dark-separator px-3 py-2 text-sm text-app-primary hover:bg-gray-100 dark:hover:bg-ios-dark-elevated-2"
@@ -161,7 +153,7 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
             </button>
           </div>
           <p className="mt-2 text-xs text-app-muted">
-            {t.common.total}: {enteredRows}/{employees.length} | {formatMoney(enteredTotal)}
+            {t.common.total}: {enteredRows}/{fullTimeEmployees.length} | {formatMoney(enteredTotal)}
           </p>
         </div>
         <div className="max-h-72 overflow-auto">
@@ -226,7 +218,18 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
         </div>
       </div>
 
-      <div>
+      <div className="rounded-xl border border-gray-200 dark:border-ios-dark-separator p-4 space-y-3">
+        <p className="text-sm font-medium text-app-primary">{t.salary.payrollReportTitle}</p>
+        <p className="text-xs text-app-muted">{t.salary.payrollReportIntro}</p>
+        <label className="text-sm font-medium text-app-primary">
+          {t.salary.periodMonth}
+          <input
+            type="month"
+            value={payrollMonth}
+            onChange={(e) => setPayrollMonth(e.target.value)}
+            className="ml-2 rounded border border-gray-300 px-2 py-1"
+          />
+        </label>
         <button
           type="button"
           onClick={loadDeductionReport}
@@ -235,7 +238,7 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
           {t.salary.viewDeductionReport}
         </button>
         {deductionReport && (
-          <div className="mt-4 rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated overflow-x-auto overflow-hidden">
+          <div className="mt-2 rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated overflow-x-auto overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-200 dark:border-ios-dark-separator bg-gray-50/70 dark:bg-ios-dark-elevated-2/30">
               <p className="text-sm font-medium text-app-primary">
                 {t.salary.reportFor}{' '}

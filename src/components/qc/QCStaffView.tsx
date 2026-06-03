@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChecklistAssignment, Checklist, ChecklistItem, QcSubmission, SubmissionPhoto } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAppDateTime } from '@/lib/format-datetime';
 
 type AssignmentWithChecklist = ChecklistAssignment & {
   checklist: Checklist & { items: ChecklistItem[] };
@@ -20,7 +21,7 @@ export function QCStaffView({
   assignments: AssignmentWithChecklist[];
   submissions: SubmissionWithAssignment[];
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [submissionList, setSubmissionList] = useState(submissions);
   /** Pending photo URLs per assignment (camera captures only, accumulated before submit) */
   const [pendingUrls, setPendingUrls] = useState<Record<string, string[]>>({});
@@ -225,7 +226,7 @@ export function QCStaffView({
               className="rounded-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-3 flex flex-wrap items-center gap-2"
             >
               <span className="font-semibold text-app-primary">{s.assignment.checklist.name}</span>
-              <span className="text-sm text-app-muted">{new Date(s.submittedAt).toLocaleString()}</span>
+              <span className="text-sm text-app-muted">{formatAppDateTime(s.submittedAt, locale)}</span>
               {s.isLate && <span className="text-xs text-amber-600 dark:text-amber-400">({t.qc.lateNote})</span>}
               <span
                 className={`text-xs px-2 py-0.5 rounded ${

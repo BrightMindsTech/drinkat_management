@@ -6,8 +6,9 @@ import { isTimeClockGeofenceExempt } from '@/lib/time-clock-geofence-policy';
 import { getOpenClockEntry, getTimeClockEmployee } from '@/lib/time-clock-helpers';
 import { isInsideBranchRadius } from '@/lib/geo';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
-import { getOwnerUserIds } from '@/lib/time-clock-helpers';
-import { notifyUser, notifyUsers } from '@/lib/user-notify';
+import { getManagerUserIdForEmployee } from '@/lib/time-clock-helpers';
+import { notifyGeofenceExitWhileClockedIn } from '@/lib/time-clock-notify';
+import { notifyUser } from '@/lib/user-notify';
 
 const bodySchema = z.object({
   kind: z.enum(['enter', 'exit']),
@@ -120,33 +121,17 @@ export async function POST(req: Request) {
       'time_clock'
     );
 
-    const ownerIds = await getOwnerUserIds();
-    if (ownerIds.length > 0) {
-      const ownerTitle = 'Time clock alert: employee left branch';
-      const ownerBody = `${emp.name} exited ${emp.branch.name} while still clocked in.`;
-      await notifyUsers(prisma, ownerIds, {
-        category: 'time_clock',
-        title: ownerTitle,
-        body: ownerBody,
-        dataJson: JSON.stringify({
-          type: 'time_clock_destination_required',
-          employeeId: emp.id,
-          employeeName: emp.name,
-          branchId: emp.branch.id,
-          branchName: emp.branch.name,
-          href: '/dashboard/time-clock',
-        }),
-        push: {
-          title: ownerTitle,
-          body: ownerBody,
-          data: {
-            type: 'time_clock_destination_required',
-            url: '/dashboard/time-clock',
-            employeeId: emp.id,
-          },
-        },
-      });
-    }
+    const managerId = await getManagerUserIdForEmployee({
+      reportsToEmployeeId: emp.reportsToEmployeeId,
+      branchId: open.branchId,
+    });
+    await notifyGeofenceExitWhileClockedIn(prisma, {
+      managerUserId: managerId,
+      employeeId: emp.id,
+      employeeName: emp.name,
+      branchId: emp.branch.id,
+      branchName: emp.branch.name,
+    });
   }
 
   return Response.json({ ok: true, action, inside });

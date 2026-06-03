@@ -8,6 +8,8 @@ import {
   approvedAnnualLeaveDaysByYear,
   syncEmployeeLeaveBalanceForYear,
 } from '@/lib/leave-balance';
+import { getUserIdForEmployeeId } from '@/lib/employee-user';
+import { notifyUser } from '@/lib/user-notify';
 import { z } from 'zod';
 
 const patchSchema = z.object({
@@ -80,6 +82,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     await syncEmployeeLeaveBalanceForYear(prisma, existing.employeeId, new Date().getFullYear());
+
+    const employeeUserId = await getUserIdForEmployeeId(existing.employeeId);
+    if (employeeUserId) {
+      const href = '/dashboard/hr';
+      const statusLabel = parsed.data.status;
+      const title = `Leave request ${statusLabel}`;
+      const body = `Your ${existing.type} leave request was ${statusLabel}.`;
+      await notifyUser(prisma, employeeUserId, {
+        category: 'leave_decision',
+        title,
+        body,
+        dataJson: JSON.stringify({
+          type: 'leave_request_decided',
+          leaveRequestId: id,
+          status: statusLabel,
+          href,
+        }),
+        push: {
+          title,
+          body,
+          data: { type: 'leave_request_decided', url: href, leaveRequestId: id },
+        },
+      });
+    }
 
     return Response.json(updated);
   } catch (e) {

@@ -4,8 +4,9 @@ import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import { runQcPhotoMonthlyCleanupIfDue } from '@/lib/qc-photo-cleanup';
-import { createInboxForUsers } from '@/lib/time-clock-helpers';
-import { sendPushToUser } from '@/lib/push';
+import { getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { notifyUsers } from '@/lib/user-notify';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
     const diffHours = Math.floor(diffMins / 60);
     const mins = diffMins % 60;
     const lateStr = diffHours > 0 ? `${diffHours}h ${mins}m` : `${diffMins}m`;
-    lateNote = `Submitted ${lateStr} after deadline (${deadline.toLocaleString()})`;
+    lateNote = `Submitted ${lateStr} after deadline (${formatAppDateTime(deadline)})`;
   }
 
   const submission = await prisma.qcSubmission.create({
@@ -125,36 +126,32 @@ export async function POST(req: NextRequest) {
     },
     select: { id: true },
   });
-  const qcReviewerUserIds = qcReviewerUsers.map((u) => u.id);
-  if (qcReviewerUserIds.length > 0) {
+  const ownerIds = await getOwnerUserIds();
+  const reviewerIds = [...new Set([...qcReviewerUsers.map((u) => u.id), ...ownerIds])];
+  if (reviewerIds.length > 0) {
     const href = `/dashboard/qc#qc-review-submission-${submission.id}`;
-    await createInboxForUsers(qcReviewerUserIds, {
+    const qcTitle = 'QC submission needs review';
+    const qcBody = `${user.employee.name} submitted ${assignment.checklist.name}.`;
+    await notifyUsers(prisma, reviewerIds, {
       category: 'qc_review',
-      title: 'QC submission needs review',
-      body: `${user.employee.name} submitted ${assignment.checklist.name}.`,
+      title: qcTitle,
+      body: qcBody,
       dataJson: JSON.stringify({
         type: 'qc_submission_pending_review',
         submissionId: submission.id,
         assignmentId: assignment.id,
         href,
       }),
+      push: {
+        title: qcTitle,
+        body: qcBody,
+        data: {
+          type: 'qc_submission_pending_review',
+          url: href,
+          submissionId: submission.id,
+        },
+      },
     });
-    const subs = await prisma.pushSubscription.findMany({ where: { userId: { in: qcReviewerUserIds } } });
-    for (const userId of qcReviewerUserIds) {
-      await sendPushToUser(
-        userId,
-        subs.filter((s) => s.userId === userId),
-        {
-          title: 'QC submission needs review',
-          body: `${user.employee.name} submitted ${assignment.checklist.name}.`,
-          data: {
-            type: 'qc_submission_pending_review',
-            url: href,
-            submissionId: submission.id,
-          },
-        }
-      );
-    }
   }
 
   return Response.json(submission);

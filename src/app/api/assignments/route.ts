@@ -3,7 +3,32 @@ import { prisma } from '@/lib/prisma';
 import { requireSession, requireQc } from '@/lib/session';
 import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { getUserIdForEmployeeId } from '@/lib/employee-user';
+import { notifyUser } from '@/lib/user-notify';
 import { z } from 'zod';
+
+async function notifyChecklistAssigned(
+  rows: { employeeId: string; checklist: { name: string; repeatsDaily: boolean }; dueDate: Date | null }[]
+) {
+  for (const row of rows) {
+    const userId = await getUserIdForEmployeeId(row.employeeId);
+    if (!userId) continue;
+    const href = '/dashboard/qc';
+    const dueHint =
+      !row.checklist.repeatsDaily && row.dueDate
+        ? ` Due ${row.dueDate.toLocaleDateString()}.`
+        : '';
+    const title = 'New checklist assigned';
+    const body = `You were assigned "${row.checklist.name}".${dueHint}`;
+    await notifyUser(prisma, userId, {
+      category: 'qc_assignment_created',
+      title,
+      body,
+      dataJson: JSON.stringify({ type: 'qc_assignment_created', href }),
+      push: { title, body, data: { type: 'qc_assignment_created', url: href } },
+    });
+  }
+}
 
 const createSchema = z.object({
   checklistId: z.string(),
@@ -148,6 +173,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (created.length > 0) {
+      try {
+        await notifyChecklistAssigned(created);
+      } catch {
+        /* optional */
+      }
+    }
     return Response.json({ created, skipped });
   }
 
@@ -191,5 +223,10 @@ export async function POST(req: NextRequest) {
     },
     include: assignmentInclude,
   });
+  try {
+    await notifyChecklistAssigned([assignment]);
+  } catch {
+    /* optional */
+  }
   return Response.json({ created: [assignment], skipped: [] as { employeeId: string; reason: string }[] });
 }

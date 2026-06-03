@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { requireOwnerOrManager } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { periodMonthFromDate } from '@/lib/advance-period-month';
+import { getUserIdForEmployeeId } from '@/lib/employee-user';
+import { notifyUser } from '@/lib/user-notify';
 import { z } from 'zod';
 
 const patchSchema = z.object({
@@ -39,7 +41,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     decidedAt,
   };
   if (parsed.data.status === 'approved' && !advance.periodMonth) {
-    updateData.periodMonth = periodMonthFromDate(advance.requestedAt);
+    updateData.periodMonth = periodMonthFromDate(decidedAt);
   }
 
   const updated = await prisma.advance.update({
@@ -47,5 +49,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data: updateData,
     include: { employee: { include: { branch: true } } },
   });
+
+  const employeeUserId = await getUserIdForEmployeeId(advance.employeeId);
+  if (employeeUserId) {
+    const href = '/dashboard/hr';
+    const statusLabel = parsed.data.status;
+    const title = `Advance ${statusLabel}`;
+    const body = `Your advance request for ${advance.amount.toFixed(2)} JOD was ${statusLabel}.`;
+    await notifyUser(prisma, employeeUserId, {
+      category: 'advance_decision',
+      title,
+      body,
+      dataJson: JSON.stringify({
+        type: 'advance_decided',
+        advanceId: id,
+        status: statusLabel,
+        href,
+      }),
+      push: {
+        title,
+        body,
+        data: { type: 'advance_decided', url: href, advanceId: id },
+      },
+    });
+  }
+
   return Response.json(updated);
 }

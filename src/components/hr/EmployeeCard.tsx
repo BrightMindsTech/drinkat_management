@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { Employee, Branch, Department, EmployeeTransfer, EmployeeDocument } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { formatAppShiftTimeRange } from '@/lib/format-datetime';
 import { EmployeeDocumentsSection } from './EmployeeDocumentsSection';
 import { SalaryHistorySection } from './SalaryHistorySection';
 import { PerformanceReviewsSection } from './PerformanceReviewsSection';
@@ -37,7 +38,7 @@ export function EmployeeCard({
   /** Owner/manager HR: show force clock-out for clocked-in staff (server enforces rules). */
   hrForceClockRole?: 'owner' | 'manager';
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [deleting, setDeleting] = useState(false);
   const [terminating, setTerminating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -469,7 +470,7 @@ export function EmployeeCard({
             {employee.shiftTime && (
               <>
                 <dt className="text-app-muted">{t.common.shiftTime}</dt>
-                <dd className="text-app-primary">{employee.shiftTime}</dd>
+                <dd className="text-app-primary">{formatAppShiftTimeRange(employee.shiftTime, locale)}</dd>
               </>
             )}
             <dt className="text-app-muted">{t.employeeCard.joined}</dt>

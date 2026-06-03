@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { useLanguage, type Locale } from '@/contexts/LanguageContext';
+import { formatAppDate, formatAppDateTime, formatAppTime } from '@/lib/format-datetime';
 import { attachPullToRefresh } from '@/lib/attach-pull-to-refresh';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
@@ -65,18 +66,18 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function formatListTime(iso: string | null): string {
+function formatListTime(iso: string | null, locale: Locale): string {
   if (!iso) return '';
   const d = new Date(iso);
   const now = new Date();
   const sameDay =
     d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  if (sameDay) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  if (sameDay) return formatAppTime(d, locale);
+  return formatAppDate(d, locale, { month: 'short', day: 'numeric' });
 }
 
 export function MessagesClient({ currentUserId }: { currentUserId: string }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const c = t.chat;
   const { run, isBusy } = useGuardedAction();
   const router = useRouter();
@@ -641,7 +642,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                               <span className="flex items-baseline justify-between gap-2">
                                 <span className="truncate font-medium text-gray-900 dark:text-ios-dark-label">{th.threadLabel}</span>
                                 <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-zinc-400">
-                                  {formatListTime(th.lastMessageAt ?? th.updatedAt)}
+                                  {formatListTime(th.lastMessageAt ?? th.updatedAt, locale)}
                                 </span>
                               </span>
                               <span className="mt-0.5 flex items-center gap-2">
@@ -727,7 +728,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                   <p className="truncate text-xs text-teal-700 dark:text-teal-400">{c.typing}: {typingNames.join(', ')}</p>
                 ) : peerLastReadAt ? (
                   <p className="truncate text-[11px] text-gray-500 dark:text-zinc-400">
-                    {c.peerSeen} · {new Date(peerLastReadAt).toLocaleString()}
+                    {c.peerSeen} · {formatAppDateTime(peerLastReadAt, locale)}
                   </p>
                 ) : null}
               </div>
@@ -780,7 +781,7 @@ export function MessagesClient({ currentUserId }: { currentUserId: string }) {
                             mine ? 'text-gray-600/90 dark:text-zinc-400' : 'text-gray-500 dark:text-zinc-500'
                           }`}
                         >
-                          <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                          <span>{formatAppTime(m.createdAt, locale)}</span>
                           {mine && m.readByPeer ? <span className="text-teal-700 dark:text-teal-400">✓ {c.read}</span> : null}
                         </div>
                         </div>

@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import type { FormFieldDef } from '@/lib/formTemplate';
 import { scrollIntoViewById } from '@/lib/scrollIntoViewDeferred';
 import { buildSubmissionReportTable, type SubmissionReportCsvInput } from '@/lib/formSubmissionCsv';
@@ -82,7 +83,7 @@ export function ManagementFormsView({
   /** Login role may be `staff` while HR dept / employee role grants QC review. */
   qcReviewer?: boolean;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const router = useRouter();
   const [reviewList, setReviewList] = useState(initialReviewSubmissions);
   const [myList, setMyList] = useState(initialMySubmissions);
@@ -306,10 +307,14 @@ export function ManagementFormsView({
 
   function handleViewSubmissionReport(s: FormsReviewSubmission) {
     setTableReport(
-      buildSubmissionReportTable(submissionToCsvInput(s), {
-        field: t.reports.reportFieldColumn,
-        value: t.reports.reportValueColumn,
-      })
+      buildSubmissionReportTable(
+        submissionToCsvInput(s),
+        {
+          field: t.reports.reportFieldColumn,
+          value: t.reports.reportValueColumn,
+        },
+        locale
+      )
     );
   }
 
@@ -830,7 +835,7 @@ export function ManagementFormsView({
                 <span className="font-semibold text-app-primary">{s.template.title}</span>
                 <span className="text-app-secondary font-semibold">{s.branch.name}</span>
                 <span className="text-xs tabular-nums text-app-muted">
-                  {new Date(s.submittedAt).toLocaleString()}
+                  {formatAppDateTime(s.submittedAt, locale)}
                 </span>
                 <span
                   className={`text-xs px-2 py-0.5 rounded-md font-medium ${
@@ -948,7 +953,7 @@ export function ManagementFormsView({
                         </button>
                       )}
                     </div>
-                    <span className="text-xs tabular-nums text-app-muted text-end">{new Date(s.submittedAt).toLocaleString()}</span>
+                    <span className="text-xs tabular-nums text-app-muted text-end">{formatAppDateTime(s.submittedAt, locale)}</span>
                   </div>
                 </div>
                 <div className="border-t border-gray-100 dark:border-ios-dark-separator pt-3">

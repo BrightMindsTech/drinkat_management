@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Branch, Department, Employee, Advance } from '@prisma/client';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import type { LeaveRequest } from '@prisma/client';
 import { EmployeeCard } from './EmployeeCard';
 import { RegisterStaffForm } from './RegisterStaffForm';
@@ -17,6 +17,25 @@ import { OwnerPushBroadcastSection } from './OwnerPushBroadcastSection';
 import type { OwnerLiveAttendanceRow } from '@/lib/time-clock-owner-live';
 
 type EmployeeWithRelations = Employee & { branch: Branch; department?: Department | null; user: { email: string } | null };
+
+function employeeMatchesSearch(emp: EmployeeWithRelations, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  const haystack = [
+    emp.name,
+    emp.branch?.name,
+    emp.department?.name,
+    emp.user?.email,
+    emp.contact,
+    emp.role,
+    emp.residentialArea,
+    emp.shiftTime,
+  ]
+    .filter((v): v is string => typeof v === 'string' && v.length > 0)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(needle);
+}
 type AdvanceWithEmployee = Advance & { employee: Employee & { branch: { name: string } } };
 type LeaveWithEmployee = LeaveRequest & { employee: Employee & { branch: { name: string } } };
 
@@ -45,6 +64,13 @@ export function HROwnerView({
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const scrollCarouselToIndex = (index: number, behavior: ScrollBehavior = 'smooth') => {
+    const root = carouselRef.current;
+    if (!root) return;
+    const w = root.clientWidth;
+    root.scrollTo({ left: Math.max(0, index) * w, behavior });
+  };
   const [hoursMonth, setHoursMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -69,7 +95,7 @@ export function HROwnerView({
 
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
-      const matchesSearch = !searchQuery.trim() || emp.name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+      const matchesSearch = employeeMatchesSearch(emp, searchQuery);
       const matchesBranch = !branchFilter || emp.branchId === branchFilter;
       return matchesSearch && matchesBranch;
     });
@@ -104,6 +130,12 @@ export function HROwnerView({
 
     return () => observer.disconnect();
   }, [filteredEmployees.length]);
+
+  /** Reset carousel position when filters change — scroll container only (not the page). */
+  useEffect(() => {
+    setActiveCardIndex(0);
+    scrollCarouselToIndex(0, 'auto');
+  }, [searchQuery, branchFilter]);
 
   useEffect(() => {
     setHoursLoading(true);
@@ -200,26 +232,60 @@ export function HROwnerView({
         {showRegister && (
           <RegisterStaffForm branches={branches} departments={departmentsList} onCreated={onEmployeeCreated} onCancel={() => setShowRegister(false)} />
         )}
-        <div className="mt-4 flex flex-col sm:flex-row gap-3">
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t.hr.searchStaff}
-            className="app-input flex-1 min-w-0"
-          />
-          <select
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
-            className="app-select min-w-[140px]"
-          >
-            <option value="">{t.qc.allBranches}</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+        <div className="mt-4 rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-gray-50/60 dark:bg-ios-dark-elevated-2/30 p-4 space-y-3">
+          <label className="block">
+            <span className="text-sm font-medium text-app-primary">{t.hr.searchStaff}</span>
+            <div className="relative mt-1.5">
+              <span
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-app-muted"
+                aria-hidden
+              >
+                ⌕
+              </span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t.hr.searchStaffPlaceholder}
+                autoComplete="off"
+                enterKeyHint="search"
+                className="app-input w-full pl-9 pr-9"
+              />
+              {searchQuery.trim() ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-0.5 text-xs font-medium text-ios-blue hover:bg-ios-blue/10"
+                  aria-label={t.common.cancel}
+                >
+                  {t.common.cancel}
+                </button>
+              ) : null}
+            </div>
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <label className="block sm:min-w-[200px] sm:flex-1">
+              <span className="text-xs font-medium text-app-secondary">{t.hr.filterByBranch}</span>
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="app-select w-full mt-1"
+              >
+                <option value="">{t.qc.allBranches}</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="text-sm text-app-muted sm:pb-2 tabular-nums">
+              {interpolate(t.hr.staffSearchResultCount, { count: String(filteredEmployees.length) })}
+              {employees.length !== filteredEmployees.length
+                ? ` / ${employees.length} ${t.reports.employees.toLowerCase()}`
+                : ''}
+            </p>
+          </div>
         </div>
         <div className="mt-4 relative">
           <div
@@ -261,8 +327,7 @@ export function HROwnerView({
                 type="button"
                 onClick={() => {
                   const prevIndex = Math.max(0, activeCardIndex - 1);
-                  const target = cardRefs.current[prevIndex];
-                  target?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+                  scrollCarouselToIndex(prevIndex);
                 }}
                 disabled={activeCardIndex <= 0}
                 className="h-7 w-7 rounded-full border border-gray-300 dark:border-ios-dark-separator text-app-secondary disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-ios-dark-elevated-2 flex items-center justify-center"
@@ -274,10 +339,7 @@ export function HROwnerView({
                 <button
                   key={emp.id}
                   type="button"
-                  onClick={() => {
-                    const target = cardRefs.current[idx];
-                    target?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
-                  }}
+                  onClick={() => scrollCarouselToIndex(idx)}
                   className={`h-1.5 rounded-full transition-all ${
                     idx === activeCardIndex
                       ? 'w-5 bg-ios-blue'
@@ -290,8 +352,7 @@ export function HROwnerView({
                 type="button"
                 onClick={() => {
                   const nextIndex = Math.min(filteredEmployees.length - 1, activeCardIndex + 1);
-                  const target = cardRefs.current[nextIndex];
-                  target?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+                  scrollCarouselToIndex(nextIndex);
                 }}
                 disabled={activeCardIndex >= filteredEmployees.length - 1}
                 className="h-7 w-7 rounded-full border border-gray-300 dark:border-ios-dark-separator text-app-secondary disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-ios-dark-elevated-2 flex items-center justify-center"

@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { createInboxForUsers } from '@/lib/time-clock-helpers';
+import { createInboxForUsers, getOwnerUserIds } from '@/lib/time-clock-helpers';
 import { sendPushToUser, type PushPayload } from '@/lib/push';
 
 export type UserNotifyInput = {
@@ -43,4 +43,20 @@ export async function notifyUsers(
 
 export async function notifyUser(prisma: PrismaClient, userId: string, input: UserNotifyInput) {
   return notifyUsers(prisma, [userId], input);
+}
+
+/** Owners always receive request/report alerts; managers are included when resolved. */
+export async function notifyOwnersAndManager(
+  prisma: PrismaClient,
+  managerUserId: string | null | undefined,
+  input: UserNotifyInput,
+  extraUserIds: string[] = []
+): Promise<{ inbox: number; pushSent: number }> {
+  const ownerIds = await getOwnerUserIds();
+  const userIds = [
+    ...(managerUserId ? [managerUserId] : []),
+    ...ownerIds,
+    ...extraUserIds,
+  ];
+  return notifyUsers(prisma, userIds, input);
 }

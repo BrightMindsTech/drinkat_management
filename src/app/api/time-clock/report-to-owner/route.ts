@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
-import { createInboxForUsers, getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { notifyUsers } from '@/lib/user-notify';
+import { prisma } from '@/lib/prisma';
+import { formatAppDateTime } from '@/lib/format-datetime';
 
 const bodySchema = z.object({
   logId: z.string().min(1),
@@ -27,10 +30,13 @@ export async function POST(req: Request) {
   if (owners.length === 0) return Response.json({ ok: true, skipped: 'no_owners' });
 
   const d = parsed.data;
-  await createInboxForUsers(owners, {
+  const href = '/dashboard/manager-reports';
+  const title = `Manager report: ${d.type}`;
+  const body = `${d.employeeName} · ${d.details} · ${formatAppDateTime(d.when)}`;
+  await notifyUsers(prisma, owners, {
     category: 'manager_time_clock_report',
-    title: `Manager report: ${d.type}`,
-    body: `${d.employeeName} · ${d.details} · ${new Date(d.when).toLocaleString()}`,
+    title,
+    body,
     dataJson: JSON.stringify({
       source: 'manager_clock_page',
       logId: d.logId,
@@ -40,7 +46,13 @@ export async function POST(req: Request) {
       type: d.type,
       details: d.details,
       reportedByUserId: session.user.id,
+      href,
     }),
+    push: {
+      title,
+      body,
+      data: { type: 'manager_time_clock_report', url: href, logId: d.logId },
+    },
   });
 
   return Response.json({ ok: true });

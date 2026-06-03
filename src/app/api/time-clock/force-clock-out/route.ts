@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
 import { normalizeUserRole } from '@/lib/formVisibility';
-import { createInboxForUsers, getOpenClockEntry, getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { getOpenClockEntry, getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { notifyUsers } from '@/lib/user-notify';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
 
 const bodySchema = z.object({
@@ -90,10 +91,13 @@ export async function POST(req: Request) {
 
   const owners = await getOwnerUserIds();
   if (owners.length > 0) {
-    await createInboxForUsers(owners, {
+    const href = '/dashboard/manager-reports';
+    const title = `HR force clock-out: ${target.name}`;
+    const body = `${target.name} · ${details} · ${now.toISOString()}`;
+    await notifyUsers(prisma, owners, {
       category: 'manager_time_clock_report',
-      title: `HR force clock-out: ${target.name}`,
-      body: `${target.name} · ${details} · ${now.toISOString()}`,
+      title,
+      body,
       dataJson: JSON.stringify({
         source: 'force_clock_out_hr',
         logId,
@@ -105,7 +109,13 @@ export async function POST(req: Request) {
         reportedByUserId: session.user.id,
         reporterDisplay,
         reporterRole: role,
+        href,
       }),
+      push: {
+        title,
+        body,
+        data: { type: 'manager_time_clock_report', url: href, logId },
+      },
     });
   }
 

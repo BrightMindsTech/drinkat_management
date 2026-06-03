@@ -2,15 +2,13 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
 import {
-  createInboxForUsers,
   getActiveAwaySession,
   getManagerUserIdForEmployee,
   getOpenClockEntry,
-  getOwnerUserIds,
   getTimeClockEmployee,
 } from '@/lib/time-clock-helpers';
 import { processExpiredAwaySessions } from '@/lib/time-clock-process';
-import { sendPushToUser } from '@/lib/push';
+import { notifyAwayStarted } from '@/lib/time-clock-notify';
 
 function minutesForKind(kind: string): number {
   if (kind === 'break') return 30;
@@ -68,30 +66,25 @@ export async function POST(req: Request) {
     },
   });
 
+  const clockBranch = await prisma.branch.findUnique({
+    where: { id: open.branchId },
+    select: { id: true, name: true },
+  });
   const managerId = await getManagerUserIdForEmployee({
     reportsToEmployeeId: emp.reportsToEmployeeId,
     branchId: open.branchId,
   });
-  const ownerIds = await getOwnerUserIds();
-  const targets = [...new Set([...(managerId ? [managerId] : []), ...ownerIds])];
-  if (targets.length > 0) {
-    const mins = minutesForKind(parsed.data.kind);
-    await createInboxForUsers(targets, {
-      category: 'time_clock',
-      title: 'Employee left branch',
-      body: `${emp.name} selected "${parsed.data.kind}" and has ${mins} minutes before auto report.`,
-      dataJson: JSON.stringify({ employeeId: emp.id, awaySessionId: away.id, kind: parsed.data.kind }),
-    });
-    const subs = await prisma.pushSubscription.findMany({ where: { userId: { in: targets } } });
-    for (const uid of targets) {
-      const userSubs = subs.filter((s) => s.userId === uid);
-      await sendPushToUser(uid, userSubs, {
-        title: 'Employee left branch',
-        body: `${emp.name}: ${parsed.data.kind} (${mins} min).`,
-        data: { type: 'time_clock_away_started' },
-      });
-    }
-  }
+  await notifyAwayStarted(prisma, {
+    managerUserId: managerId,
+    employeeId: emp.id,
+    employeeName: emp.name,
+    branchId: clockBranch?.id ?? open.branchId,
+    branchName: clockBranch?.name ?? emp.branch.name,
+    awaySessionId: away.id,
+    kind: parsed.data.kind,
+    minutes: mins,
+    otherNote: parsed.data.otherNote?.trim() ?? null,
+  });
 
   return Response.json({
     ok: true,

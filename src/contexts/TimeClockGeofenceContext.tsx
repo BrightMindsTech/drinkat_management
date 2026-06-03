@@ -185,14 +185,16 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   const branch = status?.branch;
   const locationConsentOk = !!status?.consent?.location;
   const pushConsentOk = !!status?.consent?.push;
-  const geoWatchEnabled = !!(
+  /** GPS fence + away prompts for all non-exempt staff with a configured branch (not only auto clock-in). */
+  const geofenceTrackingEnabled = !!(
     status?.applicable &&
-    status?.autoGeofenceClockIn &&
+    !status?.geofenceExempt &&
     branch?.hasGeofence &&
     branch.latitude != null &&
     branch.longitude != null &&
     locationConsentOk
   );
+  const autoClockInEnabled = geofenceTrackingEnabled && !!status?.autoGeofenceClockIn;
 
   const readCurrentPosition = useCallback((): Promise<{ lat: number; lng: number } | null> => {
     if (pos) return Promise.resolve(pos);
@@ -306,7 +308,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   );
 
   useGeofenceWatch({
-    enabled: geoWatchEnabled,
+    enabled: geofenceTrackingEnabled,
     branchLat: branch?.latitude ?? null,
     branchLng: branch?.longitude ?? null,
     radiusM: branch?.geofenceRadiusM ?? 25,
@@ -317,7 +319,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    if (!geoWatchEnabled || !pos || branch?.latitude == null || branch?.longitude == null) return;
+    if (!autoClockInEnabled || !pos || branch?.latitude == null || branch?.longitude == null) return;
     if (status?.clock) return;
 
     const inside = isInsideBranchRadius(
@@ -345,7 +347,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
       cancelled = true;
       stop();
     };
-  }, [geoWatchEnabled, pos, status?.clock, branch, refresh]);
+  }, [autoClockInEnabled, pos, status?.clock, branch, refresh]);
 
   useEffect(() => {
     if (!status?.applicable || !status?.geofenceExempt || !locationConsentOk) return;
@@ -369,7 +371,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   }, [status?.applicable, status?.geofenceExempt, locationConsentOk]);
 
   useEffect(() => {
-    if (!geoWatchEnabled || !status?.clock || status.away || forceAwayOpen) {
+    if (!geofenceTrackingEnabled || !status?.clock || status.away || forceAwayOpen) {
       exitCheckRaisedRef.current = false;
       return;
     }
@@ -403,12 +405,12 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
       );
     }, PRESENCE_CHECK_INTERVAL_MS);
     return () => stop();
-  }, [geoWatchEnabled, status?.clock, status?.away, forceAwayOpen, considerForceAwayPrompt]);
+  }, [geofenceTrackingEnabled, status?.clock, status?.away, forceAwayOpen, considerForceAwayPrompt]);
 
   /** iOS native background GPS while clocked in (survives app switch / screen lock). */
   useEffect(() => {
     if (
-      !geoWatchEnabled ||
+      !geofenceTrackingEnabled ||
       !status?.clock ||
       status.away ||
       branch?.latitude == null ||
@@ -432,7 +434,7 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
       void stopNativeBackgroundGeofence();
     };
   }, [
-    geoWatchEnabled,
+    geofenceTrackingEnabled,
     status?.clock,
     status?.away,
     branch?.latitude,
@@ -561,6 +563,8 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
               }
               const minutes = awayMinutesByKind[kind];
               setAwayNotice(t.timeClock.reportCountdown.replace('{minutes}', String(minutes)));
+              exitCheckRaisedRef.current = false;
+              closeForcedAwayModal();
               await refresh();
             } catch {
               setErr(t.timeClock.awaySubmitFailed);

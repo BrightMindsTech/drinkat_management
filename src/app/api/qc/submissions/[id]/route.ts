@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
+import { getUserIdForEmployeeId } from '@/lib/employee-user';
+import { notifyUser } from '@/lib/user-notify';
 import { z } from 'zod';
 
 const reviewSchema = z.object({
@@ -48,5 +50,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       photos: true,
     },
   });
+
+  const employeeUserId = await getUserIdForEmployeeId(submission.employeeId);
+  if (employeeUserId) {
+    const href = '/dashboard/qc';
+    const statusLabel = parsed.data.status === 'approved' ? 'approved' : 'denied';
+    const reviewTitle = `QC submission ${statusLabel}`;
+    const reviewBody = `${submission.assignment.checklist.name} was ${statusLabel}.`;
+    await notifyUser(prisma, employeeUserId, {
+      category: 'qc_review_result',
+      title: reviewTitle,
+      body: reviewBody,
+      dataJson: JSON.stringify({
+        type: 'qc_submission_reviewed',
+        submissionId: submission.id,
+        status: parsed.data.status,
+        href,
+      }),
+      push: {
+        title: reviewTitle,
+        body: reviewBody,
+        data: { type: 'qc_submission_reviewed', url: href, submissionId: submission.id },
+      },
+    });
+  }
+
   return Response.json(submission);
 }

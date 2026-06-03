@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     periodMonth = (formData.get('periodMonth') as string) ?? '';
-    if (!file || !periodMonth) return Response.json({ error: 'file and periodMonth required' }, { status: 400 });
+    if (!file) return Response.json({ error: 'file required' }, { status: 400 });
     const text = await file.text();
     const parsed = parseCsvSalary(text);
     const allEmployees = await prisma.employee.findMany({ include: { user: { select: { email: true } } } });
@@ -48,21 +48,26 @@ export async function POST(req: NextRequest) {
   const empIds = new Set(employees.map((e) => e.id));
   const valid = entries.filter((e) => empIds.has(e.employeeId));
 
+  const updatedIds: string[] = [];
   for (const { employeeId, amount } of valid) {
     const emp = await prisma.employee.findUnique({ where: { id: employeeId } });
     if (!emp || emp.employmentType === 'part_time') continue;
-    await prisma.salaryCopy.upsert({
-      where: { employeeId_periodMonth: { employeeId, periodMonth } },
-      update: { amount, source: 'upload' },
-      create: { employeeId, branchId: emp.branchId, periodMonth, amount, source: 'upload' },
+    await prisma.employee.update({
+      where: { id: employeeId },
+      data: { salaryAmount: amount },
     });
+    updatedIds.push(employeeId);
   }
 
-  const list = await prisma.salaryCopy.findMany({
-    where: { periodMonth },
-    include: { employee: { include: { branch: true } } },
+  const list = await prisma.employee.findMany({
+    where: { id: { in: updatedIds } },
+    include: { branch: true },
+    orderBy: { name: 'asc' },
   });
-  return Response.json({ uploaded: valid.length, salaryCopies: list });
+  return Response.json({
+    uploaded: valid.length,
+    salaryCopies: list.map((employee) => ({ employee, amount: employee.salaryAmount ?? 0 })),
+  });
 }
 
 function parseCsvSalary(csvText: string): { employeeId?: string; email?: string; amount: number }[] {

@@ -2,8 +2,18 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import type { LocaleMessages } from '@/locales/en';
+
+export type OwnerTimeClockAlert = {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  employeeName: string;
+  branchName: string;
+};
 
 export type OwnerManagerReport = {
   id: string;
@@ -77,7 +87,7 @@ function FormSubmissionDetail({
 }: {
   s: FormExtendPayload['submission'];
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const m = t.managerReports;
   return (
     <div className="space-y-4 text-sm">
@@ -91,7 +101,7 @@ function FormSubmissionDetail({
             {m.submittedTo}: <span className="font-medium text-app-primary">{s.reportsToManager.name}</span>
           </p>
         ) : null}
-        <p className="text-xs text-app-muted mt-1 tabular-nums">{new Date(s.submittedAt).toLocaleString()}</p>
+        <p className="text-xs text-app-muted mt-1 tabular-nums">{formatAppDateTime(s.submittedAt, locale)}</p>
         <p className="text-xs text-app-muted mt-1">
           {m.statusLabel}: <span className="font-medium">{s.status}</span>
         </p>
@@ -137,7 +147,7 @@ function FormSubmissionDetail({
 }
 
 function WeeklyRatingDetailBody({ payload }: { payload: WeeklyRatingExtendPayload }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const m = t.managerReports;
   const c = t.common;
   return (
@@ -162,13 +172,13 @@ function WeeklyRatingDetailBody({ payload }: { payload: WeeklyRatingExtendPayloa
           <span className="font-medium">{m.weekRatingReason}:</span> {payload.reason}
         </p>
       ) : null}
-      <p className="text-xs text-app-muted tabular-nums">{new Date(payload.createdAt).toLocaleString()}</p>
+      <p className="text-xs text-app-muted tabular-nums">{formatAppDateTime(payload.createdAt, locale)}</p>
     </div>
   );
 }
 
 function TimeClockDetailBody({ payload }: { payload: TimeClockExtendPayload }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const m = t.managerReports;
   const entries = Object.entries(payload.data).filter(([k]) => k !== '__proto__');
 
@@ -178,7 +188,7 @@ function TimeClockDetailBody({ payload }: { payload: TimeClockExtendPayload }) {
         <p className="text-base font-semibold text-app-label">{payload.title}</p>
         <p className="text-app-secondary mt-2 whitespace-pre-wrap">{payload.body}</p>
         <p className="text-xs text-app-muted mt-2 tabular-nums">
-          {m.inboxAt}: {new Date(payload.createdAt).toLocaleString()}
+          {m.inboxAt}: {formatAppDateTime(payload.createdAt, locale)}
         </p>
       </div>
       {payload.timeClockRecord ? (
@@ -237,6 +247,7 @@ function ReportListItem({
   onExtend: (id: string) => void;
   m: LocaleMessages['managerReports'];
 }) {
+  const { locale } = useLanguage();
   const showOk = !r.reviewedAt;
   return (
     <li className="rounded-xl border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated px-4 py-3.5 shadow-sm dark:shadow-none ring-1 ring-black/[0.03] dark:ring-white/[0.06]">
@@ -248,8 +259,8 @@ function ReportListItem({
         {metaRow(m.employee, r.employeeName)}
         {metaRow(m.branch, r.branchName)}
         {metaRow(m.eventType, r.reportType)}
-        {metaRow(m.reportTime, new Date(r.reportAt).toLocaleString())}
-        {r.reviewedAt ? metaRow(m.reviewedLabel, new Date(r.reviewedAt).toLocaleString()) : null}
+        {metaRow(m.reportTime, formatAppDateTime(r.reportAt, locale))}
+        {r.reviewedAt ? metaRow(m.reviewedLabel, formatAppDateTime(r.reviewedAt, locale)) : null}
       </dl>
       <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 dark:border-ios-dark-separator/80 pt-3">
         <button
@@ -274,8 +285,14 @@ function ReportListItem({
   );
 }
 
-export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerManagerReport[] }) {
-  const { t } = useLanguage();
+export function ManagerReportsInbox({
+  initialReports,
+  initialTimeClockAlerts = [],
+}: {
+  initialReports: OwnerManagerReport[];
+  initialTimeClockAlerts?: OwnerTimeClockAlert[];
+}) {
+  const { t, locale } = useLanguage();
   const m = t.managerReports;
   const [reports, setReports] = useState(initialReports);
   const [search, setSearch] = useState('');
@@ -294,6 +311,19 @@ export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerM
   const extendLayerRef = useRef<HTMLDivElement>(null);
   const extendPanelRef = useRef<HTMLDivElement>(null);
   const [portalReady, setPortalReady] = useState(false);
+  const [timeClockAlertsOpen, setTimeClockAlertsOpen] = useState(false);
+  const [expandedTimeClockAlertIds, setExpandedTimeClockAlertIds] = useState<Set<string>>(
+    () => new Set()
+  );
+
+  const toggleTimeClockAlert = (id: string) => {
+    setExpandedTimeClockAlertIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     setPortalReady(true);
@@ -433,6 +463,64 @@ export function ManagerReportsInbox({ initialReports }: { initialReports: OwnerM
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-app-label">{m.pageTitle}</h1>
+
+      {initialTimeClockAlerts.length > 0 ? (
+        <section
+          id="section-owner-auto-time-clock-alerts"
+          className="scroll-mt-28 rounded-xl border-2 border-amber-200 dark:border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/20 overflow-hidden"
+        >
+          <div className="px-4 py-3.5 border-b border-amber-200/80 dark:border-amber-500/30">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold text-amber-950 dark:text-amber-100">
+                  {m.autoTimeClockAlertsTitle}
+                </h2>
+                <p className="text-sm text-amber-900/80 dark:text-amber-200/90 mt-1">{m.autoTimeClockAlertsHint}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTimeClockAlertsOpen((v) => !v)}
+                className="shrink-0 rounded-lg border border-amber-300/80 dark:border-amber-500/50 bg-white/80 dark:bg-amber-950/40 px-3 py-1.5 text-xs font-semibold text-amber-950 dark:text-amber-100 hover:bg-white dark:hover:bg-amber-950/60"
+                aria-expanded={timeClockAlertsOpen}
+              >
+                {timeClockAlertsOpen
+                  ? m.hideAlerts
+                  : interpolate(m.showAlertsCount, { count: String(initialTimeClockAlerts.length) })}
+              </button>
+            </div>
+          </div>
+          {timeClockAlertsOpen ? (
+            <ul className="divide-y divide-amber-200/70 dark:divide-amber-500/25">
+              {initialTimeClockAlerts.map((row) => {
+                const expanded = expandedTimeClockAlertIds.has(row.id);
+                return (
+                  <li key={row.id} className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-app-primary">{row.title}</p>
+                        {expanded ? (
+                          <p className="text-sm text-app-secondary mt-0.5">{row.body}</p>
+                        ) : null}
+                        <p className="text-xs text-app-muted mt-1 tabular-nums">
+                          {row.employeeName} · {row.branchName} · {formatAppDateTime(row.createdAt, locale)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleTimeClockAlert(row.id)}
+                        className="shrink-0 rounded-md border border-amber-300/70 dark:border-amber-500/40 px-2.5 py-1 text-xs font-medium text-amber-950 dark:text-amber-200 hover:bg-amber-100/60 dark:hover:bg-amber-900/40"
+                        aria-expanded={expanded}
+                      >
+                        {expanded ? t.common.hide : t.common.show}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
 
       <section id="section-manager-reports-filters" className="scroll-mt-28 rounded-xl border border-gray-200 dark:border-ios-dark-separator p-3 space-y-3">
         <input

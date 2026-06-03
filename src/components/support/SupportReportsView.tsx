@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import { MAX_SCREENSHOTS } from '@/lib/support-reports';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
 
@@ -20,7 +21,7 @@ type ReportRow = {
 };
 
 export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -227,10 +228,10 @@ export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
                     {isOwner ? (
                       <p className="text-xs text-app-muted mt-0.5">
                         {r.submitter.displayName} · {r.submitter.email} ·{' '}
-                        {new Date(r.createdAt).toLocaleString()}
+                        {formatAppDateTime(r.createdAt, locale)}
                       </p>
                     ) : (
-                      <p className="text-xs text-app-muted mt-0.5">{new Date(r.createdAt).toLocaleString()}</p>
+                      <p className="text-xs text-app-muted mt-0.5">{formatAppDateTime(r.createdAt, locale)}</p>
                     )}
                   </div>
                   {isOwner ? (

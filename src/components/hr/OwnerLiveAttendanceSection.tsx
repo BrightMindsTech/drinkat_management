@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import type { OwnerLiveAttendanceRow } from '@/lib/time-clock-owner-live';
 
 export function OwnerLiveAttendanceSection({ initialRows }: { initialRows: OwnerLiveAttendanceRow[] }) {
@@ -36,18 +37,7 @@ export function OwnerLiveAttendanceSection({ initialRows }: { initialRows: Owner
   const clockedIn = useMemo(() => rows.filter((r) => r.clockedIn), [rows]);
   const notIn = useMemo(() => rows.filter((r) => !r.clockedIn), [rows]);
 
-  const formatSince = (iso: string | null) => {
-    if (!iso) return '—';
-    try {
-      const d = new Date(iso);
-      return d.toLocaleString(locale === 'ar' ? 'ar-JO' : 'en-GB', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      });
-    } catch {
-      return '—';
-    }
-  };
+  const formatSince = (iso: string | null) => (iso ? formatAppDateTime(iso, locale) : '—');
 
   const sectionClass = 'app-section scroll-mt-28';
 

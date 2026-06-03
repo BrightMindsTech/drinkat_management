@@ -1,8 +1,22 @@
 import type { PrismaClient } from '@prisma/client';
 import { endOfMonth, endOfDay, format, startOfDay } from 'date-fns';
+import { periodMonthFromDate } from '@/lib/advance-period-month';
 
 function formatYmd(d: Date): string {
   return format(d, 'yyyy-MM-dd');
+}
+
+/** Which payroll month an approved advance deducts from (explicit field, else approval month, else request month). */
+export function payrollMonthForAdvance(advance: {
+  periodMonth: string | null;
+  decidedAt: Date | null;
+  requestedAt: Date;
+}): string {
+  if (advance.periodMonth && /^\d{4}-\d{2}$/.test(advance.periodMonth)) {
+    return advance.periodMonth;
+  }
+  if (advance.decidedAt) return periodMonthFromDate(advance.decidedAt);
+  return periodMonthFromDate(advance.requestedAt);
 }
 
 function periodMonthDateBounds(periodMonth: string): { start: Date; end: Date } {
@@ -19,7 +33,7 @@ export type SalaryDeductionRow = {
   employeeName: string;
   branchName: string;
   employmentType: 'full_time' | 'part_time';
-  /** Full-time: gross from salary copy. Part-time: distinct days worked × daily rate (`Employee.salaryAmount`). */
+  /** Full-time: gross from permanent `Employee.salaryAmount`. Part-time: days worked × daily rate in that month. */
   salary: number;
   deduction: number;
   net: number;
@@ -30,8 +44,8 @@ export type SalaryDeductionRow = {
 };
 
 /**
- * Payroll rows for a salary month. Full-time uses `SalaryCopy` (monthly). Part-time ignores copies and uses
- * time-clock distinct days × `salaryAmount` as daily pay. Advances deduct when `Advance.periodMonth` matches.
+ * Payroll rows for a calendar month. Full-time gross uses each employee's permanent `salaryAmount`.
+ * Part-time gross uses time-clock days in that month × daily `salaryAmount`. Advance deductions are month-scoped.
  */
 export async function getSalaryDeductionReport(
   prisma: PrismaClient,
@@ -42,10 +56,19 @@ export async function getSalaryDeductionReport(
 
   const branchFilter = branchId ? { branchId } : {};
 
-  const [salaryCopies, partTimeEmployees, allApproved] = await Promise.all([
-    prisma.salaryCopy.findMany({
-      where: { periodMonth, ...branchFilter },
-      include: { employee: { include: { branch: true } } },
+  const [fullTimeEmployees, partTimeEmployees, allApproved] = await Promise.all([
+    prisma.employee.findMany({
+      where: {
+        status: { in: ['active', 'on_leave'] },
+        employmentType: { not: 'part_time' },
+        ...branchFilter,
+      },
+      select: {
+        id: true,
+        name: true,
+        salaryAmount: true,
+        branch: { select: { name: true } },
+      },
     }),
     prisma.employee.findMany({
       where: {
@@ -64,20 +87,14 @@ export async function getSalaryDeductionReport(
       where: {
         status: 'approved',
         ...(branchId ? { employee: { branchId } } : {}),
-        OR: [
-          { periodMonth },
-          {
-            periodMonth: null,
-            requestedAt: { gte: start, lte: end },
-          },
-        ],
       },
-      select: { employeeId: true, amount: true },
+      select: { employeeId: true, amount: true, periodMonth: true, requestedAt: true, decidedAt: true },
     }),
   ]);
 
   const deductionByEmployee = new Map<string, number>();
   for (const a of allApproved) {
+    if (payrollMonthForAdvance(a) !== periodMonth) continue;
     deductionByEmployee.set(a.employeeId, (deductionByEmployee.get(a.employeeId) ?? 0) + a.amount);
   }
 
@@ -106,18 +123,17 @@ export async function getSalaryDeductionReport(
 
   const rows: SalaryDeductionRow[] = [];
 
-  for (const sc of salaryCopies) {
-    if (sc.employee.employmentType === 'part_time') continue;
-
-    const deduction = deductionByEmployee.get(sc.employeeId) ?? 0;
+  for (const emp of fullTimeEmployees) {
+    const gross = emp.salaryAmount ?? 0;
+    const deduction = deductionByEmployee.get(emp.id) ?? 0;
     rows.push({
-      periodMonth: sc.periodMonth,
-      employeeName: sc.employee.name,
-      branchName: sc.employee.branch.name,
+      periodMonth,
+      employeeName: emp.name,
+      branchName: emp.branch.name,
       employmentType: 'full_time',
-      salary: sc.amount,
+      salary: gross,
       deduction,
-      net: Math.max(0, sc.amount - deduction),
+      net: Math.max(0, gross - deduction),
       daysWorked: null,
       dailyRate: null,
     });

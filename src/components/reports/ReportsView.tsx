@@ -17,7 +17,8 @@ import {
   Line,
   CartesianGrid,
 } from 'recharts';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import { buildQcScoreReport, type QcScoreReport } from '@/lib/qc-form-score-report';
 import { QcScoreReportModal } from '@/components/qc/QcScoreReportModal';
 import { ReportTableModal } from '@/components/ReportTableModal';
@@ -26,17 +27,18 @@ import type { ReportTableData } from '@/lib/report-table';
 const COLORS = ['#007AFF', '#5856D6', '#34C759', '#FF9500', '#FF3B30'];
 
 const SIDEBAR_SECTIONS = [
+  { id: 'owner-pulse', labelKey: 'ownerPulse' as const },
   { id: 'branch-overview', labelKey: 'branchOverview' as const },
-  { id: 'manager-reports', labelKey: 'managerReportsSection' as const },
-  { id: 'hr', labelKey: 'hrSection' as const },
-  { id: 'leave', labelKey: 'leaveSection' as const },
   { id: 'attendance', labelKey: 'attendanceSection' as const },
   { id: 'advances', labelKey: 'advancesSection' as const },
+  { id: 'leave', labelKey: 'leaveSection' as const },
   { id: 'qc', labelKey: 'qcSection' as const },
-  { id: 'forms', labelKey: 'formsSection' as const },
+  { id: 'manager-reports', labelKey: 'managerReportsSection' as const },
   { id: 'weekly-ratings', labelKey: 'weeklyRatingsLeaderboard' as const },
-  { id: 'activity', labelKey: 'activitySection' as const },
+  { id: 'forms', labelKey: 'formsSection' as const },
+  { id: 'hr', labelKey: 'hrSection' as const },
   { id: 'salary', labelKey: 'salarySection' as const },
+  { id: 'activity', labelKey: 'activitySection' as const },
   { id: 'export', labelKey: 'exportCsv' as const },
 ] as const;
 
@@ -52,7 +54,7 @@ function getMonthOptions() {
 }
 
 export function ReportsView({ branches }: { branches: Branch[] }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('month');
   const [branchId, setBranchId] = useState('');
   const monthOptions = useMemo(getMonthOptions, []);
@@ -62,14 +64,14 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   }, []);
   const [month, setMonth] = useState(currentMonth);
   const [salaryMonth, setSalaryMonth] = useState(currentMonth);
-  const [activeSection, setActiveSection] = useState('branch-overview');
+  const [activeSection, setActiveSection] = useState('owner-pulse');
   const [qcLogsMinimized, setQcLogsMinimized] = useState(false);
   const [qcArchiveFrom, setQcArchiveFrom] = useState('');
   const [qcArchiveTo, setQcArchiveTo] = useState('');
   const [qcReportModal, setQcReportModal] = useState<QcScoreReport | null>(null);
   const [tableReport, setTableReport] = useState<ReportTableData | null>(null);
   const [showDetailedAnalytics, setShowDetailedAnalytics] = useState(false);
-  const [hideTimeClockAlerts, setHideTimeClockAlerts] = useState(true);
+  const [hideTimeClockAlerts, setHideTimeClockAlerts] = useState(false);
 
 
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +98,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         partTimeMinimumDays: number;
         rows: {
           employeeId: string;
+          branchId?: string;
           name: string;
           branchName: string;
           employmentType: string;
@@ -226,12 +229,44 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     weeklyRatings?: {
       periodLabel: string;
       monthLabel: string;
+      minRatingsForEmployeeOfMonth?: number;
+      weeksInSelectedMonth?: number;
       periodByBranch: { branchId: string; branchName: string; rows: { employeeName: string; avgScore: number; count: number }[] }[];
       monthByBranch: {
         branchId: string;
         branchName: string;
+        ratingsInMonth?: number;
         employeeOfTheMonth: { employeeName: string; avgScore: number; count: number } | null;
+        employeeOfTheMonthCandidate?: {
+          employeeName: string;
+          avgScore: number;
+          count: number;
+          needsMoreRatings: number;
+        } | null;
         leaderboard: { employeeName: string; avgScore: number; count: number }[];
+      }[];
+    };
+    executiveSummary?: {
+      totalHeadcount: number;
+      pendingAdvances: number;
+      pendingAdvancesAmount: number;
+      pendingLeave: number;
+      pendingQc: number;
+      timeClockAlerts: number;
+      pendingAdvanceSamples: {
+        id: string;
+        employeeName: string;
+        branchName: string;
+        amount: number;
+        requestedAt: string;
+      }[];
+      pendingLeaveSamples: {
+        id: string;
+        employeeName: string;
+        branchName: string;
+        type: string;
+        startDate: string;
+        endDate: string;
       }[];
     };
     activity: {
@@ -441,10 +476,41 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
     return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   }
 
+  function reportAsOfNow() {
+    return interpolate(t.reports.reportAsOfDate, {
+      date: formatAppDateTime(new Date(), locale),
+    });
+  }
 
-  function openSalaryReport() {
-    const rows = data!.salary.rows;
-    if (!rows.length) return;
+  function openEmptyReport(title: string, monthKey: string) {
+    const monthLabel = monthLabelFromKey(monthKey);
+    setTableReport({
+      title,
+      subtitle: monthLabel,
+      headers: [],
+      rows: [],
+      emptyMessage: interpolate(t.reports.noDataForMonth, { month: monthLabel }),
+      asOfDate: reportAsOfNow(),
+    });
+  }
+
+  function salaryReportToTable(
+    payload: {
+      periodMonth: string;
+      rows: {
+        employeeName: string;
+        branchName: string;
+        salary: number;
+        deduction: number;
+        net: number;
+        employmentType?: 'full_time' | 'part_time';
+        daysWorked?: number | null;
+        dailyRate?: number | null;
+      }[];
+      totals: { salary: number; deduction: number; net: number };
+    }
+  ): ReportTableData {
+    const monthKey = payload.periodMonth;
     const headers = [
       t.reports.month,
       t.common.employee,
@@ -455,31 +521,19 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       t.salary.deduction,
       t.salary.net,
     ];
-    const grouped = rows.reduce(
-      (acc, row) => {
-        const key = row.periodMonth || data!.salary.periodMonth;
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(row);
-        return acc;
-      },
-      {} as Record<string, typeof rows>
-    );
-    const orderedMonths = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
-    const tableRows = orderedMonths.flatMap((monthKey) =>
-      grouped[monthKey].map((r) => [
-        monthLabelFromKey(monthKey),
-        r.employeeName,
-        r.branchName,
-        r.employmentType === 'part_time' && r.daysWorked != null ? String(r.daysWorked) : '—',
-        r.employmentType === 'part_time' && r.dailyRate != null ? r.dailyRate.toFixed(2) : '—',
-        r.salary.toFixed(2),
-        r.deduction.toFixed(2),
-        r.net.toFixed(2),
-      ])
-    );
-    setTableReport({
+    const tableRows = payload.rows.map((r) => [
+      monthLabelFromKey(monthKey),
+      r.employeeName,
+      r.branchName,
+      r.employmentType === 'part_time' && r.daysWorked != null ? String(r.daysWorked) : '—',
+      r.employmentType === 'part_time' && r.dailyRate != null ? r.dailyRate.toFixed(2) : '—',
+      r.salary.toFixed(2),
+      r.deduction.toFixed(2),
+      r.net.toFixed(2),
+    ]);
+    return {
       title: t.reports.exportSalary,
-      subtitle: data!.salary.periodMonth,
+      subtitle: monthLabelFromKey(monthKey),
       headers,
       rows: tableRows,
       footerRow: [
@@ -488,16 +542,60 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         '',
         '',
         '',
-        data!.salary.totals.salary.toFixed(2),
-        data!.salary.totals.deduction.toFixed(2),
-        data!.salary.totals.net.toFixed(2),
+        payload.totals.salary.toFixed(2),
+        payload.totals.deduction.toFixed(2),
+        payload.totals.net.toFixed(2),
       ],
-    });
+    };
+  }
+
+  async function openSalaryReport() {
+    const periodMonth = salaryMonth || data?.salary?.periodMonth || currentMonth;
+    const params = new URLSearchParams({ periodMonth });
+    if (branchId) params.set('branchId', branchId);
+    try {
+      const res = await fetch(`/api/salary/deductions?${params}`);
+      const payload = (await res.json()) as {
+        periodMonth?: string;
+        rows?: {
+          employeeName: string;
+          branchName: string;
+          salary: number;
+          deduction: number;
+          net: number;
+          employmentType?: 'full_time' | 'part_time';
+          daysWorked?: number | null;
+          dailyRate?: number | null;
+        }[];
+        totals?: { salary: number; deduction: number; net: number };
+        error?: string;
+      };
+      if (!res.ok || !payload.rows?.length || !payload.totals) {
+        openEmptyReport(t.reports.exportSalary, periodMonth);
+        return;
+      }
+      setTableReport(
+        salaryReportToTable({
+          periodMonth: payload.periodMonth ?? periodMonth,
+          rows: payload.rows,
+          totals: payload.totals,
+        })
+      );
+    } catch {
+      if (data?.salary?.rows?.length) {
+        setTableReport(salaryReportToTable(data.salary));
+        return;
+      }
+      openEmptyReport(t.reports.exportSalary, periodMonth);
+    }
   }
 
   function openAdvancesReport() {
     const list = data!.hr.advancesList ?? [];
-    if (!list.length) return;
+    if (!list.length) {
+      openEmptyReport(t.reports.exportAdvances, month);
+      return;
+    }
     const headers = [
       t.reports.month,
       t.common.employee,
@@ -538,7 +636,10 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
 
   function openFormsReport() {
     const list = data!.forms.recent ?? [];
-    if (!list.length) return;
+    if (!list.length) {
+      openEmptyReport(t.reports.exportForms, month);
+      return;
+    }
     setTableReport({
       title: t.reports.exportForms,
       headers: [t.common.employee, t.common.branch, t.forms.createFormName, t.common.status, t.common.date],
@@ -587,7 +688,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 min-w-0 space-y-8">
+      <div className="flex-1 min-w-0 flex flex-col gap-8">
         {/* Filters */}
         <div className={`flex flex-wrap gap-4 p-6 ${reportCardClass}`}>
           <h3 className="w-full text-base font-semibold text-app-primary mb-1">{t.reports.period} & filters</h3>
@@ -645,12 +746,216 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
             onClick={() => setShowDetailedAnalytics((v) => !v)}
             className="rounded-ios border border-gray-300 dark:border-ios-dark-separator px-3 py-1.5 text-sm font-medium text-app-primary hover:bg-gray-100 dark:hover:bg-ios-dark-elevated-2"
           >
-            {showDetailedAnalytics ? 'Hide detailed analytics' : 'Show detailed analytics'}
+            {showDetailedAnalytics ? t.reports.hideDeepAnalytics : t.reports.showDeepAnalytics}
           </button>
         </div>
 
+        {/* Owner at-a-glance — first for quick decisions */}
+        <section id="owner-pulse" className={`order-2 scroll-mt-6 ${reportCardClass}`}>
+          <h2 className={sectionTitleClass}>{t.reports.ownerPulse}</h2>
+          <p className="text-sm text-app-muted mb-4">{t.reports.ownerPulseIntro}</p>
+
+          {(() => {
+            const pulse = data.executiveSummary;
+            const pendingAdvances = pulse?.pendingAdvances ?? data.hr.advances.pending;
+            const pendingLeave = pulse?.pendingLeave ?? data.hr.leave?.totalPending ?? 0;
+            const pendingQc = pulse?.pendingQc ?? data.qc.pending;
+            const alertCount = pulse?.timeClockAlerts ?? data.hr.timeClockAlerts?.length ?? 0;
+            const pendingAdvanceAmount =
+              pulse?.pendingAdvancesAmount ??
+              (data.hr.advances as { pendingAmount?: number }).pendingAmount ??
+              0;
+            const urgent =
+              pendingAdvances > 0 || pendingLeave > 0 || pendingQc > 0 || alertCount > 0;
+            const topBranches = [...(data.branchOverview ?? [])].sort(
+              (a, b) => (b.branchScore ?? b.qcRate ?? 0) - (a.branchScore ?? a.qcRate ?? 0)
+            );
+            const minEotm = data.weeklyRatings?.minRatingsForEmployeeOfMonth ?? 2;
+            const monthBranches = data.weeklyRatings?.monthByBranch ?? [];
+
+            return (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+                  <a
+                    href="#advances"
+                    className={`rounded-xl border p-4 transition-colors ${
+                      pendingAdvances > 0
+                        ? 'border-amber-400/60 bg-amber-50/80 dark:bg-amber-900/25'
+                        : 'border-gray-200 dark:border-ios-dark-separator bg-gray-50/50 dark:bg-ios-dark-elevated-2/30'
+                    }`}
+                  >
+                    <p className="text-xs font-medium text-app-muted">{t.reports.advancesSection}</p>
+                    <p className="text-2xl font-bold text-app-primary mt-1">{pendingAdvances}</p>
+                    <p className="text-xs text-app-secondary mt-1">
+                      {interpolate(t.reports.pendingAdvancesHint, {
+                        count: String(pendingAdvances),
+                        amount: pendingAdvanceAmount.toFixed(2),
+                      })}
+                    </p>
+                  </a>
+                  <a
+                    href="#leave"
+                    className={`rounded-xl border p-4 transition-colors ${
+                      pendingLeave > 0
+                        ? 'border-amber-400/60 bg-amber-50/80 dark:bg-amber-900/25'
+                        : 'border-gray-200 dark:border-ios-dark-separator bg-gray-50/50 dark:bg-ios-dark-elevated-2/30'
+                    }`}
+                  >
+                    <p className="text-xs font-medium text-app-muted">{t.reports.leaveSection}</p>
+                    <p className="text-2xl font-bold text-app-primary mt-1">{pendingLeave}</p>
+                    <p className="text-xs text-app-secondary mt-1">
+                      {interpolate(t.reports.pendingLeaveHint, { count: String(pendingLeave) })}
+                    </p>
+                  </a>
+                  <a
+                    href="#qc"
+                    className={`rounded-xl border p-4 transition-colors ${
+                      pendingQc > 0
+                        ? 'border-amber-400/60 bg-amber-50/80 dark:bg-amber-900/25'
+                        : 'border-gray-200 dark:border-ios-dark-separator bg-gray-50/50 dark:bg-ios-dark-elevated-2/30'
+                    }`}
+                  >
+                    <p className="text-xs font-medium text-app-muted">{t.reports.qcSection}</p>
+                    <p className="text-2xl font-bold text-app-primary mt-1">{pendingQc}</p>
+                    <p className="text-xs text-app-secondary mt-1">
+                      {interpolate(t.reports.pendingQcHint, { count: String(pendingQc) })}
+                    </p>
+                  </a>
+                  <a
+                    href="#hr"
+                    className={`rounded-xl border p-4 transition-colors ${
+                      alertCount > 0
+                        ? 'border-red-300/60 bg-red-50/60 dark:bg-red-900/20'
+                        : 'border-gray-200 dark:border-ios-dark-separator bg-gray-50/50 dark:bg-ios-dark-elevated-2/30'
+                    }`}
+                  >
+                    <p className="text-xs font-medium text-app-muted">Time clock</p>
+                    <p className="text-2xl font-bold text-app-primary mt-1">{alertCount}</p>
+                    <p className="text-xs text-app-secondary mt-1">
+                      {interpolate(t.reports.timeClockAlertsHint, { count: String(alertCount) })}
+                    </p>
+                  </a>
+                </div>
+
+                {!urgent ? (
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300 mb-6">{t.reports.allClear}</p>
+                ) : (
+                  <div className="mb-6 rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-900/15 p-4">
+                    <p className="text-sm font-semibold text-app-primary mb-2">{t.reports.needsAttention}</p>
+                    <ul className="space-y-1.5 text-sm text-app-secondary">
+                      {(pulse?.pendingAdvanceSamples?.length
+                        ? pulse.pendingAdvanceSamples
+                        : data.hr.advancesList
+                            .filter((a) => a.status === 'pending')
+                            .slice(0, 5)
+                            .map((a) => ({
+                              id: a.id,
+                              employeeName: a.employee.name,
+                              branchName: a.employee.branch?.name ?? '—',
+                              amount: a.amount,
+                            }))
+                      ).map((a) => (
+                        <li key={a.id}>
+                          <span className="font-medium text-app-primary">{a.employeeName}</span>
+                          {' — '}
+                          {a.branchName} · {a.amount.toFixed(2)} JOD
+                        </li>
+                      ))}
+                      {(pulse?.pendingLeaveSamples?.length
+                        ? pulse.pendingLeaveSamples
+                        : (data.hr.leave?.logs ?? [])
+                            .filter((l) => l.status === 'pending')
+                            .slice(0, 5)
+                            .map((l) => ({
+                              id: l.id,
+                              employeeName: l.employee.name,
+                              branchName: l.branch.name,
+                              type: l.type,
+                            }))
+                      ).map((l) => (
+                        <li key={l.id}>
+                          <span className="font-medium text-app-primary">{l.employeeName}</span>
+                          {' — '}
+                          {l.branchName} · {l.type} leave
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div>
+                    <h3 className="text-base font-semibold text-app-primary mb-2">{t.reports.topBranches}</h3>
+                    <ul className="space-y-2">
+                      {topBranches.slice(0, 4).map((b) => (
+                        <li
+                          key={b.id}
+                          className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-ios-dark-separator px-3 py-2 bg-white dark:bg-ios-dark-elevated"
+                        >
+                          <span className="font-medium text-app-primary">{b.name}</span>
+                          <span className="text-lg font-bold tabular-nums text-ios-blue">{b.branchScore ?? b.qcRate}%</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs text-app-muted mt-2">
+                      {t.reports.headcountByBranch}: {pulse?.totalHeadcount ?? data.hr.totalHeadcount} {t.reports.employees.toLowerCase()}
+                    </p>
+                  </div>
+
+                  <div>
+                    <h3 className="text-base font-semibold text-app-primary mb-1">{t.reports.employeeOfTheMonth}</h3>
+                    <p className="text-xs text-app-muted mb-3">
+                      {interpolate(t.reports.employeeOfTheMonthHint, { min: String(minEotm) })}
+                      {data.weeklyRatings?.monthLabel ? ` · ${data.weeklyRatings.monthLabel}` : ''}
+                    </p>
+                    <div className="space-y-3">
+                      {monthBranches.length === 0 ? (
+                        <p className="text-sm text-app-muted">{t.common.noData}</p>
+                      ) : (
+                        monthBranches.map((b) => (
+                          <div
+                            key={b.branchId}
+                            className="rounded-lg border border-gray-200 dark:border-ios-dark-separator bg-gradient-to-br from-ios-blue/5 to-transparent p-3"
+                          >
+                            <p className="text-xs font-semibold text-app-secondary uppercase tracking-wide">{b.branchName}</p>
+                            {b.employeeOfTheMonth ? (
+                              <p className="mt-1 text-sm text-app-primary">
+                                <span className="text-lg font-bold">{b.employeeOfTheMonth.employeeName}</span>
+                                <span className="text-app-secondary">
+                                  {' '}
+                                  · {b.employeeOfTheMonth.avgScore}/100 · {b.employeeOfTheMonth.count}{' '}
+                                  {t.reports.ratingsCount.toLowerCase()}
+                                </span>
+                              </p>
+                            ) : b.employeeOfTheMonthCandidate ? (
+                              <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                                {interpolate(t.reports.employeeOfTheMonthPending, {
+                                  name: b.employeeOfTheMonthCandidate.employeeName,
+                                  score: String(b.employeeOfTheMonthCandidate.avgScore),
+                                  more: String(b.employeeOfTheMonthCandidate.needsMoreRatings),
+                                })}
+                              </p>
+                            ) : (b.ratingsInMonth ?? 0) === 0 ? (
+                              <p className="mt-1 text-sm text-app-muted">{t.reports.noRatingsThisMonth}</p>
+                            ) : (
+                              <p className="mt-1 text-sm text-app-muted">{t.common.noData}</p>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <a href="#weekly-ratings" className="inline-block mt-2 text-sm text-ios-blue font-medium">
+                      {t.reports.weeklyRatingsLeaderboard} →
+                    </a>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </section>
+
         {/* Branch Overview */}
-        <section id="branch-overview" className={`scroll-mt-6 ${reportCardClass}`}>
+        <section id="branch-overview" className={`order-3 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.branchOverview}</h2>
           <p className="text-sm text-app-muted mb-6">Summary of each branch</p>
           <div className="grid gap-6 sm:grid-cols-2">
@@ -760,7 +1065,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         </section>
 
         {/* Manager Reports Section */}
-        <section id="manager-reports" className={`scroll-mt-6 ${reportCardClass}`}>
+        <section id="manager-reports" className={`order-8 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.managerReportsSection}</h2>
 
           {(data.managerRatingReport?.length ?? 0) > 0 ? (
@@ -936,7 +1241,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         </section>
 
         {/* HR Section */}
-        <section id="hr" className={`scroll-mt-6 ${reportCardClass}`}>
+        <section id="hr" className={`order-11 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.hrSection}</h2>
           <p className="text-sm text-app-muted mb-6">Headcount and new hires</p>
           <div className="grid gap-6 md:grid-cols-2">
@@ -1018,7 +1323,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                         i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/50 dark:bg-ios-dark-elevated-2/20'
                       }`}
                     >
-                      <td className="p-2 text-xs tabular-nums">{new Date(row.createdAt).toLocaleString()}</td>
+                      <td className="p-2 text-xs tabular-nums">{formatAppDateTime(row.createdAt, locale)}</td>
                       <td className="p-2 font-semibold text-app-primary">{row.employeeName}</td>
                       <td className="p-2">{row.branchName}</td>
                       <td className="p-2">{row.title}</td>
@@ -1035,7 +1340,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
 
         {/* Leave Section */}
         {data.hr.leave && (
-          <section id="leave" className={`scroll-mt-6 ${reportCardClass}`}>
+          <section id="leave" className={`order-6 scroll-mt-6 ${reportCardClass}`}>
             <h2 className={sectionTitleClass}>{t.reports.leaveSection}</h2>
             <p className="text-sm text-app-muted mb-6">Leave requests overview</p>
             <div className="grid gap-4 md:grid-cols-4">
@@ -1138,7 +1443,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         )}
 
         {data.hr.attendance ? (
-          <section id="attendance" className={`scroll-mt-6 ${reportCardClass}`}>
+          <section id="attendance" className={`order-4 scroll-mt-6 ${reportCardClass}`}>
             <h2 className={sectionTitleClass}>{t.reports.attendanceSection}</h2>
             <p className="text-sm text-app-muted mb-2">{t.reports.attendanceIntro}</p>
             {data.hr.attendance.isMonthView ? (
@@ -1198,7 +1503,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         ) : null}
 
         {/* Advances Section */}
-        <section id="advances" className={`scroll-mt-6 ${reportCardClass}`}>
+        <section id="advances" className={`order-5 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.advancesSection}</h2>
           <p className="text-sm text-app-muted mb-6">Advance requests this period</p>
           <div className="grid gap-4 md:grid-cols-4 mb-4">
@@ -1321,7 +1626,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         </section>
 
         {/* QC Section */}
-        <section id="qc" className={`scroll-mt-6 ${reportCardClass}`}>
+        <section id="qc" className={`order-7 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.qcSection}</h2>
           <p className="text-sm text-app-muted mb-6">QC submissions and ratings</p>
           <div className="grid gap-6 md:grid-cols-2">
@@ -1512,7 +1817,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                               <p className="text-sm font-semibold text-app-primary">
                                 {row.employee.name} - {row.checklistName}
                               </p>
-                              <span className="text-xs text-app-muted">{new Date(row.submittedAt).toLocaleString()}</span>
+                              <span className="text-xs text-app-muted">{formatAppDateTime(row.submittedAt, locale)}</span>
                             </div>
                             <p className="text-xs text-app-secondary mt-1">
                               {row.branch.name} - {row.status}
@@ -1539,7 +1844,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         </section>
 
         {/* Forms Section */}
-        <section id="forms" className={`scroll-mt-6 ${reportCardClass}`}>
+        <section id="forms" className={`order-10 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.formsSection}</h2>
           <p className="text-sm text-app-muted mb-6">{t.reports.formsOverview}</p>
           <div className="grid gap-4 md:grid-cols-4 mb-4">
@@ -1703,14 +2008,21 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         </section>
 
         {/* Weekly ratings leaderboards */}
-        {showDetailedAnalytics && (
-        <section id="weekly-ratings" className={`scroll-mt-6 ${reportCardClass}`}>
+        <section id="weekly-ratings" className={`order-9 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.weeklyRatingsLeaderboard}</h2>
           <p className="text-sm text-app-muted mb-2">
             {data.weeklyRatings?.periodLabel ? (
               <>
                 {t.reports.weeklyLeaderboard}: {data.weeklyRatings.periodLabel}
               </>
+            ) : null}
+            {data.weeklyRatings?.monthLabel ? (
+              <span className="block text-xs mt-1">
+                {t.reports.monthlyLeaderboard}: {data.weeklyRatings.monthLabel}
+                {data.weeklyRatings.weeksInSelectedMonth != null
+                  ? ` (${data.weeklyRatings.weeksInSelectedMonth} week(s) in range)`
+                  : ''}
+              </span>
             ) : null}
           </p>
           {!data.weeklyRatings ? (
@@ -1753,7 +2065,10 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
               <div>
                 <h3 className="text-base font-semibold text-app-primary mb-1">{t.reports.employeeOfTheMonth}</h3>
                 <p className="text-xs text-app-muted mb-3">
-                  {t.reports.monthlyLeaderboard} · {data.weeklyRatings.monthLabel}
+                  {interpolate(t.reports.employeeOfTheMonthHint, {
+                    min: String(data.weeklyRatings.minRatingsForEmployeeOfMonth ?? 2),
+                  })}{' '}
+                  · {data.weeklyRatings.monthLabel}
                 </p>
                 <div className="grid gap-4 md:grid-cols-2">
                   {data.weeklyRatings.monthByBranch.map((b) => (
@@ -1763,13 +2078,23 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                     >
                       <h4 className="text-sm font-semibold text-app-primary mb-2">{b.branchName}</h4>
                       {b.employeeOfTheMonth ? (
-                        <p className="text-sm text-app-secondary mb-3">
-                          <span className="font-semibold text-app-label">{b.employeeOfTheMonth.employeeName}</span>
-                          {' · '}
-                          <span className="tabular-nums">{b.employeeOfTheMonth.avgScore}</span> / 100
-                          {' · '}
-                          {b.employeeOfTheMonth.count} {t.reports.ratingsCount.toLowerCase()}
+                        <div className="mb-3 rounded-lg border border-ios-blue/30 bg-ios-blue/10 px-3 py-2">
+                          <p className="text-lg font-bold text-app-primary">{b.employeeOfTheMonth.employeeName}</p>
+                          <p className="text-sm text-app-secondary">
+                            <span className="tabular-nums">{b.employeeOfTheMonth.avgScore}</span> / 100 ·{' '}
+                            {b.employeeOfTheMonth.count} {t.reports.ratingsCount.toLowerCase()}
+                          </p>
+                        </div>
+                      ) : b.employeeOfTheMonthCandidate ? (
+                        <p className="text-sm text-amber-800 dark:text-amber-200 mb-3">
+                          {interpolate(t.reports.employeeOfTheMonthPending, {
+                            name: b.employeeOfTheMonthCandidate.employeeName,
+                            score: String(b.employeeOfTheMonthCandidate.avgScore),
+                            more: String(b.employeeOfTheMonthCandidate.needsMoreRatings),
+                          })}
                         </p>
+                      ) : (b.ratingsInMonth ?? 0) === 0 ? (
+                        <p className="text-xs text-app-muted mb-3">{t.reports.noRatingsThisMonth}</p>
                       ) : (
                         <p className="text-xs text-app-muted mb-3">{t.common.noData}</p>
                       )}
@@ -1800,11 +2125,10 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
             </div>
           )}
         </section>
-        )}
 
         {/* Activity Section */}
         {showDetailedAnalytics && (
-        <section id="activity" className={`scroll-mt-6 ${reportCardClass}`}>
+        <section id="activity" className={`order-13 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.activitySection}</h2>
           <p className="text-sm text-app-muted mb-6">{t.reports.activityOverview}</p>
           <div className="grid gap-4 md:grid-cols-3">
@@ -1828,7 +2152,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         )}
 
         {/* Salary Section */}
-        <section id="salary" className={`scroll-mt-6 ${reportCardClass}`}>
+        <section id="salary" className={`order-12 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>
             {t.reports.salaryDeductions} ({new Date(data.salary.periodMonth + '-01').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })})
           </h2>
@@ -1878,7 +2202,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         </section>
 
         {/* Export Section */}
-        <section id="export" className={`scroll-mt-6 ${reportCardClass}`}>
+        <section id="export" className={`order-14 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>{t.reports.exportCsv}</h2>
           <div className="flex flex-wrap gap-3">
             <button

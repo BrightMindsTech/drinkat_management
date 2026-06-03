@@ -87,8 +87,8 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
     }
     return [
       { id: 'qc-review-checklists', labelRef: 'qc.checklists' },
+      { id: 'qc-review-submissions', labelRef: 'qc.submissionsToReview' },
       { id: 'qc-review-assignments', labelRef: 'qc.assignments' },
-      { id: 'qc-review-submissions', labelRef: 'qc.submissionsTitle' },
       { id: 'qc-review-archive', labelRef: 'qc.archiveTitle' },
     ];
   }

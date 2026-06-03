@@ -8,12 +8,8 @@ import {
   normalizeUserRole,
   type FormViewContext,
 } from '@/lib/formVisibility';
-import {
-  createInboxForUsers,
-  getManagerUserIdForEmployee,
-  getOwnerUserIds,
-} from '@/lib/time-clock-helpers';
-import { sendPushToUser } from '@/lib/push';
+import { getManagerUserIdForEmployee, getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { notifyUsers } from '@/lib/user-notify';
 import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
 import { z } from 'zod';
 
@@ -189,52 +185,37 @@ export async function POST(req: NextRequest) {
     type: 'form_submitted',
   });
 
-  const notifiedUserIds = new Set<string>();
-  if (ownerIds.length > 0) {
-    const ownerCategory =
-      template.category === 'cash' ? 'forms_cash_submitted_to_owner' : 'forms_submission_owner_direct';
-    await createInboxForUsers(ownerIds, {
-      category: ownerCategory,
-      title: inboxTitle,
-      body: inboxBody,
-      dataJson: inboxData,
-    });
-    for (const id of ownerIds) notifiedUserIds.add(id);
-  }
-
+  const notifiedUserIds = new Set<string>(ownerIds);
   if (template.category === 'qc' && emp.branchId) {
     const branchManagerUserId = await getManagerUserIdForEmployee({
       reportsToEmployeeId: null,
       branchId: emp.branchId,
     });
-    if (branchManagerUserId && !notifiedUserIds.has(branchManagerUserId)) {
-      await createInboxForUsers([branchManagerUserId], {
-        category: 'forms_submission_branch_manager',
-        title: inboxTitle,
-        body: inboxBody,
-        dataJson: inboxData,
-      });
-      notifiedUserIds.add(branchManagerUserId);
-    }
+    if (branchManagerUserId) notifiedUserIds.add(branchManagerUserId);
   }
 
   if (notifiedUserIds.size > 0) {
+    const ownerCategory =
+      template.category === 'cash' ? 'forms_cash_submitted_to_owner' : 'forms_submission_owner_direct';
+    const formsHref = '/dashboard/forms';
     try {
-      const uidList = [...notifiedUserIds];
-      const subs = await prisma.pushSubscription.findMany({ where: { userId: { in: uidList } } });
-      for (const uid of uidList) {
-        const userSubs = subs.filter((s) => s.userId === uid);
-        await sendPushToUser(uid, userSubs, {
+      await notifyUsers(prisma, [...notifiedUserIds], {
+        category: ownerCategory,
+        title: inboxTitle,
+        body: inboxBody,
+        dataJson: inboxData,
+        push: {
           title: inboxTitle,
           body: inboxBody,
           data: {
             type: 'management_form_submitted',
+            url: formsHref,
             submissionId: submission.id,
           },
-        });
-      }
+        },
+      });
     } catch {
-      /* push optional */
+      /* notification optional */
     }
   }
 

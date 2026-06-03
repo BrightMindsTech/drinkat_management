@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Checklist, ChecklistItem, ChecklistAssignment, Employee, Branch, Department, QcSubmission, SubmissionPhoto } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { formatAppClockTimeLabel, formatAppDateTime } from '@/lib/format-datetime';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
 
 type ChecklistWithItems = Checklist & { branch: Branch | null; items: ChecklistItem[] };
@@ -30,7 +31,7 @@ export function QCReviewView({
   branches: Branch[];
   employees: (Employee & { branch: Branch; department?: Department | null })[];
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const { run, isBusy } = useGuardedAction();
   const [checklists, setChecklists] = useState(initialChecklists);
   const [assignments, setAssignments] = useState(initialAssignments);
@@ -41,6 +42,30 @@ export function QCReviewView({
   const [historyFrom, setHistoryFrom] = useState('');
   const [historyTo, setHistoryTo] = useState('');
   const [expandedSubmissionDetails, setExpandedSubmissionDetails] = useState<Record<string, boolean>>({});
+  const [unassigningId, setUnassigningId] = useState<string | null>(null);
+
+  const ASSIGNMENT_GROUP_ACCENTS = [
+    {
+      header: 'bg-ios-blue/10 border-ios-blue/25 text-ios-blue',
+      row: 'bg-ios-blue/[0.03] dark:bg-ios-blue/10',
+    },
+    {
+      header: 'bg-emerald-500/10 border-emerald-500/25 text-emerald-800 dark:text-emerald-300',
+      row: 'bg-emerald-500/[0.04] dark:bg-emerald-500/10',
+    },
+    {
+      header: 'bg-violet-500/10 border-violet-500/25 text-violet-800 dark:text-violet-300',
+      row: 'bg-violet-500/[0.04] dark:bg-violet-500/10',
+    },
+    {
+      header: 'bg-amber-500/10 border-amber-500/25 text-amber-900 dark:text-amber-200',
+      row: 'bg-amber-500/[0.04] dark:bg-amber-500/10',
+    },
+    {
+      header: 'bg-rose-500/10 border-rose-500/25 text-rose-800 dark:text-rose-300',
+      row: 'bg-rose-500/[0.04] dark:bg-rose-500/10',
+    },
+  ] as const;
 
   async function createChecklist(name: string, branchId: string | null, repeatsDaily: boolean, deadlineTime: string, items: { title: string }[]) {
     await run('qc', async () => {
@@ -148,6 +173,32 @@ export function QCReviewView({
     return result;
   }
 
+  async function unassignAssignment(assignment: AssignmentWithRelations) {
+    const msg = interpolate(t.qc.unassignConfirm, { name: assignment.employee.name });
+    if (!window.confirm(msg)) return;
+    setUnassigningId(assignment.id);
+    try {
+      const res = await fetch(`/api/assignments/${assignment.id}`, { method: 'DELETE' });
+      if (res.status === 204 || res.ok) {
+        setAssignments((prev) => prev.filter((a) => a.id !== assignment.id));
+        return;
+      }
+      const raw = await res.text();
+      let message = t.qc.unassignFailed;
+      try {
+        const d = JSON.parse(raw) as { error?: unknown; detail?: unknown };
+        if (typeof d.error === 'string') message = d.error;
+        else if (res.status === 403) message = 'Forbidden';
+        else if (res.status === 404) message = t.qc.unassignNotFound;
+      } catch {
+        if (res.status === 404) message = t.qc.unassignNotFound;
+      }
+      alert(message);
+    } finally {
+      setUnassigningId(null);
+    }
+  }
+
   async function reviewSubmission(id: string, status: 'approved' | 'denied', rating?: number, comments?: string) {
     await run('qc', async () => {
     const res = await fetch(`/api/qc/submissions/${id}`, {
@@ -175,6 +226,28 @@ export function QCReviewView({
       })
       .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
   }, [submissions, historyFrom, historyTo]);
+
+  const assignmentsByChecklist = useMemo(() => {
+    const map = new Map<
+      string,
+      { checklist: Checklist; rows: AssignmentWithRelations[] }
+    >();
+    for (const a of assignments) {
+      const existing = map.get(a.checklistId);
+      if (existing) existing.rows.push(a);
+      else map.set(a.checklistId, { checklist: a.checklist, rows: [a] });
+    }
+    return [...map.values()]
+      .map((g) => ({
+        ...g,
+        rows: [...g.rows].sort((a, b) => {
+          const branchCmp = a.branch.name.localeCompare(b.branch.name);
+          if (branchCmp !== 0) return branchCmp;
+          return a.employee.name.localeCompare(b.employee.name);
+        }),
+      }))
+      .sort((a, b) => a.checklist.name.localeCompare(b.checklist.name));
+  }, [assignments]);
 
   const historyByMonth = useMemo(() => {
     return historyRows.reduce(
@@ -223,7 +296,7 @@ export function QCReviewView({
                   <p className="text-sm text-app-muted mt-1">
                     {interpolate(t.qc.itemsCount, { count: String(c.items.length) })}
                     {c.repeatsDaily && ` • ${t.qc.repeatsDaily}`}
-                    {' • '}{t.qc.deadlineTime}: {c.deadlineTime}
+                    {' • '}{t.qc.deadlineTime}: {formatAppClockTimeLabel(c.deadlineTime, locale)}
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
@@ -263,75 +336,6 @@ export function QCReviewView({
         </ul>
       </section>
 
-      <section id="qc-review-assignments" className={sectionClass}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-app-primary">{t.qc.assignments}</h2>
-          <button
-            type="button"
-            onClick={() => setShowAssign(true)}
-            className="app-btn-secondary"
-          >
-            {t.qc.assignChecklist}
-          </button>
-        </div>
-        {showAssign && (
-          <AssignForm
-            checklists={checklists}
-            employees={employees}
-            branches={branches}
-            onAssign={assignChecklistToPeople}
-            onCancel={() => setShowAssign(false)}
-          />
-        )}
-        {assignments.length === 0 ? (
-          <p className="text-sm text-app-muted">{t.common.noData}</p>
-        ) : (
-          <div className="app-table-wrap">
-            <table className="app-table">
-              <thead>
-                <tr className="app-table-head">
-                  <th className="text-left p-2">{t.common.checklist}</th>
-                  <th className="text-left p-2">{t.common.employee}</th>
-                  <th className="text-left p-2">{t.common.branch}</th>
-                  <th className="text-left p-2">{t.qc.dueDate}</th>
-                  <th className="text-left p-2">{t.common.status}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assignments.map((a, i) => {
-                  const dueDate = a.dueDate ? new Date(a.dueDate).toLocaleDateString() : '—';
-                  const isDaily = a.checklist.repeatsDaily;
-                  return (
-                    <tr
-                      key={a.id}
-                      className={`border-t border-gray-200 dark:border-ios-dark-separator ${
-                        i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/50 dark:bg-ios-dark-elevated-2/20'
-                      }`}
-                    >
-                      <td className="p-2 font-medium text-app-primary">{a.checklist.name}</td>
-                      <td className="p-2">{a.employee.name}</td>
-                      <td className="p-2 text-app-secondary">{a.branch.name}</td>
-                      <td className="p-2 tabular-nums">{dueDate}</td>
-                      <td className="p-2">
-                        <span
-                          className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
-                            isDaily
-                              ? 'bg-ios-blue/10 text-ios-blue'
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-600/80 dark:text-white'
-                          }`}
-                        >
-                          {isDaily ? t.qc.repeatsDaily : t.qc.dueDate}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
       <section id="qc-review-submissions" className={sectionClass}>
         <h2 className="text-lg font-semibold text-app-primary mb-4">{t.qc.submissionsToReview} ({pending.length})</h2>
         <ul className="space-y-4">
@@ -342,7 +346,7 @@ export function QCReviewView({
                 {s.employee.name} — {s.assignment.checklist.name} ({s.assignment.branch.name}){' '}
                 {s.isLate && <span className="text-amber-600 dark:text-amber-400 text-sm font-normal">({t.qc.lateNote})</span>}
               </p>
-              <p className="text-sm text-app-muted">{new Date(s.submittedAt).toLocaleString()}</p>
+              <p className="text-sm text-app-muted">{formatAppDateTime(s.submittedAt, locale)}</p>
               {s.lateNote && <p className="text-sm text-amber-600 dark:text-amber-400 mt-0.5">{s.lateNote}</p>}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs rounded-full px-2 py-0.5 bg-ios-blue/10 text-ios-blue font-semibold">
@@ -380,6 +384,96 @@ export function QCReviewView({
             </li>
           ))}
         </ul>
+      </section>
+
+      <section id="qc-review-assignments" className={sectionClass}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-app-primary">{t.qc.assignments}</h2>
+          <button
+            type="button"
+            onClick={() => setShowAssign(true)}
+            className="app-btn-secondary"
+          >
+            {t.qc.assignChecklist}
+          </button>
+        </div>
+        {showAssign && (
+          <AssignForm
+            checklists={checklists}
+            employees={employees}
+            branches={branches}
+            onAssign={assignChecklistToPeople}
+            onCancel={() => setShowAssign(false)}
+          />
+        )}
+        {assignments.length === 0 ? (
+          <p className="text-sm text-app-muted">{t.common.noData}</p>
+        ) : (
+          <div className="space-y-4">
+            {assignmentsByChecklist.map((group, groupIndex) => {
+              const accent = ASSIGNMENT_GROUP_ACCENTS[groupIndex % ASSIGNMENT_GROUP_ACCENTS.length];
+              const isDaily = group.checklist.repeatsDaily;
+              return (
+                <div
+                  key={group.checklist.id}
+                  className="rounded-xl border border-gray-200 dark:border-ios-dark-separator overflow-hidden shadow-sm"
+                >
+                  <div
+                    className={`flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b ${accent.header}`}
+                  >
+                    <div>
+                      <h3 className="font-semibold text-app-primary">{group.checklist.name}</h3>
+                      <p className="text-xs text-app-secondary mt-0.5">
+                        {interpolate(t.qc.assignmentCount, { count: String(group.rows.length) })}
+                        {group.checklist.branchId
+                          ? ` · ${branches.find((b) => b.id === group.checklist.branchId)?.name ?? ''}`
+                          : ` · ${t.qc.allBranches}`}
+                      </p>
+                    </div>
+                    <span
+                      className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
+                        isDaily
+                          ? 'bg-white/80 text-ios-blue dark:bg-ios-dark-elevated'
+                          : 'bg-white/80 text-amber-800 dark:bg-ios-dark-elevated dark:text-amber-200'
+                      }`}
+                    >
+                      {isDaily ? t.qc.repeatsDaily : t.qc.dueDate}
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-gray-200/80 dark:divide-ios-dark-separator">
+                    {group.rows.map((a, rowIndex) => {
+                      const dueDate = a.dueDate ? new Date(a.dueDate).toLocaleDateString() : '—';
+                      return (
+                        <li
+                          key={a.id}
+                          className={`flex flex-wrap items-center gap-3 px-4 py-3 ${
+                            rowIndex % 2 === 0 ? accent.row : 'bg-white dark:bg-ios-dark-elevated'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-app-primary">{a.employee.name}</p>
+                            <p className="text-sm text-app-secondary">{a.branch.name}</p>
+                          </div>
+                          <div className="text-sm tabular-nums text-app-secondary shrink-0">
+                            {isDaily ? '—' : dueDate}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => unassignAssignment(a)}
+                            disabled={unassigningId === a.id || isBusy('qc')}
+                            className="shrink-0 rounded-lg border border-red-200 dark:border-red-800/60 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-300 bg-white/90 dark:bg-ios-dark-elevated disabled:opacity-50"
+                          >
+                            {unassigningId === a.id ? t.common.loading : t.qc.unassign}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <section id="qc-review-archive" className={sectionClass}>
@@ -428,7 +522,7 @@ export function QCReviewView({
                           <p className="text-sm font-semibold text-app-primary">
                             {s.employee.name} - {s.assignment.checklist.name}
                           </p>
-                          <span className="text-xs text-app-muted">{new Date(s.submittedAt).toLocaleString()}</span>
+                          <span className="text-xs text-app-muted">{formatAppDateTime(s.submittedAt, locale)}</span>
                         </div>
                         <p className="text-xs text-app-secondary mt-1">
                           {s.assignment.branch.name} - {s.status}

@@ -1,4 +1,6 @@
+import type { Locale } from '@/contexts/LanguageContext';
 import type { FormFieldDef } from '@/lib/formTemplate';
+import { formatAppDateTime } from '@/lib/format-datetime';
 import type { ReportTableData } from '@/lib/report-table';
 
 export type SubmissionReportCsvInput = {
@@ -26,10 +28,9 @@ function fieldColumnHeaders(fields: FormFieldDef[]): string[] {
   });
 }
 
-function formatDate(d: Date | string | null | undefined): string {
+function formatDate(d: Date | string | null | undefined, locale: Locale): string {
   if (d == null) return '—';
-  const x = typeof d === 'string' ? new Date(d) : d;
-  return Number.isNaN(x.getTime()) ? '—' : x.toLocaleString();
+  return formatAppDateTime(d, locale);
 }
 
 function formatAnswer(v: unknown): string {
@@ -41,12 +42,13 @@ function formatAnswer(v: unknown): string {
 /** Build a two-column table (field / value) for screenshot-friendly submission reports. */
 export function buildSubmissionReportTable(
   s: SubmissionReportCsvInput,
-  labels?: { field: string; value: string }
+  labels?: { field: string; value: string },
+  locale: Locale = 'en'
 ): ReportTableData {
   const fieldHeaders = fieldColumnHeaders(s.template.fields);
   const rows: string[][] = [
     ['Submission ID', s.id],
-    ['Submitted', formatDate(s.submittedAt)],
+    ['Submitted', formatDate(s.submittedAt, locale)],
     ['Employee', s.employee.name],
     ['Branch', s.branch.name],
     ['Department', s.departmentName?.trim() || '—'],
@@ -54,7 +56,7 @@ export function buildSubmissionReportTable(
     ['Status', s.status],
     ['Rating', s.rating == null ? '—' : String(s.rating)],
     ['Comments', s.comments?.trim() || '—'],
-    ['Reviewed', formatDate(s.reviewedAt ?? null)],
+    ['Reviewed', formatDate(s.reviewedAt ?? null, locale)],
   ];
 
   s.template.fields.forEach((f, i) => {
