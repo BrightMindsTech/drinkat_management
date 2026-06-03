@@ -8,7 +8,8 @@ import {
   normalizeUserRole,
   type FormViewContext,
 } from '@/lib/formVisibility';
-import { getManagerUserIdForEmployee, getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { getManagerUserIdsForBranch, getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { resolveBranchIdByName } from '@/lib/branch-resolve';
 import { notifyUsers } from '@/lib/user-notify';
 import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
 import { z } from 'zod';
@@ -158,11 +159,19 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: msg }, { status: 400 });
   }
 
+  let submissionBranchId = emp.branchId;
+  if (template.category === 'qc') {
+    const visitedBranchId = await resolveBranchIdByName(
+      typeof answersNorm.branch_name === 'string' ? answersNorm.branch_name : undefined
+    );
+    if (visitedBranchId) submissionBranchId = visitedBranchId;
+  }
+
   const submission = await prisma.managementFormSubmission.create({
     data: {
       templateId: template.id,
       employeeId: emp.id,
-      branchId: emp.branchId,
+      branchId: submissionBranchId,
       answersJson: JSON.stringify(answersNorm),
       status: 'submitted',
     },
@@ -185,21 +194,13 @@ export async function POST(req: NextRequest) {
     type: 'form_submitted',
   });
 
-  const notifiedUserIds = new Set<string>(ownerIds);
-  if (template.category === 'qc' && emp.branchId) {
-    const branchManagerUserId = await getManagerUserIdForEmployee({
-      reportsToEmployeeId: null,
-      branchId: emp.branchId,
-    });
-    if (branchManagerUserId) notifiedUserIds.add(branchManagerUserId);
-  }
+  const formsReviewHref = `/dashboard/forms#forms-review-submission-${submission.id}`;
 
-  if (notifiedUserIds.size > 0) {
+  if (ownerIds.length > 0) {
     const ownerCategory =
       template.category === 'cash' ? 'forms_cash_submitted_to_owner' : 'forms_submission_owner_direct';
-    const formsHref = '/dashboard/forms';
     try {
-      await notifyUsers(prisma, [...notifiedUserIds], {
+      await notifyUsers(prisma, ownerIds, {
         category: ownerCategory,
         title: inboxTitle,
         body: inboxBody,
@@ -209,13 +210,48 @@ export async function POST(req: NextRequest) {
           body: inboxBody,
           data: {
             type: 'management_form_submitted',
-            url: formsHref,
+            url: formsReviewHref,
             submissionId: submission.id,
           },
         },
       });
     } catch {
       /* notification optional */
+    }
+  }
+
+  if (template.category === 'qc' && submissionBranchId) {
+    const managerUserIds = (await getManagerUserIdsForBranch(submissionBranchId)).filter(
+      (id) => id !== session.user.id
+    );
+    if (managerUserIds.length > 0) {
+      const managerTitle = `QC evaluation: ${template.title}`;
+      const managerBody = `${emp.name} submitted a quality control evaluation for ${submission.branch.name}. Open to view the form and score.`;
+      const managerData = JSON.stringify({
+        submissionId: submission.id,
+        templateId: template.id,
+        branchId: submissionBranchId,
+        type: 'qc_form_submitted',
+      });
+      try {
+        await notifyUsers(prisma, managerUserIds, {
+          category: 'forms_qc_submitted_branch_manager',
+          title: managerTitle,
+          body: managerBody,
+          dataJson: managerData,
+          push: {
+            title: managerTitle,
+            body: managerBody,
+            data: {
+              type: 'forms_submission_branch_manager',
+              url: formsReviewHref,
+              submissionId: submission.id,
+            },
+          },
+        });
+      } catch {
+        /* notification optional */
+      }
     }
   }
 

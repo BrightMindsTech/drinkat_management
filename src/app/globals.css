@@ -196,3 +196,18 @@
     transform: translateX(22px) scale(0.97);
   }
 }
+
+@keyframes in-app-notif-shrink {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.in-app-notif-timer-bar {
+  animation-name: in-app-notif-shrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}

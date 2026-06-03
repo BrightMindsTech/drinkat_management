@@ -10,9 +10,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useInAppNotifications } from '@/contexts/InAppNotificationContext';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { isAppForeground, setForegroundInterval } from '@/lib/app-foreground';
@@ -99,10 +99,13 @@ export function useTimeClockGeofence() {
   return v;
 }
 
+const CLOCK_IN_NOTIF_ID = 'clock-in-required';
+
 function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   const { t } = useLanguage();
   const router = useRouter();
   const pathname = usePathname();
+  const { upsert, remove } = useInAppNotifications();
 
   const [status, setStatus] = useState<TimeClockStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -132,16 +135,24 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (!showClockInRequiredGate) return;
-    const prevHtmlOverflow = document.documentElement.style.overflow;
-    const prevBodyOverflow = document.body.style.overflow;
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.overflow = 'hidden';
+    if (!showClockInRequiredGate) {
+      remove(CLOCK_IN_NOTIF_ID);
+      return;
+    }
+    upsert({
+      id: CLOCK_IN_NOTIF_ID,
+      title: t.timeClock.clockInRequiredTitle,
+      body: t.timeClock.clockInRequiredBody,
+      persistent: true,
+      minimizable: true,
+      minimizedLabel: t.timeClock.clockInRequiredTitle,
+      actionLabel: t.timeClock.goToClockIn,
+      href: timeClockHref,
+    });
     return () => {
-      document.documentElement.style.overflow = prevHtmlOverflow;
-      document.body.style.overflow = prevBodyOverflow;
+      remove(CLOCK_IN_NOTIF_ID);
     };
-  }, [showClockInRequiredGate]);
+  }, [showClockInRequiredGate, t, upsert, remove, timeClockHref]);
 
   const refresh = useCallback(async (): Promise<TimeClockStatus | null> => {
     try {
@@ -469,28 +480,6 @@ function TimeClockGeofenceProviderInner({ children }: { children: ReactNode }) {
   return (
     <TimeClockGeofenceContext.Provider value={value}>
       {children}
-      {showClockInRequiredGate && (
-        <div className="fixed top-[calc(9rem+env(safe-area-inset-top))] sm:top-[calc(6rem+env(safe-area-inset-top))] end-4 z-[220] pointer-events-auto w-[min(92vw,420px)] app-animate-in">
-          <div
-            className="rounded-ios-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-900/25 p-4 shadow-lg"
-            role="status"
-            aria-live="polite"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="font-semibold text-amber-900 dark:text-amber-200">{t.timeClock.clockInRequiredTitle}</p>
-                <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">{t.timeClock.clockInRequiredBody}</p>
-              </div>
-              <Link
-                href={timeClockHref}
-                className="shrink-0 rounded-ios border border-amber-300/70 dark:border-amber-500/40 px-2 py-1 text-xs font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100/60 dark:hover:bg-amber-900/40"
-              >
-                {t.timeClock.goToClockIn}
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
       {forceAwayOpen && status?.clock && !status.away && (
         <ForcedAwayModal
           onEndShift={async () => {

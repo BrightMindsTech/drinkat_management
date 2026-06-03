@@ -193,6 +193,21 @@ export async function getManagerUserIdForEmployee(employee: {
   return branchManager?.userId ?? null;
 }
 
+/** All active branch managers with linked user accounts. */
+export async function getManagerUserIdsForBranch(branchId: string): Promise<string[]> {
+  const managers = await prisma.employee.findMany({
+    where: {
+      branchId,
+      role: 'manager',
+      status: 'active',
+      userId: { not: null },
+    },
+    select: { userId: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return managers.map((m) => m.userId!).filter((id): id is string => !!id);
+}
+
 /** Fallback: first owner user */
 export async function getOwnerUserIds(): Promise<string[]> {
   const owners = await prisma.user.findMany({ where: { role: 'owner' }, select: { id: true } });

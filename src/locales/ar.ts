@@ -646,6 +646,7 @@ export const ar: LocaleMessages = {
     submitting: 'جاري الإرسال…',
     mySubmissions: 'تقديماتي',
     reviewQueue: 'تقديمات النماذج',
+    qcSubmissionNotifyTitle: 'تقييم جودة جديد في فرعك',
     reportFormToOwner: 'إبلاغ المالك',
     reportedFormToOwner: 'تم الإبلاغ للمالك ✓',
     reportFormToOwnerFailed: 'تعذّر الإبلاغ للمالك.',

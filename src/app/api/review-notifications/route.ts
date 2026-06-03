@@ -54,14 +54,42 @@ export async function GET() {
     let pendingLeavePromise: Promise<{ id: string; employee: { name: string } }[]>;
     let pendingAdvancesPromise: Promise<{ id: string; employee: { name: string }; amount: number }[]>;
 
+    let pendingQcFormsPromise: Promise<
+      {
+        id: string;
+        template: { title: string };
+        employee: { name: string };
+        branch: { name: string };
+      }[]
+    > = Promise.resolve([]);
+
     if (role === 'manager') {
       const user = await prisma.user.findUnique({
         where: { id: session.user.id },
-        select: { employee: { select: { id: true } } },
+        select: { employee: { select: { id: true, branchId: true } } },
       });
       if (!user?.employee) return Response.json({ total: 0, items: [] });
 
       const managerEmployeeId = user.employee.id;
+      const managerBranchId = user.employee.branchId;
+
+      const qcFormSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      pendingQcFormsPromise = prisma.managementFormSubmission.findMany({
+        where: {
+          template: { category: 'qc' },
+          branchId: managerBranchId,
+          status: 'submitted',
+          submittedAt: { gte: qcFormSince },
+        },
+        select: {
+          id: true,
+          template: { select: { title: true } },
+          employee: { select: { name: true } },
+          branch: { select: { name: true } },
+        },
+        orderBy: { submittedAt: 'desc' },
+        take: 15,
+      });
 
       pendingQcPromise = prisma.qcSubmission.findMany({
       where: {
@@ -123,13 +151,21 @@ export async function GET() {
           : Promise.resolve([]);
     }
 
-    const [pendingQc, pendingLeave, pendingAdvances] = await Promise.all([
+    const [pendingQc, pendingLeave, pendingAdvances, pendingQcForms] = await Promise.all([
       pendingQcPromise,
       pendingLeavePromise,
       pendingAdvancesPromise,
+      pendingQcFormsPromise,
     ]);
 
     const items = [
+      ...pendingQcForms.map((f) => ({
+        id: `qcform-${f.id}`,
+        type: 'qc_form_submitted' as const,
+        title: f.template.title,
+        subtitle: `${f.employee.name} · ${f.branch.name}`,
+        href: `/dashboard/forms#forms-review-submission-${f.id}`,
+      })),
       ...pendingQc.map((s) => ({
         id: `qc-${s.id}`,
         type: 'qc_review',

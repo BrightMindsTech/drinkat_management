@@ -1,29 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { usePathname } from 'next/navigation';
-import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { setForegroundInterval } from '@/lib/app-foreground';
+import { useInAppNotifications } from '@/contexts/InAppNotificationContext';
 
 type PendingItem = {
   id: string;
-  type: 'qc_review' | 'forms_review' | 'staff_qc_submit' | 'leave_review' | 'advance_review';
+  type: 'qc_review' | 'forms_review' | 'staff_qc_submit' | 'leave_review' | 'advance_review' | 'qc_form_submitted';
   title: string;
   subtitle?: string;
   href: string;
 };
 type PendingPayload = { total: number; items: PendingItem[] };
 
+const PENDING_PREFIX = 'pending-review-';
+
 export function PendingReviewNotice({ role }: { role: string }) {
   const { t } = useLanguage();
   const router = useRouter();
-  const pathname = usePathname();
+  const { upsert, remove } = useInAppNotifications();
   const [data, setData] = useState<PendingPayload | null>(null);
   const [removedIds, setRemovedIds] = useState<string[]>([]);
-  const [flyingId, setFlyingId] = useState<string | null>(null);
-  const [minimized, setMinimized] = useState(false);
+  const syncedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (role !== 'owner' && role !== 'qc' && role !== 'staff' && role !== 'manager' && role !== 'marketing') return;
@@ -36,7 +37,6 @@ export function PendingReviewNotice({ role }: { role: string }) {
         const json = (await res.json()) as PendingPayload;
         if (!mounted) return;
         setData(json);
-        // Keep dismissed-on-click behavior session-local only.
         setRemovedIds((prev) => prev.filter((id) => json.items.some((item) => item.id === id)));
       } catch {
         // keep silent; this is a non-blocking enhancement
@@ -59,82 +59,54 @@ export function PendingReviewNotice({ role }: { role: string }) {
     };
   }, [role]);
 
-  if (!data || data.total === 0) return null;
-
   const isStaff = role === 'staff' || role === 'marketing';
-  const path = pathname ?? '';
-  const isMessagesPage = path.startsWith('/dashboard/messages');
-  const visibleItems = data.items.filter((item) => !removedIds.includes(item.id));
-  if (visibleItems.length === 0) return null;
+  const visibleItems = (data?.items ?? []).filter((item) => !removedIds.includes(item.id));
 
-  if (minimized) {
-    return (
-      <button
-        type="button"
-        onClick={() => setMinimized(false)}
-        className={`fixed end-2 z-[220] pointer-events-auto rounded-ios border border-amber-300 dark:border-amber-500/40 bg-amber-100 dark:bg-amber-900/30 px-3 py-2 text-xs font-semibold text-amber-900 dark:text-amber-200 shadow-md app-animate-in ${
-          isMessagesPage
-            ? 'bottom-[max(0.75rem,calc(env(safe-area-inset-bottom)+0.5rem))]'
-            : 'top-[calc(7rem+env(safe-area-inset-top))]'
-        }`}
-      >
-        {visibleItems.length} {isStaff ? t.common.pendingSubmitTitle : t.common.pendingReviewTitle}
-      </button>
-    );
-  }
+  useEffect(() => {
+    const nextIds = new Set(visibleItems.map((item) => `${PENDING_PREFIX}${item.id}`));
+    for (const id of syncedRef.current) {
+      if (!nextIds.has(id)) remove(id);
+    }
+    syncedRef.current = nextIds;
 
-  function handleOpen(item: PendingItem) {
-    setFlyingId(item.id);
-    window.setTimeout(() => {
-      setRemovedIds((prev) => [...prev, item.id]);
-      setFlyingId(null);
-      router.push(item.href);
-    }, 220);
-  }
+    for (const item of visibleItems) {
+      const notifId = `${PENDING_PREFIX}${item.id}`;
+      const isQcForm = item.type === 'qc_form_submitted' || item.type === 'forms_review';
+      const title =
+        item.type === 'leave_review'
+          ? t.hr.leaveRequests
+          : item.type === 'advance_review'
+            ? t.hr.advances
+            : isQcForm && role === 'manager'
+              ? t.forms.qcSubmissionNotifyTitle
+              : item.title;
+      const bodyParts = [
+        item.type === 'leave_review' || item.type === 'advance_review' ? item.title : null,
+        item.subtitle,
+      ].filter(Boolean);
+      const body = bodyParts.length > 0 ? bodyParts.join(' · ') : undefined;
 
-  return (
-    <div
-      className={`fixed end-4 z-[220] pointer-events-auto w-[min(92vw,420px)] rounded-ios-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-900/25 p-4 shadow-lg app-animate-in ${
-        isMessagesPage
-          ? 'top-[calc(9rem+env(safe-area-inset-top))] sm:top-[calc(6.5rem+env(safe-area-inset-top))]'
-          : 'top-[calc(6rem+env(safe-area-inset-top))]'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-        <p className="font-semibold text-amber-900 dark:text-amber-200">
-          {isStaff ? t.common.pendingSubmitTitle : t.common.pendingReviewTitle}
-        </p>
-        <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
-          {interpolate(isStaff ? t.common.pendingSubmitBody : t.common.pendingReviewBody, { count: String(visibleItems.length) })}
-        </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setMinimized(true)}
-          className="rounded-ios border border-amber-300/70 dark:border-amber-500/40 px-2 py-1 text-xs font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100/60 dark:hover:bg-amber-900/40"
-        >
-          {t.common.hide}
-        </button>
-      </div>
+      upsert({
+        id: notifId,
+        title,
+        body,
+        persistent: true,
+        actionLabel: t.common.goToPending,
+        onAction: () => {
+          setRemovedIds((prev) => [...prev, item.id]);
+          remove(notifId);
+          router.push(item.href);
+        },
+      });
+    }
+  }, [visibleItems, isStaff, role, router, upsert, remove, t]);
 
-      <div className="mt-3 space-y-2 max-h-64 overflow-auto pe-1">
-        {visibleItems.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => handleOpen(item)}
-            className={`w-full rounded-ios border border-amber-300/70 dark:border-amber-500/40 bg-white/70 dark:bg-amber-950/30 px-3 py-2 text-start text-sm text-app-primary hover:bg-white dark:hover:bg-amber-950/45 app-press ${flyingId === item.id ? 'notif-fly-away' : ''}`}
-          >
-            {item.type === 'leave_review' && <div className="text-xs text-app-secondary mb-0.5">{t.hr.leaveRequests}</div>}
-            {item.type === 'advance_review' && <div className="text-xs text-app-secondary mb-0.5">{t.hr.advances}</div>}
-            <span className="font-semibold">{item.title}</span>
-            {item.subtitle ? <span className="text-app-secondary ms-1">· {item.subtitle}</span> : null}
-            <div className="text-app-secondary mt-0.5">{t.common.goToPending}</div>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  useEffect(() => {
+    return () => {
+      for (const id of syncedRef.current) remove(id);
+      syncedRef.current.clear();
+    };
+  }, [remove]);
+
+  return null;
 }
-

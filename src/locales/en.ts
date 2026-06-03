@@ -647,6 +647,7 @@ export const en = {
     submitting: 'Submitting…',
     mySubmissions: 'My submissions',
     reviewQueue: 'Form submissions',
+    qcSubmissionNotifyTitle: 'New QC evaluation at your branch',
     reportFormToOwner: 'Report to owner',
     reportedFormToOwner: 'Reported to owner ✓',
     reportFormToOwnerFailed: 'Could not report to owner.',

@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { SignOutButton } from '@/components/SignOutButton';
 import { PushConnectionNotice } from '@/components/PushConnectionNotice';
 import { PendingReviewNotice } from '@/components/PendingReviewNotice';
+import { InAppNotificationStack } from '@/components/in-app/InAppNotificationStack';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { isAppForeground, setForegroundInterval } from '@/lib/app-foreground';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -184,6 +185,7 @@ export function DashboardLayoutClient({
       {/* Main column */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overscroll-none">
         <PendingReviewNotice role={role} />
+        <InAppNotificationStack />
         {/* touch-none: drags on chrome must not scroll the main column / webview (iOS scroll chaining) */}
         {/* safe-pt-top once for push banner + header — banner was above this and hid under the notch */}
         <div className="safe-pt-top shrink-0 touch-none border-b border-gray-200/80 bg-white/90 backdrop-blur-xl dark:border-ios-dark-separator dark:bg-ios-dark-elevated/90">

@@ -108,6 +108,33 @@ export function ManagementFormsView({
     });
   }, [ownerEditId]);
 
+  const handledReviewHashRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    function applyReviewHash() {
+      const hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : '';
+      if (!hash.startsWith('forms-review-submission-') || handledReviewHashRef.current === hash) return;
+      handledReviewHashRef.current = hash;
+      scrollIntoViewById(hash);
+      const submissionId = hash.slice('forms-review-submission-'.length);
+      setExpandedReviewAnswers((prev) => ({ ...prev, [submissionId]: true }));
+      const row = reviewList.find((s) => s.id === submissionId);
+      if (row?.template.category === 'qc') {
+        setQcReportModal(
+          buildQcScoreReport(row.answers, {
+            branchName: row.branch.name,
+            qcOfficer: row.employee.name,
+            templateTitle: row.template.title,
+            templateFields: row.template.fields,
+          })
+        );
+      }
+    }
+    applyReviewHash();
+    window.addEventListener('hashchange', applyReviewHash);
+    return () => window.removeEventListener('hashchange', applyReviewHash);
+  }, [reviewList]);
+
   const grouped = useMemo(() => {
     const m = new Map<string, FormsTemplateRow[]>();
     for (const tpl of templatesForFill) {

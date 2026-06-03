@@ -4,6 +4,7 @@ import { normalizeUserRole } from '@/lib/formVisibility';
 import { isQcReviewerUser } from '@/lib/qc-reviewer';
 import { prisma } from '@/lib/prisma';
 import { TimeClockGeofenceProvider } from '@/contexts/TimeClockGeofenceContext';
+import { InAppNotificationProvider } from '@/contexts/InAppNotificationContext';
 import { AppResumeSync } from '@/components/AppResumeSync';
 import { AppReconnectingNotice } from '@/components/AppReconnectingNotice';
 import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery';
@@ -67,14 +68,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
     navRole === 'staff' && isQcReviewerUser(session.user.role, userForNav?.employee ?? null) ? 'qc' : navRole;
 
   return (
-    <TimeClockGeofenceProvider role={navRole}>
-      <SessionStabilityGuard />
-      <SessionKeepalive />
-      <AppReconnectingNotice />
-      <AppResumeSync />
-      <DashboardLayoutClient role={uiRole} email={session.user.email ?? ''} headcountSummary={headcountSummary}>
-        {children}
-      </DashboardLayoutClient>
-    </TimeClockGeofenceProvider>
+    <InAppNotificationProvider>
+      <TimeClockGeofenceProvider role={navRole}>
+        <SessionStabilityGuard />
+        <SessionKeepalive />
+        <AppReconnectingNotice />
+        <AppResumeSync />
+        <DashboardLayoutClient role={uiRole} email={session.user.email ?? ''} headcountSummary={headcountSummary}>
+          {children}
+        </DashboardLayoutClient>
+      </TimeClockGeofenceProvider>
+    </InAppNotificationProvider>
   );
 }
