@@ -1,6 +1,6 @@
 /**
  * Injects a Cloudflare `scheduled` handler into the OpenNext-generated worker so
- * Wrangler `triggers.crons` can run `/api/cron/time-clock` via WORKER_SELF_REFERENCE
+ * Wrangler `triggers.crons` can run `/api/cron/time-clock` (maintenance) via WORKER_SELF_REFERENCE
  * (no third-party HTTP cron).
  */
 import fs from 'node:fs';

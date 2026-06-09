@@ -71,19 +71,17 @@ export async function getExpectedRatingTargetIds(
   raterEmployeeId: string,
   role: AppUserRole
 ): Promise<string[]> {
-  const emp = await prisma.employee.findUnique({
-    where: { id: raterEmployeeId },
-    select: {
-      directReports: { where: { status: { in: ['active', 'on_leave'] } }, select: { id: true } },
+  if (role !== 'manager') return [];
+
+  const reports = await prisma.employee.findMany({
+    where: {
+      reportsToEmployeeId: raterEmployeeId,
+      status: { in: ['active', 'on_leave'] },
     },
+    select: { id: true },
+    orderBy: { name: 'asc' },
   });
-  if (!emp) return [];
-
-  if (role === 'manager') {
-    return emp.directReports.map((d) => d.id);
-  }
-
-  return [];
+  return reports.map((r) => r.id);
 }
 
 /** Managers an employee may rate voluntarily (no obligation to rate all). Excludes self. */
@@ -102,25 +100,13 @@ export async function getEligibleWeeklyRatingManagerTargets(
   });
 }
 
+/** Ratings are encouraged via reminders — never block clock in/out or app usage. */
 export async function isWeeklyRatingGateBlocking(
-  prisma: PrismaClient,
-  raterEmployeeId: string,
-  role: AppUserRole
+  _prisma: PrismaClient,
+  _raterEmployeeId: string,
+  _role: AppUserRole
 ): Promise<boolean> {
-  if (!rolesSubjectToWeeklyRating(role)) return false;
-  // Only managers are required to submit for every direct report. Staff/QC/marketing ratings are voluntary.
-  if (role !== 'manager') return false;
-
-  const weekKey = getObligationWeekStartKey();
-  const expected = await getExpectedRatingTargetIds(prisma, raterEmployeeId, role);
-  if (expected.length === 0) return false;
-
-  const rows = await prisma.weeklyRating.findMany({
-    where: { raterEmployeeId, weekStartKey: weekKey, targetEmployeeId: { in: expected } },
-    select: { targetEmployeeId: true },
-  });
-  const done = new Set(rows.map((r) => r.targetEmployeeId));
-  return expected.some((id) => !done.has(id));
+  return false;
 }
 
 export async function assertTargetAllowedForRater(

@@ -1,5 +1,6 @@
 /** Who can open (fill) a management form template */
 
+import { departmentNameMatchesKitchenForm } from '@/lib/kitchen-department';
 import { isZainBadarneh } from '@/lib/named-employee-policy';
 
 export type AppUserRole = 'owner' | 'qc' | 'staff' | 'manager' | 'marketing';
@@ -24,6 +25,7 @@ export type FormViewContext = {
 
 export type TemplateForVisibility = {
   category: string;
+  title?: string;
   departmentAssignments: { departmentId: string }[];
 };
 
@@ -62,6 +64,10 @@ export function canFillManagementForm(ctx: FormViewContext, template: TemplateFo
     return false;
   }
 
+  if (template.category === 'kitchen' && departmentNameMatchesKitchenForm(ctx.employeeDepartmentName)) {
+    return true;
+  }
+
   if (template.departmentAssignments.length > 0) {
     return !!(
       ctx.employeeDepartmentId &&
@@ -98,6 +104,8 @@ export function canUserFillTemplate(
   const explicit = isExplicitlyAssigned(employeeId, template);
 
   if (isQcFormCategory(template.category)) {
+    // Legacy duplicate — branch-specific visit reports replace this.
+    if (template.title?.trim() === 'Quality Control') return false;
     if (!isQcFormEmployee(role, employee)) return false;
     if (explicit) return true;
     if (template.departmentAssignments.length > 0) {

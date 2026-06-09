@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { Employee, Branch, Department, EmployeeTransfer, EmployeeDocument } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
-import { formatAppShiftTimeRange } from '@/lib/format-datetime';
+import { formatAppDate, formatAppShiftTimeRange } from '@/lib/format-datetime';
 import { EmployeeDocumentsSection } from './EmployeeDocumentsSection';
 import { SalaryHistorySection } from './SalaryHistorySection';
 import { PerformanceReviewsSection } from './PerformanceReviewsSection';
@@ -28,15 +28,12 @@ export function EmployeeCard({
   branches = [],
   onDeleted,
   onUpdated,
-  hrForceClockRole,
 }: {
   employee: EmployeeWithRelations;
   departments?: { id: string; name: string }[];
   branches?: { id: string; name: string }[];
   onDeleted: (id: string) => void;
   onUpdated: (emp: EmployeeWithRelations) => void;
-  /** Owner/manager HR: show force clock-out for clocked-in staff (server enforces rules). */
-  hrForceClockRole?: 'owner' | 'manager';
 }) {
   const { t, locale } = useLanguage();
   const [deleting, setDeleting] = useState(false);
@@ -54,8 +51,6 @@ export function EmployeeCard({
   const [showTransferHistory, setShowTransferHistory] = useState(false);
   const [showSalaryHistory, setShowSalaryHistory] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [forceClockBusy, setForceClockBusy] = useState(false);
-  const [forceClockNotice, setForceClockNotice] = useState('');
   const [employmentSaving, setEmploymentSaving] = useState(false);
 
   const [draftName, setDraftName] = useState(employee.name);
@@ -145,36 +140,6 @@ export function EmployeeCard({
     setTransferBranchId('');
     setTransferOpen(true);
     setIsExpanded(true);
-  }
-
-  async function handleForceClockOut() {
-    if (!hrForceClockRole) return;
-    if (!confirm(interpolate(t.hr.forceClockOutConfirm, { name: employee.name }))) return;
-    setForceClockBusy(true);
-    setForceClockNotice('');
-    try {
-      const res = await fetch('/api/time-clock/force-clock-out', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId: employee.id }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        alreadyClockedOut?: boolean;
-        error?: string;
-      };
-      if (!res.ok) {
-        setForceClockNotice(data.error ?? t.hr.forceClockOutFailed);
-        return;
-      }
-      if (data.alreadyClockedOut) {
-        setForceClockNotice(interpolate(t.hr.alreadyClockedOutNotice, { name: employee.name }));
-        return;
-      }
-      if (data.ok) setForceClockNotice(t.hr.forceClockOutSuccess);
-    } finally {
-      setForceClockBusy(false);
-    }
   }
 
   async function handleEmploymentTypeChange(next: 'full_time' | 'part_time') {
@@ -364,7 +329,7 @@ export function EmployeeCard({
   }
 
   const email = employee.user?.email ?? '—';
-  const joinDate = employee.joinDate ? new Date(employee.joinDate).toLocaleDateString() : '—';
+  const joinDate = employee.joinDate ? formatAppDate(employee.joinDate, locale) : '—';
   const detailsVisible = isExpanded || editing || transferOpen || resetOpen;
 
   const actionButtons = (
@@ -409,16 +374,6 @@ export function EmployeeCard({
             )}
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
-            {hrForceClockRole && (
-              <button
-                type="button"
-                onClick={() => void handleForceClockOut()}
-                disabled={forceClockBusy}
-                className="rounded-ios border border-amber-600/70 bg-amber-500/10 text-amber-800 dark:text-amber-200 px-3 py-2 text-xs font-semibold hover:bg-amber-500/15 disabled:opacity-50"
-              >
-                {forceClockBusy ? t.common.loading : t.hr.forceClockOut}
-              </button>
-            )}
             <button
               type="button"
               onClick={() => setIsExpanded((v) => !v)}
@@ -428,9 +383,6 @@ export function EmployeeCard({
             </button>
           </div>
         </div>
-        {forceClockNotice ? (
-          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300/90">{forceClockNotice}</p>
-        ) : null}
       </div>
       {detailsVisible && (
         <fieldset className="mt-3 rounded-lg border border-gray-200 dark:border-ios-dark-separator px-3 pb-3 pt-2">
@@ -475,8 +427,7 @@ export function EmployeeCard({
             )}
             <dt className="text-app-muted">{t.employeeCard.joined}</dt>
             <dd className="text-app-primary">{joinDate}</dd>
-            {hrForceClockRole === 'owner' && (
-              <>
+            <>
                 <dt className="text-app-muted">{t.employeeCard.employmentTypeLabel}</dt>
                 <dd className="text-app-primary min-w-0">
                   <select
@@ -494,8 +445,7 @@ export function EmployeeCard({
                     <p className="text-xs text-app-muted mt-1">{t.employeeCard.partTimeMinDaysHint}</p>
                   ) : null}
                 </dd>
-              </>
-            )}
+            </>
           </dl>
           {(resolvedIdCardFrontPhotoUrl || resolvedIdCardBackPhotoUrl) && (
             <div className="mt-3">
@@ -566,7 +516,7 @@ export function EmployeeCard({
           {showTransferHistory && (
             <ul className="mt-1 text-xs text-app-secondary space-y-0.5">
               {employee.transfers.map((tr) => (
-                <li key={tr.id}>{tr.fromBranch.name} → {tr.toBranch.name} ({new Date(tr.transferredAt).toLocaleDateString()})</li>
+                <li key={tr.id}>{tr.fromBranch.name} → {tr.toBranch.name} ({formatAppDate(tr.transferredAt, locale)})</li>
               ))}
             </ul>
           )}

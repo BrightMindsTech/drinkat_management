@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { en, type LocaleMessages } from '@/locales/en';
 import { ar } from '@/locales/ar';
 
@@ -19,11 +19,11 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
-function getInitialLocale(): Locale {
-  if (typeof window === 'undefined') return 'en';
+function readStoredLocale(fallback: Locale): Locale {
+  if (typeof window === 'undefined') return fallback;
   const stored = localStorage.getItem(LOCALE_KEY) as Locale | null;
   if (stored === 'en' || stored === 'ar') return stored;
-  return 'en';
+  return fallback;
 }
 
 function setLocaleCookie(locale: Locale) {
@@ -37,21 +37,22 @@ export function LanguageProvider({
   children: React.ReactNode;
   initialLocale?: Locale;
 }) {
+  // First paint must match the server cookie — never read localStorage during render.
   const [locale, setLocaleState] = useState<Locale>(initialLocale);
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const stored = getInitialLocale();
+    const stored = readStoredLocale(initialLocale);
     setLocaleState(stored);
     setLocaleCookie(stored);
-    setMounted(true);
-  }, []);
+    if (!localStorage.getItem(LOCALE_KEY)) {
+      localStorage.setItem(LOCALE_KEY, initialLocale);
+    }
+  }, [initialLocale]);
 
   useEffect(() => {
-    if (!mounted) return;
     document.documentElement.lang = locale;
     document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
-  }, [locale, mounted]);
+  }, [locale]);
 
   const setLocale = useCallback((newLocale: Locale) => {
     setLocaleState(newLocale);
@@ -79,7 +80,7 @@ export function useLanguage() {
 export function useOptionalLanguage(): LanguageContextValue {
   const ctx = useContext(LanguageContext);
   if (ctx) return ctx;
-  const locale = getInitialLocale();
+  const locale = readStoredLocale('en');
   return {
     locale,
     setLocale: () => {},

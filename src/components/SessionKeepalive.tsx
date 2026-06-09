@@ -14,8 +14,8 @@ export function SessionKeepalive() {
       void fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' });
     };
 
-    ping();
     const id = window.setInterval(ping, KEEPALIVE_MS);
+    const initialDelay = window.setTimeout(ping, 8_000);
     const onResume = () => ping();
     window.addEventListener(APP_RESUME_EVENT, onResume);
     document.addEventListener('visibilitychange', () => {
@@ -24,6 +24,7 @@ export function SessionKeepalive() {
 
     return () => {
       window.clearInterval(id);
+      window.clearTimeout(initialDelay);
       window.removeEventListener(APP_RESUME_EVENT, onResume);
     };
   }, []);

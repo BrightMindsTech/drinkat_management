@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
 const THEME_KEY = 'drinkat-theme';
 
@@ -14,32 +14,24 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'light';
-  const stored = localStorage.getItem(THEME_KEY) as Theme | null;
-  if (stored === 'light' || stored === 'dark') return stored;
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
-  return 'light';
+function readThemeFromDocument(): Theme {
+  if (typeof document === 'undefined') return 'light';
+  return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  // Match the inline script in layout.tsx on first paint (always 'light' on server HTML).
   const [theme, setThemeState] = useState<Theme>('light');
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const initial = getInitialTheme();
-    setThemeState(initial);
-    setMounted(true);
+    setThemeState(readThemeFromDocument());
   }, []);
 
   useEffect(() => {
-    if (!mounted) return;
     const root = document.documentElement;
     root.classList.remove('light', 'dark');
     root.classList.add(theme);
-  }, [theme, mounted]);
+  }, [theme]);
 
   const setTheme = useCallback((newTheme: Theme) => {
     setThemeState(newTheme);

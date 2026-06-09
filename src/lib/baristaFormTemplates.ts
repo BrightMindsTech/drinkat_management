@@ -557,4 +557,97 @@ export const BARISTA_FORM_TEMPLATES: BaristaFormTemplate[] = [
           }
     ],
   },
+  {
+    category: 'kitchen',
+    title: 'Barista Deep Clean',
+    googleFormId: '1FAIpQLScPWD0X38-pFW6ljHuKkgaVonid9oBCc-LhHqvKbv79p4sfNQ',
+    fields: [
+      {
+        key: 'branch_name',
+        label: 'Branch Name',
+        type: 'select',
+        required: false,
+        options: ['LTUC', 'HU', 'MEU'],
+      },
+      {
+        key: 'barista_name',
+        label: 'Barista Name',
+        type: 'text',
+        required: false,
+      },
+      {
+        key: 'shift_time',
+        label: 'Shift Time',
+        type: 'select',
+        required: false,
+        options: ['Morning shift', 'Mid shift', 'Night shift'],
+      },
+      {
+        key: 'field_4',
+        label: 'تنظيف المستودع بالكامل (السبت)',
+        type: 'photo',
+        required: false,
+      },
+      {
+        key: 'field_5',
+        label: 'تنظيف القعدة الخارجية الدرج(الأثنين/الأربعاء/السبت)',
+        type: 'photo',
+        required: false,
+      },
+      {
+        key: 'field_6',
+        label: 'الخزاين-الرفوف-الأحد',
+        type: 'photo',
+        required: false,
+      },
+      {
+        key: 'field_7',
+        label: 'تفريغ وتنظيف الفريزر بالكامل -  الأثنين',
+        type: 'photo',
+        required: false,
+      },
+      {
+        key: 'field_8',
+        label: 'تنظيف الثلاجات (ثلاجة تحت البار+ثلاجة الفواكة) -  الثلاثاء',
+        type: 'photo',
+        required: false,
+      },
+      {
+        key: 'field_9',
+        label: 'تنظيف ماكينة الاسبريسو والمطحنة وعمل بوليكاف بنهاية الشفت لجميع أجزائها -الأربعاء',
+        type: 'photo',
+        required: false,
+      },
+      {
+        key: 'field_10',
+        label: 'تفريغ وتنظيف ماكينة السلش-الخميس',
+        type: 'photo',
+        required: false,
+      },
+      {
+        key: 'field_11',
+        label: 'شطف الدرج وتنظيف وترتيب المحل من الخارج-يومي',
+        type: 'photo',
+        required: false,
+      },
+      {
+        key: 'field_12',
+        label: 'تنظيف وتمسيح الطرشات - الأحد',
+        type: 'photo',
+        required: false,
+      },
+      {
+        key: 'field_13',
+        label: 'تنظيف الايس ميكر - الأثنين',
+        type: 'photo',
+        required: false,
+      },
+      {
+        key: 'field_14',
+        label: 'جلي جميع ستاندات السيربات+ الكاسات +علب الجلي - الثلاثاء',
+        type: 'photo',
+        required: false,
+      },
+    ],
+  },
 ];

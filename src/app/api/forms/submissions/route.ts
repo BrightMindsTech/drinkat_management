@@ -8,7 +8,7 @@ import {
   normalizeUserRole,
   type FormViewContext,
 } from '@/lib/formVisibility';
-import { getManagerUserIdsForBranch, getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { getManagerUserIdsForBranch, getOwnerUserIds } from '@/lib/notify-helpers';
 import { resolveBranchIdByName } from '@/lib/branch-resolve';
 import { notifyUsers } from '@/lib/user-notify';
 import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';

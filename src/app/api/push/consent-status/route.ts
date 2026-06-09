@@ -12,12 +12,7 @@ export async function GET() {
       where: { id: session.user.id },
       select: { pushConsentAt: true },
     });
-    let subscriptionCount = 0;
-    try {
-      subscriptionCount = await prisma.pushSubscription.count({ where: { userId: session.user.id } });
-    } catch (e) {
-      console.error('[push/consent-status] subscription count failed', e);
-    }
+    const subscriptionCount = await prisma.pushSubscription.count({ where: { userId: session.user.id } });
     return Response.json({
       pushConsent: user?.pushConsentAt != null,
       subscriptionCount,

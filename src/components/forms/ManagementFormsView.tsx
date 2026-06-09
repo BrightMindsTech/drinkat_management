@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
-import { formatAppDateTime } from '@/lib/format-datetime';
+import { formatAppDateTime, isSameAmmanCalendarDay } from '@/lib/format-datetime';
 import type { FormFieldDef } from '@/lib/formTemplate';
 import { scrollIntoViewById } from '@/lib/scrollIntoViewDeferred';
 import { buildSubmissionReportTable, type SubmissionReportCsvInput } from '@/lib/formSubmissionCsv';
@@ -20,6 +20,14 @@ import { CreateFormPanel } from './CreateFormPanel';
 import { ImportGoogleFormPastePanel } from './ImportGoogleFormPastePanel';
 import { FormEmployeeAssignmentsPanel } from './FormEmployeeAssignmentsPanel';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
+import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
+
+type QcReportModalState = {
+  report: QcScoreReport;
+  submissionId?: string;
+  managerCanAcknowledge?: boolean;
+  reviewed?: boolean;
+};
 
 export type FormsTemplateRow = {
   id: string;
@@ -94,7 +102,7 @@ export function ManagementFormsView({
   const { run, isBusy } = useGuardedAction();
   const [ownerTemplates, setOwnerTemplates] = useState<FormsTemplateRow[]>(allTemplatesForOwner ?? []);
   const [ownerEditId, setOwnerEditId] = useState<string | null>(null);
-  const [qcReportModal, setQcReportModal] = useState<QcScoreReport | null>(null);
+  const [qcReportModal, setQcReportModal] = useState<QcReportModalState | null>(null);
   const [tableReport, setTableReport] = useState<ReportTableData | null>(null);
   const [expandedReviewAnswers, setExpandedReviewAnswers] = useState<Record<string, boolean>>({});
   const [reviewRange, setReviewRange] = useState<'today' | 'week' | 'month'>('week');
@@ -118,17 +126,8 @@ export function ManagementFormsView({
       scrollIntoViewById(hash);
       const submissionId = hash.slice('forms-review-submission-'.length);
       setExpandedReviewAnswers((prev) => ({ ...prev, [submissionId]: true }));
-      const row = reviewList.find((s) => s.id === submissionId);
-      if (row?.template.category === 'qc') {
-        setQcReportModal(
-          buildQcScoreReport(row.answers, {
-            branchName: row.branch.name,
-            qcOfficer: row.employee.name,
-            templateTitle: row.template.title,
-            templateFields: row.template.fields,
-          })
-        );
-      }
+      // Do not auto-open the QC report modal from the URL hash — it trapped clicks under an
+      // invisible full-screen overlay when hydration was still settling. User opens report explicitly.
     }
     applyReviewHash();
     window.addEventListener('hashchange', applyReviewHash);
@@ -155,15 +154,49 @@ export function ManagementFormsView({
     { key: string; label: string; type: FormFieldDef['type']; required: boolean; optionsText: string }[]
   >([]);
 
+  function openQcReport(
+    report: QcScoreReport,
+    opts?: { submissionId?: string; reviewedAt?: Date | string | null }
+  ) {
+    const submissionId = opts?.submissionId;
+    const reviewed = !!opts?.reviewedAt;
+    setQcReportModal({
+      report,
+      submissionId,
+      managerCanAcknowledge: role === 'manager' && !!submissionId && !reviewed,
+      reviewed,
+    });
+  }
+
+  async function handleMarkQcReviewed(submissionId: string) {
+    const res = await fetch(`/api/forms/submissions/${submissionId}/mark-reviewed`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; reviewedAt?: string };
+    if (!res.ok) {
+      alert(data.error ?? t.forms.markQcReviewedFailed);
+      throw new Error(data.error ?? 'mark-reviewed failed');
+    }
+    const reviewedAt = data.reviewedAt ?? new Date().toISOString();
+    setReviewList((prev) =>
+      prev.map((s) => (s.id === submissionId ? { ...s, reviewedAt } : s))
+    );
+    setQcReportModal((prev) =>
+      prev?.submissionId === submissionId
+        ? { ...prev, reviewed: true, managerCanAcknowledge: true }
+        : prev
+    );
+    window.dispatchEvent(new CustomEvent(APP_RESUME_EVENT));
+  }
+
   function isWithinRange(dateLike: Date | string, range: 'today' | 'week' | 'month'): boolean {
     const date = new Date(dateLike);
     if (Number.isNaN(date.getTime())) return false;
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    if (range === 'today') return date >= startOfToday;
+    if (range === 'today') return isSameAmmanCalendarDay(date, new Date());
     const days = range === 'week' ? 7 : 30;
-    const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-    return date >= cutoff;
+    const cutoff = new Date().getTime() - days * 24 * 60 * 60 * 1000;
+    return date.getTime() >= cutoff;
   }
 
   const filteredReviewList = useMemo(
@@ -223,7 +256,7 @@ export function ManagementFormsView({
         ...prev,
       ]);
       if (template.category === 'qc') {
-        setQcReportModal(
+        openQcReport(
           buildQcScoreReport(data.answers, {
             branchName: data.branch?.name,
             qcOfficer: data.answers?.evaluator_name,
@@ -880,12 +913,13 @@ export function ManagementFormsView({
                     type="button"
                     className="rounded-md border border-ios-blue/40 px-2 py-1 text-xs font-medium text-ios-blue"
                     onClick={() =>
-                      setQcReportModal(
+                      openQcReport(
                         buildQcScoreReport(s.answers, {
                           branchName: s.branch.name,
                           templateTitle: s.template.title,
                           templateFields: s.template.fields,
-                        })
+                        }),
+                        { submissionId: s.id, reviewedAt: s.reviewedAt }
                       )
                     }
                   >
@@ -962,22 +996,30 @@ export function ManagementFormsView({
                         </button>
                       )}
                       {s.template.category === 'qc' && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setQcReportModal(
-                              buildQcScoreReport(s.answers, {
-                                branchName: s.branch.name,
-                                qcOfficer: s.employee.name,
-                                templateTitle: s.template.title,
-                                templateFields: s.template.fields,
-                              })
-                            )
-                          }
-                          className="rounded-lg border border-ios-blue/40 px-2.5 py-1.5 text-xs font-medium text-ios-blue"
-                        >
-                          View Scoring Evaluation
-                        </button>
+                        <>
+                          {s.reviewedAt ? (
+                            <span className="inline-flex items-center gap-1 rounded-lg border border-green-600/40 bg-green-50 px-2.5 py-1.5 text-xs font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-200">
+                              ✓ {t.forms.qcReviewedDone}
+                            </span>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openQcReport(
+                                buildQcScoreReport(s.answers, {
+                                  branchName: s.branch.name,
+                                  qcOfficer: s.employee.name,
+                                  templateTitle: s.template.title,
+                                  templateFields: s.template.fields,
+                                }),
+                                { submissionId: s.id, reviewedAt: s.reviewedAt }
+                              )
+                            }
+                            className="rounded-lg border border-ios-blue/40 px-2.5 py-1.5 text-xs font-medium text-ios-blue"
+                          >
+                            View Scoring Evaluation
+                          </button>
+                        </>
                       )}
                     </div>
                     <span className="text-xs tabular-nums text-app-muted text-end">{formatAppDateTime(s.submittedAt, locale)}</span>
@@ -1048,7 +1090,24 @@ export function ManagementFormsView({
           )}
         </section>
       )}
-      <QcScoreReportModal open={qcReportModal != null} report={qcReportModal} onClose={() => setQcReportModal(null)} />
+      <QcScoreReportModal
+        key={qcReportModal?.submissionId ?? 'qc-report'}
+        open={qcReportModal != null}
+        report={qcReportModal?.report ?? null}
+        managerCanAcknowledge={qcReportModal?.managerCanAcknowledge}
+        reviewed={qcReportModal?.reviewed}
+        onMarkReviewed={
+          qcReportModal?.submissionId
+            ? () => handleMarkQcReviewed(qcReportModal.submissionId!)
+            : undefined
+        }
+        onClose={() => {
+          setQcReportModal(null);
+          if (typeof window !== 'undefined' && window.location.hash.includes('forms-review-submission-')) {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          }
+        }}
+      />
       <ReportTableModal
         open={tableReport != null}
         report={tableReport}

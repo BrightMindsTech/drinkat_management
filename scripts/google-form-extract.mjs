@@ -55,29 +55,45 @@ function makeKey(label, index, used) {
   return key;
 }
 
+function choiceOptionsFromItem(item) {
+  const block = item[4];
+  if (!block || !Array.isArray(block)) return [];
+  const inner = block[0];
+  if (!Array.isArray(inner) || inner.length < 2) return [];
+  const choices = inner[1];
+  if (!Array.isArray(choices)) return [];
+  return choices.map((c) => (Array.isArray(c) ? c[0] : null)).filter(Boolean);
+}
+
 function parseGoogleFormData(data) {
-  const title = (data[1][8] || '').trim();
-  const desc = data[1][0] || undefined;
-  const items = data[1][1] || [];
+  const row = data[1];
+  if (!row) return { title: '', fields: [] };
+  const title = String(row[8] || row[10] || '').trim();
+  const desc = row[0] || undefined;
+  const items = Array.isArray(row[1]) ? row[1] : [];
   const fields = [];
   const used = new Set();
   let idx = 0;
   for (const item of items) {
     if (!item || !item[1]) continue;
-    idx++;
     const label = String(item[1]).replace(/\s+/g, ' ').trim();
     const typeId = item[3];
-    const choiceBlock = item[4]?.[0]?.[1];
-    const options = (choiceBlock || []).map((c) => c[0]).filter(Boolean);
+    if (typeId === 1) continue;
+    idx++;
+    const options = choiceOptionsFromItem(item);
     const key = makeKey(label, idx, used);
 
     if (typeId === 0) {
       fields.push({ key, label, type: 'text', required: true });
     } else if (typeId === 2 || typeId === 3) {
-      const opts = options.map((o) => (o === 'yes' ? 'Yes' : o === 'No' ? 'No' : o));
-      fields.push({ key, label, type: 'select', required: true, options: opts });
+      const opts = options.map((o) => (o === 'yes' ? 'Yes' : o === 'no' ? 'No' : o));
+      fields.push({ key, label, type: 'select', required: true, options: opts.length ? opts : ['Yes', 'No'] });
     } else if (typeId === 4) {
       fields.push({ key, label, type: 'checkbox', required: false });
+    } else if (typeId === 9) {
+      fields.push({ key, label, type: 'date', required: false });
+    } else if (typeId === 13) {
+      fields.push({ key, label, type: 'photo', required: false });
     } else {
       fields.push({ key, label, type: 'text', required: false });
     }

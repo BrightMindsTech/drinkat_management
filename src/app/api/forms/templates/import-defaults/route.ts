@@ -1,12 +1,13 @@
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
 import { DEFAULT_FORM_TEMPLATES } from '@/lib/defaultFormTemplates';
+import { departmentNameMatchesKitchenForm } from '@/lib/kitchen-department';
 
 function departmentMatchesCategory(name: string, category: string): boolean {
   const n = name.trim().toLowerCase();
   if (category === 'qc') return n.includes('qc') || n.includes('quality');
   if (category === 'marketing') return n.includes('market');
-  if (category === 'kitchen') return n.includes('kitchen') || n.includes('chef');
+  if (category === 'kitchen') return departmentNameMatchesKitchenForm(n);
   if (category === 'cash') return n.includes('cash') || n.includes('cashier');
   return false;
 }
@@ -40,10 +41,12 @@ export async function POST() {
       sortOrder: index,
     };
 
+    const deactivateLegacyQcDuplicate = tpl.category === 'qc' && tpl.title === 'Quality Control';
+
     if (existing) {
       await prisma.managementFormTemplate.update({
         where: { id: existing.id },
-        data: baseData,
+        data: { ...baseData, active: deactivateLegacyQcDuplicate ? false : true },
       });
       await prisma.formTemplateDepartment.deleteMany({
         where: { templateId: existing.id },

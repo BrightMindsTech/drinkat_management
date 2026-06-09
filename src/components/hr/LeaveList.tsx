@@ -3,11 +3,12 @@
 import type { LeaveRequest } from '@prisma/client';
 import type { Employee } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAppDate } from '@/lib/format-datetime';
 
 type LeaveWithEmployee = LeaveRequest & { employee: Employee & { branch: { name: string } } };
 
 export function LeaveList({ leaves }: { leaves: LeaveWithEmployee[] }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   return (
     <ul className="divide-y divide-gray-200 dark:divide-ios-dark-separator rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated overflow-hidden">
       {leaves.length === 0 && <li className="p-4 text-app-muted text-sm">{t.leave.noLeaveRequests}</li>}
@@ -19,7 +20,7 @@ export function LeaveList({ leaves }: { leaves: LeaveWithEmployee[] }) {
         return (
           <li key={l.id} className="p-4 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="font-medium text-app-primary">{start.toLocaleDateString()} - {end.toLocaleDateString()}</p>
+              <p className="font-medium text-app-primary">{formatAppDate(start, locale)} - {formatAppDate(end, locale)}</p>
               <span className="text-xs rounded-md px-2 py-0.5 bg-gray-100 dark:bg-ios-dark-elevated-2 text-app-secondary">{days} day(s)</span>
             </div>
             <p className="text-sm text-app-secondary">{typeLabel}</p>

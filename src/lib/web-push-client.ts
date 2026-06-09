@@ -1,3 +1,5 @@
+import { fetchWithRetry } from '@/lib/fetch-with-retry';
+
 /** Convert VAPID base64url key to Uint8Array for PushManager.subscribe */
 export function urlBase64ToUint8Array(base64String: string): BufferSource {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -11,16 +13,20 @@ export function urlBase64ToUint8Array(base64String: string): BufferSource {
 async function registerWebSubscriptionOnServer(sub: PushSubscription): Promise<boolean> {
   const j = sub.toJSON();
   if (!j.endpoint || !j.keys?.auth || !j.keys?.p256dh) return false;
-  const res = await fetch('/api/push/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({
-      provider: 'web',
-      endpoint: j.endpoint,
-      keys: { auth: j.keys.auth, p256dh: j.keys.p256dh },
-    }),
-  });
+  const res = await fetchWithRetry(
+    '/api/push/register',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        provider: 'web',
+        endpoint: j.endpoint,
+        keys: { auth: j.keys.auth, p256dh: j.keys.p256dh },
+      }),
+    },
+    { attempts: 6, baseDelayMs: 200, maxDelayMs: 3000 }
+  );
   return res.ok;
 }
 

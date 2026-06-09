@@ -36,6 +36,8 @@
     "db:d1:migrate:support:remote": "wrangler d1 execute drinkat-management --remote --file=./prisma/migrations/0013_support_reports.sql",
     "db:d1:migrate:hu-qc:local": "wrangler d1 execute drinkat-management --local --file=./prisma/migrations/0014_hu_qc_no_kitchen.sql",
     "db:d1:migrate:hu-qc:remote": "wrangler d1 execute drinkat-management --remote --file=./prisma/migrations/0014_hu_qc_no_kitchen.sql",
+    "db:d1:migrate:inbox-push:local": "wrangler d1 execute drinkat-management --local --file=./prisma/migrations/0015_inbox_push_sent_at.sql",
+    "db:d1:migrate:inbox-push:remote": "wrangler d1 execute drinkat-management --remote --file=./prisma/migrations/0015_inbox_push_sent_at.sql",
     "db:d1:migrate:time-clock:all:remote": "npm run db:d1:migrate:time-clock:remote && npm run db:d1:migrate:shift-profile:remote",
     "db:d1:migrate:time-clock:all:local": "npm run db:d1:migrate:time-clock:local && npm run db:d1:migrate:shift-profile:local",
     "db:migrate:sql": "prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script --output prisma/migrations/0001_init.sql",

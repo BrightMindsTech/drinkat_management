@@ -9,7 +9,6 @@ import { buildQcScoreReport, isQcScoreableFormAnswers } from '@/lib/qc-form-scor
 import { parseTemplateFields } from '@/lib/formTemplate';
 import { resolveQcScoringProfileForSubmission } from '@/lib/qc-scoring-profile';
 import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
-import { maybeRunAutoClockOutIfDue } from '@/lib/auto-clock-out-daily';
 import { buildCashFormReport } from '@/lib/cash-form-report';
 import { buildManagerRatingReport } from '@/lib/manager-rating-report';
 import { normalizeUserRole } from '@/lib/formVisibility';
@@ -17,11 +16,6 @@ import { normalizeUserRole } from '@/lib/formVisibility';
 export async function GET(req: NextRequest) {
   const session = await requireOwner();
   await maybePurgeOldManagementFormSubmissions(prisma);
-  try {
-    await maybeRunAutoClockOutIfDue();
-  } catch (e) {
-    console.error('[reports GET] maybe auto clock-out 4am failed', e);
-  }
   const { searchParams } = new URL(req.url);
   const period = searchParams.get('period') ?? 'month';
   const branchId = searchParams.get('branchId') ?? '';
@@ -168,23 +162,8 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { name: 'asc' },
     }),
-    prisma.awaySession.groupBy({
-      by: ['branchId'],
-      where: {
-        startedAt: { gte: start, lte: end },
-        ...(branchId ? { branchId } : {}),
-      },
-      _count: { _all: true },
-    }),
-    prisma.inboxNotification.findMany({
-      where: {
-        userId: session.user.id,
-        category: { in: ['time_clock', 'manager_time_clock_report'] },
-        createdAt: { gte: alertsWindowStart, lte: now },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    }),
+    Promise.resolve([] as { branchId: string; _count: { _all: number } }[]),
+    Promise.resolve([] as { id: string; title: string; body: string; createdAt: Date; dataJson: string | null }[]),
     prisma.branch.findMany({
       where: branchId ? { id: branchId } : undefined,
       select: { id: true, name: true },
@@ -994,15 +973,7 @@ async function getAttendanceReport(
   branchId: string,
   period: string
 ) {
-  const [entries, leaves] = await Promise.all([
-    prisma.timeClockEntry.findMany({
-      where: {
-        clockInAt: { gte: start, lte: end },
-        ...(branchId ? { branchId } : {}),
-      },
-      select: { employeeId: true, clockInAt: true },
-    }),
-    prisma.leaveRequest.findMany({
+  const leaves = await prisma.leaveRequest.findMany({
       where: {
         status: 'approved',
         startDate: { lte: end },
@@ -1010,15 +981,9 @@ async function getAttendanceReport(
         ...(branchId ? { employee: { branchId } } : {}),
       },
       select: { employeeId: true, startDate: true, endDate: true },
-    }),
-  ]);
+    });
 
   const presentAllDays = new Map<string, Set<string>>();
-  for (const e of entries) {
-    const day = formatYmd(new Date(e.clockInAt));
-    if (!presentAllDays.has(e.employeeId)) presentAllDays.set(e.employeeId, new Set());
-    presentAllDays.get(e.employeeId)!.add(day);
-  }
 
   const leaveWeekdays = new Map<string, Set<string>>();
   for (const l of leaves) {

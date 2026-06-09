@@ -3,7 +3,6 @@ import { authOptions } from '@/lib/auth';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { isQcReviewerUser } from '@/lib/qc-reviewer';
 import { prisma } from '@/lib/prisma';
-import { TimeClockGeofenceProvider } from '@/contexts/TimeClockGeofenceContext';
 import { InAppNotificationProvider } from '@/contexts/InAppNotificationContext';
 import { AppResumeSync } from '@/components/AppResumeSync';
 import { AppReconnectingNotice } from '@/components/AppReconnectingNotice';
@@ -11,6 +10,7 @@ import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery'
 import { SessionKeepalive } from '@/components/SessionKeepalive';
 import { SessionStabilityGuard } from '@/components/SessionStabilityGuard';
 import { DashboardLayoutClient } from '@/components/dashboard/DashboardLayoutClient';
+import { PushForegroundBridge } from '@/components/PushForegroundBridge';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,15 +69,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <InAppNotificationProvider>
-      <TimeClockGeofenceProvider role={navRole}>
-        <SessionStabilityGuard />
-        <SessionKeepalive />
-        <AppReconnectingNotice />
-        <AppResumeSync />
-        <DashboardLayoutClient role={uiRole} email={session.user.email ?? ''} headcountSummary={headcountSummary}>
-          {children}
-        </DashboardLayoutClient>
-      </TimeClockGeofenceProvider>
+      <PushForegroundBridge />
+      <SessionStabilityGuard />
+      <SessionKeepalive />
+      <AppReconnectingNotice />
+      <AppResumeSync />
+      <DashboardLayoutClient role={uiRole} email={session.user.email ?? ''} headcountSummary={headcountSummary}>
+        {children}
+      </DashboardLayoutClient>
     </InAppNotificationProvider>
   );
 }

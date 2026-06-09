@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { EmployeeDocument } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAppDate } from '@/lib/format-datetime';
 
 const DOCUMENT_TYPES = ['criminal_record', 'contract', 'certificate', 'id_copy', 'other'] as const;
 type DocumentType = (typeof DOCUMENT_TYPES)[number];
@@ -33,7 +34,7 @@ export function EmployeeDocumentsSection({
   allowSelfUpload?: boolean;
   onDocumentsChange?: (docs: EmployeeDocument[]) => void;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [documents, setDocuments] = useState(initialDocs);
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
@@ -187,9 +188,9 @@ export function EmployeeDocumentsSection({
               <p className="mt-0.5 text-[11px] text-app-secondary truncate">
                 {documentTypeLabel(t, d.documentType)} · {t.employeeCard.documentNumberLabel}: {d.documentNumber ?? '—'} ·{' '}
                 {t.employeeCard.documentIssuedOnLabel}:{' '}
-                {d.issuedOn ? new Date(d.issuedOn).toLocaleDateString() : '—'}
+                {d.issuedOn ? formatAppDate(d.issuedOn, locale) : '—'}
                 {d.expiresOn
-                  ? ` · ${t.employeeCard.documentExpiresOnLabel}: ${new Date(d.expiresOn).toLocaleDateString()}`
+                  ? ` · ${t.employeeCard.documentExpiresOnLabel}: ${formatAppDate(d.expiresOn, locale)}`
                   : ''}
               </p>
             </div>

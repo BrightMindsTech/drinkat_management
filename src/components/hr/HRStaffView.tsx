@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { Employee, LeaveRequest } from '@prisma/client';
 import type { Advance } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
+import { formatAppDate } from '@/lib/format-datetime';
 import { AdvancesList } from './AdvancesList';
 import { RequestLeaveForm } from './RequestLeaveForm';
 import { LeaveList } from './LeaveList';
@@ -30,7 +31,7 @@ export function HRStaffView({ employee, advances, leaveRequests, documents, sala
     setLeaveList((prev) => [l, ...prev]);
   }
 
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const sectionClass = 'app-section scroll-mt-28';
 
   return (
@@ -59,7 +60,7 @@ export function HRStaffView({ employee, advances, leaveRequests, documents, sala
           {employee.joinDate && (
             <div className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-gray-50/50 dark:bg-ios-dark-elevated-2/20 p-3 sm:col-span-2">
               <p className="text-xs text-app-muted">{t.hr.joinDate}</p>
-              <p className="text-sm font-semibold text-app-primary mt-0.5">{new Date(employee.joinDate).toLocaleDateString()}</p>
+              <p className="text-sm font-semibold text-app-primary mt-0.5">{formatAppDate(employee.joinDate, locale)}</p>
             </div>
           )}
         </div>

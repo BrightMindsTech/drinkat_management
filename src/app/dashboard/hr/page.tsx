@@ -8,8 +8,6 @@ import { HRManagerView } from '@/components/hr/HRManagerView';
 import { HRPageTitle } from '@/components/HRPageTitle';
 import { NoEmployeeMessage } from '@/components/NoEmployeeMessage';
 import { normalizeUserRole } from '@/lib/formVisibility';
-import { getOwnerLiveAttendanceRows } from '@/lib/time-clock-owner-live';
-
 export default async function HRPage() {
   const session = await getDashboardSession();
   if (!session?.user?.id) return <DashboardSessionRecovery />;
@@ -17,7 +15,7 @@ export default async function HRPage() {
   const role = normalizeUserRole(session.user.role);
 
   if (role === 'owner') {
-    const [employees, advances, branches, departments, leaveRequests, liveAttendance] = await Promise.all([
+    const [employees, advances, branches, departments, leaveRequests] = await Promise.all([
       prisma.employee.findMany({
         where: { status: { not: 'terminated' } },
         include: {
@@ -39,7 +37,6 @@ export default async function HRPage() {
         include: { employee: { include: { branch: true } } },
         orderBy: { createdAt: 'desc' },
       }),
-      getOwnerLiveAttendanceRows(prisma),
     ]);
     return (
       <div>
@@ -50,7 +47,6 @@ export default async function HRPage() {
           initialLeaveRequests={leaveRequests}
           branches={branches}
           departments={departments}
-          initialLiveAttendance={liveAttendance}
         />
       </div>
     );
@@ -71,7 +67,7 @@ export default async function HRPage() {
     }
 
     const managerEmployee = user.employee;
-    const [teamAdvances, myAdvances, leaveRequests, teamEmployees, branches] = await Promise.all([
+    const [teamAdvances, myAdvances, leaveRequests, myLeaveRequests, teamEmployees, branches] = await Promise.all([
       prisma.advance.findMany({
         where: {
           employee: { reportsToEmployeeId: managerEmployee.id },
@@ -88,6 +84,11 @@ export default async function HRPage() {
         where: {
           employee: { reportsToEmployeeId: managerEmployee.id },
         },
+        include: { employee: { include: { branch: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.leaveRequest.findMany({
+        where: { employeeId: managerEmployee.id },
         include: { employee: { include: { branch: true } } },
         orderBy: { createdAt: 'desc' },
       }),
@@ -127,6 +128,7 @@ export default async function HRPage() {
           initialTeamAdvances={teamAdvances}
           initialMyAdvances={myAdvances}
           initialLeaveRequests={leaveRequests}
+          initialMyLeaveRequests={myLeaveRequests}
           branches={branches}
         />
       </div>

@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { AuthFetchRetry } from '@/components/AuthFetchRetry';
 import { SessionProvider } from '@/components/SessionProvider';
 import { ModalScrollIntoViewListener } from '@/components/ModalScrollIntoViewListener';
 import { MobileZoomResetGesture } from '@/components/MobileZoomResetGesture';
@@ -25,6 +28,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const locale = (cookieStore.get('locale')?.value as 'en' | 'ar') || 'en';
   const dir = locale === 'ar' ? 'rtl' : 'ltr';
 
+  let session = null;
+  try {
+    session = await getServerSession(authOptions);
+  } catch {
+    // Transient Worker/D1 blip — client will retry session fetch.
+  }
+
   return (
     <html lang={locale} dir={dir} className="overflow-x-hidden" suppressHydrationWarning>
       <head>
@@ -38,7 +48,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <ThemeProvider>
           <LanguageProvider initialLocale={locale}>
             <AsyncActionProvider>
-            <SessionProvider>
+            <AuthFetchRetry />
+            <SessionProvider session={session}>
               <ModalScrollIntoViewListener />
               <MobileZoomResetGesture />
               {children}

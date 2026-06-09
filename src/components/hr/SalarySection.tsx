@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react';
 import type { Employee, Branch } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { ammanDateParts, formatAppMonthYear } from '@/lib/format-datetime';
 
 type EmployeeWithBranch = Employee & { branch: Branch };
 
 export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }) {
-  const { t } = useLanguage();
-  const now = new Date();
-  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const { t, locale } = useLanguage();
+  const ammanNow = ammanDateParts(new Date());
+  const defaultMonth = `${ammanNow.year}-${String(ammanNow.month + 1).padStart(2, '0')}`;
   const [payrollMonth, setPayrollMonth] = useState(defaultMonth);
   const [loading, setLoading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -242,10 +243,7 @@ export function SalarySection({ employees }: { employees: EmployeeWithBranch[] }
             <div className="px-4 py-3 border-b border-gray-200 dark:border-ios-dark-separator bg-gray-50/70 dark:bg-ios-dark-elevated-2/30">
               <p className="text-sm font-medium text-app-primary">
                 {t.salary.reportFor}{' '}
-                {new Date(deductionReport.periodMonth + '-01').toLocaleDateString(undefined, {
-                  month: 'long',
-                  year: 'numeric',
-                })}
+                {formatAppMonthYear(deductionReport.periodMonth, locale)}
               </p>
               <p className="text-xs text-app-muted mt-1">{t.reports.salaryDeductionExplanation}</p>
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs">

@@ -1,3 +1,5 @@
+import { logErrorThrottled } from '@/lib/log-throttle';
+
 const TRANSIENT_PATTERNS = [
   /SQLITE_BUSY/i,
   /SQLITE_LOCKED/i,
@@ -33,11 +35,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function retryDelayMs(attemptIndex: number, baseDelayMs: number): number {
+  return Math.min(baseDelayMs * 2 ** attemptIndex, 2000);
+}
+
 /** Retry D1/Prisma reads on brief Cloudflare blips (common cause of dashboard SSR crashes). */
 export async function withPrismaRetry<T>(
   fn: () => Promise<T>,
-  attempts = 3,
-  baseDelayMs = 80
+  attempts = 6,
+  baseDelayMs = 100
 ): Promise<T> {
   let last: unknown;
   for (let i = 0; i < attempts; i++) {
@@ -47,8 +53,26 @@ export async function withPrismaRetry<T>(
       last = error;
       const retryable = isTransientDbError(error);
       if (!retryable || i === attempts - 1) throw error;
-      await sleep(baseDelayMs * (i + 1));
+      await sleep(retryDelayMs(i, baseDelayMs));
     }
   }
   throw last;
+}
+
+/** SSR/page loaders: retry transient D1 failures, then fall back without crashing the page. */
+export async function withPrismaRetryOrFallback<T>(
+  label: string,
+  fn: () => Promise<T>,
+  fallback: T
+): Promise<T> {
+  try {
+    return await withPrismaRetry(fn);
+  } catch (error) {
+    logErrorThrottled(
+      `ssr:${label}`,
+      () => console.error(`[${label}] failed after retries`, error),
+      5 * 60 * 1000
+    );
+    return fallback;
+  }
 }

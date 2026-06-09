@@ -9,7 +9,6 @@ export type DashboardNavLabelKey =
   | 'forms'
   | 'reports'
   | 'managerReports'
-  | 'timeClock'
   | 'ratings'
   | 'myInfoAdvances'
   | 'qcSubmissions'
@@ -34,7 +33,6 @@ const ownerItems: DashboardNavItem[] = [
 
 const staffItems: DashboardNavItem[] = [
   { href: base, labelKey: 'home' },
-  { href: `${base}/time-clock`, labelKey: 'timeClock' },
   { href: `${base}/ratings`, labelKey: 'ratings' },
   { href: `${base}/messages`, labelKey: 'messages' },
   { href: `${base}/hr`, labelKey: 'myInfoAdvances' },
@@ -45,7 +43,6 @@ const staffItems: DashboardNavItem[] = [
 
 const managerItems: DashboardNavItem[] = [
   { href: base, labelKey: 'home' },
-  { href: `${base}/time-clock`, labelKey: 'timeClock' },
   { href: `${base}/ratings`, labelKey: 'ratings' },
   { href: `${base}/messages`, labelKey: 'messages' },
   { href: `${base}/hr`, labelKey: 'hr' },
@@ -56,7 +53,6 @@ const managerItems: DashboardNavItem[] = [
 
 const marketingItems: DashboardNavItem[] = [
   { href: base, labelKey: 'home' },
-  { href: `${base}/time-clock`, labelKey: 'timeClock' },
   { href: `${base}/ratings`, labelKey: 'ratings' },
   { href: `${base}/messages`, labelKey: 'messages' },
   { href: `${base}/hr`, labelKey: 'myInfoAdvances' },

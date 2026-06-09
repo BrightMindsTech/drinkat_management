@@ -9,20 +9,9 @@ const MAX_BURST_ATTEMPTS = 15;
 const RETRY_MS = 800;
 const IDLE_RETRY_MS = 5000;
 
-type SessionPayload = {
-  user?: { email?: string | null };
-  expires?: string;
-};
-
 async function fetchSession(): Promise<{ ok: boolean; hasUser: boolean; status: number }> {
-  try {
-    const res = await fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' });
-    if (!res.ok) return { ok: false, hasUser: false, status: res.status };
-    const data = (await res.json()) as SessionPayload;
-    return { ok: true, hasUser: !!data?.user, status: res.status };
-  } catch {
-    return { ok: false, hasUser: false, status: 0 };
-  }
+  const { fetchAuthSession } = await import('@/lib/auth-session-client');
+  return fetchAuthSession();
 }
 
 /**

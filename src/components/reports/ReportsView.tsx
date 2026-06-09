@@ -18,7 +18,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
-import { formatAppDateTime } from '@/lib/format-datetime';
+import { ammanDateParts, formatAppDate, formatAppDateTime, formatAppMonthYear } from '@/lib/format-datetime';
 import { buildQcScoreReport, type QcScoreReport } from '@/lib/qc-form-score-report';
 import { QcScoreReportModal } from '@/components/qc/QcScoreReportModal';
 import { ReportTableModal } from '@/components/ReportTableModal';
@@ -42,13 +42,18 @@ const SIDEBAR_SECTIONS = [
   { id: 'export', labelKey: 'exportCsv' as const },
 ] as const;
 
-function getMonthOptions() {
+function getMonthOptions(locale: 'en' | 'ar') {
   const opts: { value: string; label: string }[] = [];
-  const now = new Date();
+  const now = ammanDateParts(new Date());
   for (let i = 0; i < 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    opts.push({ value, label: d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) });
+    let month = now.month - i;
+    let year = now.year;
+    while (month < 0) {
+      month += 12;
+      year -= 1;
+    }
+    const value = `${year}-${String(month + 1).padStart(2, '0')}`;
+    opts.push({ value, label: formatAppMonthYear(value, locale) });
   }
   return opts;
 }
@@ -57,10 +62,10 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   const { t, locale } = useLanguage();
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('month');
   const [branchId, setBranchId] = useState('');
-  const monthOptions = useMemo(getMonthOptions, []);
+  const monthOptions = useMemo(() => getMonthOptions(locale), [locale]);
   const currentMonth = useMemo(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const p = ammanDateParts(new Date());
+    return `${p.year}-${String(p.month + 1).padStart(2, '0')}`;
   }, []);
   const [month, setMonth] = useState(currentMonth);
   const [salaryMonth, setSalaryMonth] = useState(currentMonth);
@@ -467,13 +472,11 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
   function formatDateTick(value: string) {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value;
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return formatAppDate(d, locale, { month: 'short', day: 'numeric', year: undefined });
   }
 
   function monthLabelFromKey(key: string) {
-    const date = new Date(`${key}-01`);
-    if (Number.isNaN(date.getTime())) return key;
-    return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    return formatAppMonthYear(key, locale);
   }
 
   function reportAsOfNow() {
@@ -624,7 +627,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         a.employee.branch?.name ?? '—',
         a.amount.toFixed(2),
         a.status,
-        new Date(a.requestedAt).toLocaleDateString(),
+        formatAppDate(a.requestedAt, locale),
       ])
     );
     setTableReport({
@@ -648,7 +651,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         s.branch?.name ?? '—',
         s.template.title,
         s.status,
-        new Date(s.submittedAt).toLocaleDateString(),
+        formatAppDate(s.submittedAt, locale),
       ]),
     });
   }
@@ -1431,8 +1434,8 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                         <td className="p-2">{row.branch.name}</td>
                         <td className="p-2 capitalize">{row.type}</td>
                         <td className="p-2 capitalize">{row.status}</td>
-                        <td className="p-2">{new Date(row.startDate).toLocaleDateString()}</td>
-                        <td className="p-2">{new Date(row.endDate).toLocaleDateString()}</td>
+                        <td className="p-2">{formatAppDate(row.startDate, locale)}</td>
+                        <td className="p-2">{formatAppDate(row.endDate, locale)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1616,7 +1619,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                       <td className="p-2">{a.employee.branch?.name ?? '—'}</td>
                       <td className="p-2 text-right">{a.amount.toFixed(2)}</td>
                       <td className="p-2">{a.status}</td>
-                      <td className="p-2">{new Date(a.requestedAt).toLocaleDateString()}</td>
+                      <td className="p-2">{formatAppDate(a.requestedAt, locale)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1718,7 +1721,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                   <li key={s.id} className="flex items-center justify-between rounded-lg border border-amber-200/70 dark:border-amber-700/40 bg-amber-50/50 dark:bg-amber-900/15 px-3 py-2">
                     <span className="font-semibold text-app-primary">{s.employee.name}</span>
                     <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
-                      {s.branch?.name ?? '—'} · {new Date(s.submittedAt).toLocaleDateString()}
+                      {s.branch?.name ?? '—'} · {formatAppDate(s.submittedAt, locale)}
                     </span>
                   </li>
                 ))}
@@ -1761,7 +1764,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                       <td className="p-2">{row.checklistName}</td>
                       <td className="p-2 capitalize">{row.status}{row.isLate ? ` (${t.qc.lateNote})` : ''}</td>
                       <td className="p-2 text-right">{row.rating ?? '—'}</td>
-                      <td className="p-2">{new Date(row.submittedAt).toLocaleDateString()}</td>
+                      <td className="p-2">{formatAppDate(row.submittedAt, locale)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1808,7 +1811,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                   .map(([monthKey, rows]) => (
                     <div key={monthKey}>
                       <h4 className="text-sm font-semibold text-app-primary mb-2">
-                        {new Date(`${monthKey}-01`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                        {formatAppMonthYear(monthKey, locale)}
                       </h4>
                       <ul className="space-y-2">
                         {rows.map((row) => (
@@ -1976,7 +1979,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                       <td className="p-2">{row.template.title}</td>
                       <td className="p-2">{row.template.category}</td>
                       <td className="p-2 capitalize">{row.status}</td>
-                      <td className="p-2">{new Date(row.submittedAt).toLocaleDateString()}</td>
+                      <td className="p-2">{formatAppDate(row.submittedAt, locale)}</td>
                       <td className="p-2">
                         {row.template.category === 'qc' && row.answers ? (
                           <button
@@ -2154,7 +2157,7 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
         {/* Salary Section */}
         <section id="salary" className={`order-12 scroll-mt-6 ${reportCardClass}`}>
           <h2 className={sectionTitleClass}>
-            {t.reports.salaryDeductions} ({new Date(data.salary.periodMonth + '-01').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })})
+            {t.reports.salaryDeductions} ({formatAppMonthYear(data.salary.periodMonth, locale)})
           </h2>
           <p className="text-sm text-app-muted mb-2">{t.reports.salaryDeductionExplanation}</p>
           <div className="rounded-lg border border-gray-200 dark:border-ios-dark-separator overflow-x-auto">

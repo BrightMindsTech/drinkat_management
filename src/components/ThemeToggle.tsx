@@ -1,18 +1,20 @@
 'use client';
 
 import { useTheme } from '@/contexts/ThemeContext';
+import { useClientMounted } from '@/lib/use-client-mounted';
 
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
+  const mounted = useClientMounted();
 
   return (
     <button
       type="button"
       onClick={toggleTheme}
       className="p-2 text-app-secondary hover:text-app-primary hover:bg-gray-200 dark:hover:bg-ios-dark-elevated-2 rounded-ios transition-colors"
-      aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+      aria-label={mounted ? (theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode') : 'Toggle theme'}
     >
-      {theme === 'light' ? (
+      {!mounted || theme === 'light' ? (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
           <path fillRule="evenodd" d="M9.528 1.718a.75.75 0 01.162.819A8.97 8.97 0 009 6a9 9 0 009 9 8.97 8.97 0 003.463-.69.75.75 0 01.981.98 10.503 10.503 0 01-9.694 6.46c-5.799 0-10.5-4.701-10.5-10.5 0-4.368 2.667-8.112 6.46-9.694a.75.75 0 01.818.162z" clipRule="evenodd" />
         </svg>

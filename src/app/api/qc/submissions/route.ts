@@ -4,7 +4,7 @@ import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import { runQcPhotoMonthlyCleanupIfDue } from '@/lib/qc-photo-cleanup';
-import { getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { getOwnerUserIds } from '@/lib/notify-helpers';
 import { notifyUsers } from '@/lib/user-notify';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { z } from 'zod';

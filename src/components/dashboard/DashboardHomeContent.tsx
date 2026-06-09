@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import type { LocaleMessages } from '@/locales/en';
 import { getDashboardShortcutDestinations, type DashboardNavItem } from '@/lib/dashboard-nav-config';
+import { fetchWithRetry } from '@/lib/fetch-with-retry';
+import { formatAppTodayShort } from '@/lib/format-datetime';
 
 function IconBell({ className }: { className?: string }) {
   return (
@@ -56,15 +58,6 @@ function IconChart({ className }: { className?: string }) {
   );
 }
 
-function IconClock({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 6v6l4 2" />
-    </svg>
-  );
-}
-
 function IconEye({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
@@ -92,7 +85,6 @@ function IconMessages({ className }: { className?: string }) {
 
 function iconForShortcut(item: DashboardNavItem) {
   if (item.labelKey === 'notifications') return IconBell;
-  if (item.labelKey === 'timeClock') return IconClock;
   if (item.labelKey === 'ratings') return IconStar;
   if (item.labelKey === 'messages') return IconMessages;
   if (item.labelKey === 'hr' || item.labelKey === 'myInfoAdvances') return IconUsers;
@@ -118,8 +110,6 @@ function shortcutDescription(role: string, item: DashboardNavItem, t: LocaleMess
       return t.dashboard.reportsDesc;
     case 'managerReports':
       return t.dashboard.shortcutManagerReports;
-    case 'timeClock':
-      return t.dashboard.shortcutTimeClock;
     case 'ratings':
       return t.dashboard.shortcutRatings;
     case 'messages':
@@ -143,25 +133,6 @@ type ReviewNotificationResponse = {
   total: number;
   items: ReviewNotificationItem[];
 };
-
-type TimeClockStatusResponse = {
-  applicable?: boolean;
-  employeeName?: string;
-  clock?: { clockInAt?: string } | null;
-  away?: { kind?: string; endsAt?: string } | null;
-};
-
-function formatShortDate(locale: 'en' | 'ar'): string {
-  try {
-    return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-JO' : 'en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    }).format(new Date());
-  } catch {
-    return new Date().toLocaleDateString();
-  }
-}
 
 function formatTimeAgo(iso: string | undefined, locale: 'en' | 'ar', t: LocaleMessages): string | null {
   if (!iso) return null;
@@ -189,17 +160,20 @@ export function DashboardHomeContent({
   const shortcuts = getDashboardShortcutDestinations(role);
   const [unreadCount, setUnreadCount] = useState(0);
   const [review, setReview] = useState<ReviewNotificationResponse>({ total: 0, items: [] });
-  const [timeClockStatus, setTimeClockStatus] = useState<TimeClockStatusResponse | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [todayLabel, setTodayLabel] = useState('');
+
+  useEffect(() => {
+    setTodayLabel(formatAppTodayShort(locale));
+  }, [locale]);
 
   useEffect(() => {
     let disposed = false;
     const run = async () => {
       try {
-        const [unreadRes, reviewRes, clockRes] = await Promise.all([
-          fetch('/api/chat/unread', { credentials: 'include', cache: 'no-store' }),
-          fetch('/api/review-notifications', { credentials: 'include', cache: 'no-store' }),
-          fetch('/api/time-clock/status', { credentials: 'include', cache: 'no-store' }),
+        const [unreadRes, reviewRes] = await Promise.all([
+          fetchWithRetry('/api/chat/unread', { credentials: 'include', cache: 'no-store' }),
+          fetchWithRetry('/api/review-notifications', { credentials: 'include', cache: 'no-store' }),
         ]);
         if (disposed) return;
 
@@ -213,10 +187,6 @@ export function DashboardHomeContent({
             total: Number(data.total ?? 0),
             items: Array.isArray(data.items) ? data.items : [],
           });
-        }
-        if (clockRes.ok) {
-          const data = (await clockRes.json()) as TimeClockStatusResponse;
-          setTimeClockStatus(data);
         }
         setLastUpdatedAt(new Date().toISOString());
       } catch {
@@ -238,18 +208,8 @@ export function DashboardHomeContent({
     };
   }, []);
 
-  const todayLabel = useMemo(() => formatShortDate(locale), [locale]);
-
   const statusChips = useMemo(() => {
     const chips: string[] = [];
-    if (timeClockStatus?.applicable) {
-      if (timeClockStatus.clock) {
-        chips.push(t.dashboard.chipClockedIn);
-      } else {
-        chips.push(t.dashboard.chipClockedOut);
-      }
-      if (timeClockStatus.away) chips.push(t.dashboard.chipAwayTimer);
-    }
     chips.push(
       unreadCount > 0
         ? interpolate(t.dashboard.chipUnreadMessages, { count: unreadCount })
@@ -261,23 +221,10 @@ export function DashboardHomeContent({
         : t.dashboard.chipNoPendingApprovals
     );
     return chips;
-  }, [review.total, t, timeClockStatus, unreadCount]);
+  }, [review.total, t, unreadCount]);
 
   const activityRows = useMemo(() => {
     const rows: { id: string; text: string; muted?: boolean }[] = [];
-    if (timeClockStatus?.applicable) {
-      if (timeClockStatus.clock?.clockInAt) {
-        const ago = formatTimeAgo(timeClockStatus.clock.clockInAt, locale, t);
-        rows.push({
-          id: 'clock-in',
-          text: ago
-            ? interpolate(t.dashboard.activityClockedInSince, { ago })
-            : t.dashboard.activityClockedIn,
-        });
-      } else {
-        rows.push({ id: 'clock-out', text: t.dashboard.activityNotClockedIn, muted: true });
-      }
-    }
     rows.push({
       id: 'messages',
       text:
@@ -299,13 +246,16 @@ export function DashboardHomeContent({
       rows.push({ id: 'updated', text: interpolate(t.dashboard.activityUpdatedAgo, { ago }), muted: true });
     }
     return rows.slice(0, 4);
-  }, [lastUpdatedAt, locale, review.total, t, timeClockStatus, unreadCount]);
+  }, [lastUpdatedAt, locale, review.total, t, unreadCount]);
 
   return (
     <div className="app-page space-y-8">
       <section id="section-home-overview" className="scroll-mt-28 space-y-3">
-        <p className="inline-flex items-center rounded-full border border-ios-blue/20 bg-ios-blue/10 px-3 py-1 text-xs font-semibold text-ios-blue">
-          {t.dashboard.todayLabel}: {todayLabel}
+        <p
+          suppressHydrationWarning
+          className="inline-flex items-center rounded-full border border-ios-blue/20 bg-ios-blue/10 px-3 py-1 text-xs font-semibold text-ios-blue"
+        >
+          {todayLabel ? `${t.dashboard.todayLabel}: ${todayLabel}` : t.dashboard.todayLabel}
         </p>
         <h1 className="text-3xl font-bold leading-tight tracking-tight text-app-primary sm:text-4xl">
           <span className="font-semibold text-app-secondary">{t.dashboard.welcomeWord}</span>{' '}

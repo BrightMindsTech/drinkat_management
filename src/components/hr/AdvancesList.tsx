@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { Advance, Employee } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAppDate } from '@/lib/format-datetime';
 import { RequestAdvanceForm } from './RequestAdvanceForm';
 
 type AdvanceWithEmployee = Advance & { employee: Employee & { branch: { id?: string; name: string } } };
@@ -22,7 +23,7 @@ export function AdvancesList({
   advanceLimit?: number;
   approvedSum?: number;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
 
@@ -68,7 +69,7 @@ export function AdvancesList({
               <p className="text-sm text-app-secondary mt-1">
                 <span className="tabular-nums font-medium text-app-primary">{a.amount.toFixed(2)} JOD</span>
                 {' · '}
-                <span className="tabular-nums">{new Date(a.requestedAt).toLocaleDateString()}</span>
+                <span className="tabular-nums">{formatAppDate(a.requestedAt, locale)}</span>
               </p>
               {a.note && <p className="text-sm text-app-secondary mt-1 break-words">{a.note}</p>}
               <span

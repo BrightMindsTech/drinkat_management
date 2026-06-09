@@ -12,7 +12,7 @@ import {
   rolesSubjectToWeeklyRating,
   assertTargetAllowedForRater,
 } from '@/lib/weekly-ratings';
-import { getOwnerUserIds } from '@/lib/time-clock-helpers';
+import { getOwnerUserIds } from '@/lib/notify-helpers';
 import { notifyUsers } from '@/lib/user-notify';
 
 const postSchema = z.object({
@@ -51,6 +51,7 @@ export async function GET() {
             where: { id: { in: expectedIds } },
             select: { id: true, name: true },
           });
+    const targetsById = new Map(targets.map((row) => [row.id, row]));
 
     const existing = await prisma.weeklyRating.findMany({
       where: { raterEmployeeId: emp.id, weekStartKey },
@@ -63,11 +64,14 @@ export async function GET() {
       ratingStyle: 'required_all_targets' as const,
       weekStartKey,
       emphasisWeekend: isWeekendSubmissionEmphasis(),
-      expectedTargets: targets.map((t) => ({
-        id: t.id,
-        name: t.name,
-        existing: existing.find((e) => e.targetEmployeeId === t.id) ?? null,
-      })),
+      expectedTargets: expectedIds
+        .map((id) => targetsById.get(id))
+        .filter((row): row is { id: string; name: string } => !!row)
+        .map((t) => ({
+          id: t.id,
+          name: t.name,
+          existing: existing.find((e) => e.targetEmployeeId === t.id) ?? null,
+        })),
       complete: expectedIds.length === 0 ? true : expectedIds.every((id) => existing.some((e) => e.targetEmployeeId === id)),
       blockingClock: blocking,
     });

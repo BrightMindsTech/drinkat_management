@@ -33,7 +33,7 @@ export function AppModal({
   children,
   panelClassName = DEFAULT_PANEL,
   overlayClassName = DEFAULT_OVERLAY,
-  zIndexClass = 'z-[120]',
+  zIndexClass = 'z-[500]',
   closeOnBackdrop = true,
   'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledBy,

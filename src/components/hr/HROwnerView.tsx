@@ -11,10 +11,7 @@ import { SalarySection } from './SalarySection';
 import { DepartmentSection } from './DepartmentSection';
 import { LeaveRequestsSection } from './LeaveRequestsSection';
 import { ManagerAssignmentsSection } from './ManagerAssignmentsSection';
-import { BranchGeofenceSection } from './BranchGeofenceSection';
-import { OwnerLiveAttendanceSection } from './OwnerLiveAttendanceSection';
 import { OwnerPushBroadcastSection } from './OwnerPushBroadcastSection';
-import type { OwnerLiveAttendanceRow } from '@/lib/time-clock-owner-live';
 
 type EmployeeWithRelations = Employee & { branch: Branch; department?: Department | null; user: { email: string } | null };
 
@@ -45,14 +42,12 @@ export function HROwnerView({
   initialLeaveRequests,
   branches,
   departments,
-  initialLiveAttendance,
 }: {
   initialEmployees: EmployeeWithRelations[];
   initialAdvances: AdvanceWithEmployee[];
   initialLeaveRequests: LeaveWithEmployee[];
   branches: Branch[];
   departments: Department[];
-  initialLiveAttendance: OwnerLiveAttendanceRow[];
 }) {
   const { t } = useLanguage();
   const [employees, setEmployees] = useState(initialEmployees);
@@ -71,28 +66,9 @@ export function HROwnerView({
     const w = root.clientWidth;
     root.scrollTo({ left: Math.max(0, index) * w, behavior });
   };
-  const [hoursMonth, setHoursMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [hoursBranchId, setHoursBranchId] = useState('');
-  const [hoursLoading, setHoursLoading] = useState(false);
-  const [hoursError, setHoursError] = useState<string | null>(null);
   const [bulkAdvanceLimit, setBulkAdvanceLimit] = useState('');
   const [bulkAdvanceSaving, setBulkAdvanceSaving] = useState(false);
   const [bulkAdvanceNotice, setBulkAdvanceNotice] = useState<string | null>(null);
-  const [monthlyHoursRows, setMonthlyHoursRows] = useState<
-    {
-      employeeId: string;
-      employeeName: string;
-      branchName: string;
-      employmentType: string;
-      totalHours: number;
-      shiftsCount: number;
-      openShifts: number;
-    }[]
-  >([]);
-
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
       const matchesSearch = employeeMatchesSearch(emp, searchQuery);
@@ -136,24 +112,6 @@ export function HROwnerView({
     setActiveCardIndex(0);
     scrollCarouselToIndex(0, 'auto');
   }, [searchQuery, branchFilter]);
-
-  useEffect(() => {
-    setHoursLoading(true);
-    setHoursError(null);
-    const params = new URLSearchParams({ month: hoursMonth });
-    if (hoursBranchId) params.set('branchId', hoursBranchId);
-    fetch(`/api/time-clock/monthly-hours?${params}`, { cache: 'no-store' })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`Failed to load: ${r.status}`);
-        return r.json() as Promise<{ rows: typeof monthlyHoursRows }>;
-      })
-      .then((json) => setMonthlyHoursRows(json.rows ?? []))
-      .catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : 'Failed to load';
-        setHoursError(msg);
-      })
-      .finally(() => setHoursLoading(false));
-  }, [hoursMonth, hoursBranchId]);
 
   async function onEmployeeCreated(emp: EmployeeWithRelations) {
     setEmployees((prev) => [...prev, emp]);
@@ -217,7 +175,6 @@ export function HROwnerView({
   return (
     <div className="app-page">
       <OwnerPushBroadcastSection />
-      <OwnerLiveAttendanceSection initialRows={initialLiveAttendance} />
       <section id="hr-owner-staff" className={sectionClass}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-app-primary">{t.hr.staff}</h2>
@@ -310,7 +267,6 @@ export function HROwnerView({
                     branches={branches}
                     onDeleted={onEmployeeDeleted}
                     onUpdated={onEmployeeUpdated}
-                    hrForceClockRole="owner"
                   />
                 </div>
               ))}
@@ -409,80 +365,6 @@ export function HROwnerView({
           {bulkAdvanceNotice ? <p className="mt-2 text-sm text-app-secondary">{bulkAdvanceNotice}</p> : null}
         </div>
         <AdvancesList advances={advances} onUpdated={onAdvanceUpdated} ownerView />
-      </section>
-
-      <section id="hr-branch-geofence" className={sectionClass}>
-        <BranchGeofenceSection branches={branches} />
-      </section>
-
-      <section id="hr-owner-monthly-hours" className={sectionClass}>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h2 className="text-lg font-semibold text-app-primary">Monthly worked hours</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-sm text-app-secondary">
-              Month
-              <input
-                type="month"
-                value={hoursMonth}
-                onChange={(e) => setHoursMonth(e.target.value)}
-                className="ml-2 rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1"
-              />
-            </label>
-            <label className="text-sm text-app-secondary">
-              Branch
-              <select
-                value={hoursBranchId}
-                onChange={(e) => setHoursBranchId(e.target.value)}
-                className="ml-2 rounded-ios border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1"
-              >
-                <option value="">All</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
-        {hoursError ? <p className="text-sm text-red-600">{hoursError}</p> : null}
-        {hoursLoading ? (
-          <p className="text-sm text-app-muted">{t.common.loading}</p>
-        ) : monthlyHoursRows.length === 0 ? (
-          <p className="text-sm text-app-muted">{t.common.noData}</p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated">
-            <table className="w-full text-sm min-w-[700px]">
-              <thead>
-                <tr className="bg-gray-100 dark:bg-ios-dark-elevated-2/50 text-left">
-                  <th className="p-2 font-semibold">Employee</th>
-                  <th className="p-2 font-semibold">Branch</th>
-                  <th className="p-2 font-semibold">Type</th>
-                  <th className="p-2 font-semibold text-right">Hours</th>
-                  <th className="p-2 font-semibold text-right">Shifts</th>
-                  <th className="p-2 font-semibold text-right">Open shifts</th>
-                </tr>
-              </thead>
-              <tbody>
-                {monthlyHoursRows.map((row, i) => (
-                  <tr
-                    key={row.employeeId}
-                    className={`border-t border-gray-200 dark:border-ios-dark-separator ${
-                      i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/50 dark:bg-ios-dark-elevated-2/20'
-                    }`}
-                  >
-                    <td className="p-2 font-medium text-app-primary">{row.employeeName}</td>
-                    <td className="p-2">{row.branchName}</td>
-                    <td className="p-2">{row.employmentType === 'part_time' ? 'Part-time' : 'Full-time'}</td>
-                    <td className="p-2 text-right tabular-nums">{row.totalHours.toFixed(2)}</td>
-                    <td className="p-2 text-right tabular-nums">{row.shiftsCount}</td>
-                    <td className="p-2 text-right tabular-nums">{row.openShifts}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
 
       <section id="hr-owner-salary" className={sectionClass}>

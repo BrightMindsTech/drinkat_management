@@ -12,7 +12,12 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  await requireOwner();
+  try {
+    await requireOwner();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
 
   let body: z.infer<typeof bodySchema>;
   try {
@@ -26,25 +31,33 @@ export async function POST(req: Request) {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
 
-  const matchingDepartmentIds = await getKitchenDepartmentIds();
-  const existingCount = await prisma.managementFormTemplate.count({
-    where: { category: 'kitchen' },
-  });
+  try {
+    const matchingDepartmentIds = await getKitchenDepartmentIds();
+    const existingCount = await prisma.managementFormTemplate.count({
+      where: { category: 'kitchen' },
+    });
 
-  const result = await upsertKitchenFormTemplate(
-    {
+    const result = await upsertKitchenFormTemplate(
+      {
+        title: parsed.title,
+        description: parsed.description,
+        fields: parsed.fields,
+      },
+      100 + existingCount,
+      matchingDepartmentIds
+    );
+
+    return Response.json({
+      ok: true,
       title: parsed.title,
-      description: parsed.description,
-      fields: parsed.fields,
-    },
-    100 + existingCount,
-    matchingDepartmentIds
-  );
-
-  return Response.json({
-    ok: true,
-    title: parsed.title,
-    fieldCount: parsed.fields.length,
-    result,
-  });
+      fieldCount: parsed.fields.length,
+      result,
+    });
+  } catch (e) {
+    console.error('[import-google-paste]', e);
+    return Response.json(
+      { error: 'Import failed while saving the form. Please try again.' },
+      { status: 500 }
+    );
+  }
 }

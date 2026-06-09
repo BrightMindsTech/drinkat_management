@@ -1,14 +1,20 @@
+import { fetchWithRetry } from '@/lib/fetch-with-retry';
+
 /** Sync / verify APNs device token with the backend (no native plugin imports). */
 
 export async function syncApnsDeviceTokenToBackend(token: string): Promise<boolean> {
   try {
-    const res = await fetch('/api/push/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      cache: 'no-store',
-      body: JSON.stringify({ provider: 'apns', token }),
-    });
+    const res = await fetchWithRetry(
+      '/api/push/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        cache: 'no-store',
+        body: JSON.stringify({ provider: 'apns', token }),
+      },
+      { attempts: 6, baseDelayMs: 200, maxDelayMs: 3000 }
+    );
     return res.ok;
   } catch {
     return false;

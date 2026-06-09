@@ -99,16 +99,7 @@ export async function getSalaryDeductionReport(
   }
 
   const ptIds = partTimeEmployees.map((e) => e.id);
-  const ptEntries =
-    ptIds.length === 0
-      ? []
-      : await prisma.timeClockEntry.findMany({
-          where: {
-            employeeId: { in: ptIds },
-            clockInAt: { gte: start, lte: end },
-          },
-          select: { employeeId: true, clockInAt: true },
-        });
+  const ptEntries: { employeeId: string; clockInAt: Date }[] = [];
 
   const daysByEmployee = new Map<string, Set<string>>();
   for (const e of ptEntries) {

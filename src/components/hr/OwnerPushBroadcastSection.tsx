@@ -197,7 +197,7 @@ export function OwnerPushBroadcastSection() {
             value={href}
             onChange={(e) => setHref(e.target.value)}
             maxLength={200}
-            placeholder="/dashboard/time-clock"
+            placeholder="/dashboard/forms"
             className="app-input mt-1 w-full font-mono text-sm"
             disabled={submitLock.busy}
           />

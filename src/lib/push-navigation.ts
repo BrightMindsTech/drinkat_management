@@ -23,18 +23,19 @@ const PUSH_TYPE_ROUTES: Record<string, RouteBuilder> = {
     d.submissionId
       ? `/dashboard/qc#qc-review-submission-${d.submissionId}`
       : '/dashboard/qc#qc-review-submissions',
+  qc_assignment_created: (d) =>
+    d.assignmentId
+      ? `/dashboard/qc#qc-assignment-${d.assignmentId}`
+      : '/dashboard/qc',
+  qc_assignment_removed: () => '/dashboard/qc',
   advance_request_pending_review: () => '/dashboard/hr#hr-owner-advances',
+  advance_decided: () => '/dashboard/hr',
   leave_request_pending_review: () => '/dashboard/hr#hr-owner-leave',
+  leave_request_decided: () => '/dashboard/hr',
+  qc_submission_reviewed: () => '/dashboard/qc',
   support_report: () => '/dashboard/support',
   chat_message: (d) =>
     d.threadId ? `/dashboard/messages?thread=${encodeURIComponent(d.threadId)}` : '/dashboard/messages',
-  time_clock_clock_in: () => '/dashboard/time-clock?remind=clock_in',
-  time_clock_destination: () => '/dashboard/time-clock?forceAway=1',
-  time_clock_destination_required: () => '/dashboard/time-clock',
-  clock_in_reminder: () => '/dashboard/time-clock',
-  clock_out_shifts_remind: () => '/dashboard/time-clock',
-  time_clock_away_expired: () => '/dashboard/time-clock',
-  time_clock_away_started: () => '/dashboard/time-clock',
   weekly_rating_reminder: () => '/dashboard/ratings',
   push_test: () => '/dashboard/messages',
   push_connected: () => '/dashboard',

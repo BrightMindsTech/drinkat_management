@@ -11,21 +11,20 @@ const LIMITS: Record<LimitTier, { max: number; windowMs: number }> = {
   write: { max: 90, windowMs: 60_000 },
   /** Normal reads */
   read: { max: 240, windowMs: 60_000 },
-  /** Large reports + frequent geofence posts */
+  /** Large reports */
   heavy: { max: 120, windowMs: 60_000 },
 };
 
-/** Never rate-limit routes that gate login or clock presence — shared shop Wi‑Fi hits one IP. */
+/** Never rate-limit routes that gate login — shared shop Wi‑Fi hits one IP. */
 const RATE_LIMIT_EXEMPT_PATHS = new Set([
   '/api/auth/session',
   '/api/auth/csrf',
-  '/api/time-clock/status',
-  '/api/time-clock/presence-check',
   '/api/push/consent-status',
   '/api/push/opt-in',
   '/api/client-error',
   '/api/push/device-status',
   '/api/push/client-diagnostic',
+  '/api/push/register',
 ]);
 
 const globalStore = globalThis as typeof globalThis & {
@@ -58,7 +57,6 @@ function tierForRequest(pathname: string, method: string): LimitTier | null {
   }
   if (pathname.startsWith('/api/auth/')) return 'auth';
   if (pathname === '/api/reports' && method === 'GET') return 'heavy';
-  if (pathname.startsWith('/api/time-clock/location-event')) return 'heavy';
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return 'read';
   if (method === 'POST' || method === 'PATCH' || method === 'DELETE' || method === 'PUT') {
     return 'write';

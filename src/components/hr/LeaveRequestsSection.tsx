@@ -5,6 +5,7 @@ import type { LeaveRequest } from '@prisma/client';
 import type { Employee } from '@prisma/client';
 import type { Branch } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAppDate } from '@/lib/format-datetime';
 
 type LeaveWithEmployee = LeaveRequest & { employee: Employee & { branch: { name: string } } };
 
@@ -17,7 +18,7 @@ function parseLeaveActionError(data: unknown, fallback: string): string {
 }
 
 export function LeaveRequestsSection({ initialLeaves, branches }: { initialLeaves: LeaveWithEmployee[]; branches: Branch[] }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [leaves, setLeaves] = useState(initialLeaves);
   const [branchFilter, setBranchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -86,7 +87,7 @@ export function LeaveRequestsSection({ initialLeaves, branches }: { initialLeave
               <div className="min-w-0 flex-1">
                 <span className="font-medium text-app-primary">{l.employee.name}</span>
                 <span className="text-app-muted text-sm ml-2">{l.employee.branch.name}</span>
-                <p className="text-sm text-app-secondary">{new Date(l.startDate).toLocaleDateString()} – {new Date(l.endDate).toLocaleDateString()} — {typeLabel}{l.note ? ` — ${l.note}` : ''}</p>
+                <p className="text-sm text-app-secondary">{formatAppDate(l.startDate, locale)} – {formatAppDate(l.endDate, locale)} — {typeLabel}{l.note ? ` — ${l.note}` : ''}</p>
                 <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded font-medium ${
                   l.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-amber-600 dark:text-white' :
                   l.status === 'approved' ? 'bg-green-100 text-green-800 dark:bg-green-600 dark:text-white' :

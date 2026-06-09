@@ -3,31 +3,67 @@ import { prisma } from '@/lib/prisma';
 import { requireSession, requireQc } from '@/lib/session';
 import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import { normalizeUserRole } from '@/lib/formVisibility';
-import { getUserIdForEmployeeId } from '@/lib/employee-user';
-import { notifyUser } from '@/lib/user-notify';
+import { getUserIdsForEmployeeIds } from '@/lib/employee-user';
+import { notifyQcAssignment } from '@/lib/qc-assignment-notify';
 import { z } from 'zod';
 
-async function notifyChecklistAssigned(
-  rows: { employeeId: string; checklist: { name: string; repeatsDaily: boolean }; dueDate: Date | null }[]
-) {
-  for (const row of rows) {
-    const userId = await getUserIdForEmployeeId(row.employeeId);
-    if (!userId) continue;
-    const href = '/dashboard/qc';
-    const dueHint =
-      !row.checklist.repeatsDaily && row.dueDate
-        ? ` Due ${row.dueDate.toLocaleDateString()}.`
-        : '';
-    const title = 'New checklist assigned';
-    const body = `You were assigned "${row.checklist.name}".${dueHint}`;
-    await notifyUser(prisma, userId, {
-      category: 'qc_assignment_created',
-      title,
-      body,
-      dataJson: JSON.stringify({ type: 'qc_assignment_created', href }),
-      push: { title, body, data: { type: 'qc_assignment_created', url: href } },
-    });
+type AssignmentNotifyRow = {
+  id: string;
+  employeeId: string;
+  checklist: { name: string; repeatsDaily: boolean };
+  dueDate: Date | null;
+};
+
+async function notifyChecklistAssigned(rows: AssignmentNotifyRow[]) {
+  if (rows.length === 0) return { notified: 0, pushSent: 0, pushPending: 0, skippedNoLogin: 0, failed: 0 };
+
+  const userIdByEmployee = await getUserIdsForEmployeeIds(rows.map((r) => r.employeeId));
+
+  const results = await Promise.allSettled(
+    rows.map(async (row) => {
+      const userId = userIdByEmployee.get(row.employeeId);
+      if (!userId) {
+        console.warn('[assignments] push skipped — employee has no login user', {
+          employeeId: row.employeeId,
+          assignmentId: row.id,
+        });
+        return { kind: 'skipped' as const };
+      }
+
+      const result = await notifyQcAssignment(prisma, userId, row);
+      return { kind: 'ok' as const, pushSent: result.pushSent, hadPush: result.pushSent > 0 };
+    })
+  );
+
+  let notified = 0;
+  let pushSent = 0;
+  let pushPending = 0;
+  let skippedNoLogin = 0;
+  let failed = 0;
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      failed += 1;
+      console.error('[assignments] notifyChecklistAssigned failed for row', result.reason);
+      continue;
+    }
+    if (result.value.kind === 'skipped') skippedNoLogin += 1;
+    else {
+      notified += 1;
+      pushSent += result.value.pushSent;
+      if (!result.value.hadPush) pushPending += 1;
+    }
   }
+
+  console.log('[assignments] notifyChecklistAssigned done', {
+    rows: rows.length,
+    notified,
+    pushSent,
+    pushPending,
+    skippedNoLogin,
+    failed,
+  });
+
+  return { notified, pushSent, pushPending, skippedNoLogin, failed };
 }
 
 const createSchema = z.object({
@@ -173,14 +209,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let notifySummary = null;
     if (created.length > 0) {
       try {
-        await notifyChecklistAssigned(created);
-      } catch {
-        /* optional */
+        notifySummary = await notifyChecklistAssigned(created);
+      } catch (err) {
+        console.error('[assignments POST] notifyChecklistAssigned failed (bulk)', err);
       }
     }
-    return Response.json({ created, skipped });
+    return Response.json({ created, skipped, notify: notifySummary });
   }
 
   const parsed = createSchema.safeParse(body);
@@ -223,10 +260,12 @@ export async function POST(req: NextRequest) {
     },
     include: assignmentInclude,
   });
+
+  let notifySummary = null;
   try {
-    await notifyChecklistAssigned([assignment]);
-  } catch {
-    /* optional */
+    notifySummary = await notifyChecklistAssigned([assignment]);
+  } catch (err) {
+    console.error('[assignments POST] notifyChecklistAssigned failed (single)', err);
   }
-  return Response.json({ created: [assignment], skipped: [] as { employeeId: string; reason: string }[] });
+  return Response.json({ created: [assignment], skipped: [] as { employeeId: string; reason: string }[], notify: notifySummary });
 }

@@ -123,6 +123,8 @@ export async function attachIosPushRegistrationListeners(): Promise<void> {
   await PushNotifications.addListener('registration', async (token) => {
     setCachedApnsDeviceToken(token.value);
     setPushDebug({ phase: 'registration_event', tokenPreview: token.value.slice(0, 12) });
+    const { ensurePushConsentOnServer } = await import('@/lib/push-registration-client');
+    await ensurePushConsentOnServer();
     const ok = await syncApnsDeviceTokenToBackend(token.value);
     setPushDebug({ phase: 'registration_sync', registerOk: ok });
   });
@@ -158,10 +160,13 @@ export async function setupNativePushDelivery(): Promise<void> {
 
   await PushNotifications.addListener('pushNotificationReceived', (notification) => {
     const data = notification.data as Record<string, unknown> | undefined;
+    const detail: Record<string, unknown> = { ...(data ?? {}) };
+    if (notification.title && typeof detail.title !== 'string') detail.title = notification.title;
+    if (notification.body && typeof detail.body !== 'string') detail.body = notification.body;
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('drinkat:push-received', {
-          detail: data ?? {},
+          detail,
         })
       );
     }
@@ -208,6 +213,9 @@ export async function registerIosPushWithBackend(
   }
   setPushDebug({ permission: perm.receive });
   if (perm.receive !== 'granted') return false;
+
+  const { ensurePushConsentOnServer } = await import('@/lib/push-registration-client');
+  await ensurePushConsentOnServer();
 
   await setupNativePushDelivery();
 

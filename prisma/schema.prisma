@@ -274,9 +274,11 @@ model InboxNotification {
   body        String
   dataJson    String?
   readAt      DateTime?
+  pushSentAt  DateTime?
   createdAt   DateTime  @default(now())
 
   @@index([userId, readAt])
+  @@index([userId, pushSentAt])
 }
 
 model LeaveRequest {

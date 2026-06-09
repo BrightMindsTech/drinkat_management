@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession, requireOwner } from '@/lib/session';
-import { getManagerUserIdForEmployee } from '@/lib/time-clock-helpers';
+import { getManagerUserIdForEmployee } from '@/lib/notify-helpers';
 import { notifyOwnersAndManager } from '@/lib/user-notify';
 import {
   ANNUAL_LEAVE_DAYS_PER_YEAR,
@@ -9,7 +9,11 @@ import {
   approvedAnnualLeaveDaysByYear,
   syncEmployeeLeaveBalanceForYear,
 } from '@/lib/leave-balance';
+import { normalizeUserRole } from '@/lib/formVisibility';
+import { withPrismaRetry } from '@/lib/prisma-retry';
 import { z } from 'zod';
+
+const RECENT_REQUEST_WINDOW_MS = 5 * 60 * 1000;
 
 const createSchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -53,9 +57,13 @@ export async function GET(req: NextRequest) {
   return Response.json(leaveRequests);
 }
 
+const LEAVE_REQUEST_ROLES = new Set(['staff', 'qc', 'manager', 'marketing']);
+
 export async function POST(req: NextRequest) {
+  try {
   const session = await requireSession();
-  if (session.user.role !== 'staff' && session.user.role !== 'qc') {
+  const role = normalizeUserRole(session.user.role);
+  if (!LEAVE_REQUEST_ROLES.has(role)) {
     return new Response(JSON.stringify({ error: 'Only staff can request leave' }), { status: 403 });
   }
 
@@ -93,15 +101,31 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const leaveRequest = await prisma.leaveRequest.create({
-    data: {
-      employeeId: user.employee.id,
-      startDate,
-      endDate,
-      type: parsed.data.type,
-      note: parsed.data.note ?? null,
-    },
-    include: { employee: { include: { branch: true } } },
+  const recentCutoff = new Date(Date.now() - RECENT_REQUEST_WINDOW_MS);
+  const leaveRequest = await withPrismaRetry(async () => {
+    const duplicate = await prisma.leaveRequest.findFirst({
+      where: {
+        employeeId: user.employee!.id,
+        startDate,
+        endDate,
+        type: parsed.data.type,
+        status: 'pending',
+        createdAt: { gte: recentCutoff },
+      },
+      include: { employee: { include: { branch: true } } },
+    });
+    if (duplicate) return duplicate;
+
+    return prisma.leaveRequest.create({
+      data: {
+        employeeId: user.employee!.id,
+        startDate,
+        endDate,
+        type: parsed.data.type,
+        note: parsed.data.note ?? null,
+      },
+      include: { employee: { include: { branch: true } } },
+    });
   });
 
   const managerUserId = await getManagerUserIdForEmployee({
@@ -111,27 +135,39 @@ export async function POST(req: NextRequest) {
   const href = '/dashboard/hr#hr-owner-leave';
   const leaveTitle = 'Leave request needs review';
   const leaveBody = `${user.employee.name} requested ${parsed.data.type} leave.`;
-  await notifyOwnersAndManager(prisma, managerUserId, {
-    category: 'leave_review',
-    title: leaveTitle,
-    body: leaveBody,
-    dataJson: JSON.stringify({
-      type: 'leave_request_pending_review',
-      leaveRequestId: leaveRequest.id,
-      href,
-    }),
-    push: {
+  try {
+    await notifyOwnersAndManager(prisma, managerUserId, {
+      category: 'leave_review',
       title: leaveTitle,
       body: leaveBody,
-      data: {
+      dataJson: JSON.stringify({
         type: 'leave_request_pending_review',
-        url: href,
         leaveRequestId: leaveRequest.id,
+        href,
+      }),
+      push: {
+        title: leaveTitle,
+        body: leaveBody,
+        data: {
+          type: 'leave_request_pending_review',
+          url: href,
+          leaveRequestId: leaveRequest.id,
+        },
       },
-    },
-  });
+    });
+  } catch (notifyErr) {
+    console.error('[leave POST] notify failed (request saved)', notifyErr);
+  }
 
-  await syncEmployeeLeaveBalanceForYear(prisma, user.employee.id, new Date().getFullYear());
+  try {
+    await syncEmployeeLeaveBalanceForYear(prisma, user.employee.id, new Date().getFullYear());
+  } catch (syncErr) {
+    console.error('[leave POST] balance sync failed (request saved)', syncErr);
+  }
 
   return Response.json(leaveRequest);
+  } catch (e) {
+    const { apiErrorResponse } = await import('@/lib/api-route-error');
+    return apiErrorResponse('leave POST', e, 'Failed to request leave');
+  }
 }

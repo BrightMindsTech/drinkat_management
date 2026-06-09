@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage, type Locale } from '@/contexts/LanguageContext';
-import { formatAppDate, formatAppDateTime, formatAppTime } from '@/lib/format-datetime';
+import { formatAppDate, formatAppDateTime, formatAppTime, isSameAmmanCalendarDay } from '@/lib/format-datetime';
 import { attachPullToRefresh } from '@/lib/attach-pull-to-refresh';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
@@ -69,10 +69,7 @@ function initials(name: string): string {
 function formatListTime(iso: string | null, locale: Locale): string {
   if (!iso) return '';
   const d = new Date(iso);
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  if (sameDay) return formatAppTime(d, locale);
+  if (isSameAmmanCalendarDay(d, new Date())) return formatAppTime(d, locale);
   return formatAppDate(d, locale, { month: 'short', day: 'numeric' });
 }
 

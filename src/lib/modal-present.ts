@@ -27,6 +27,15 @@ export function prepareModalViewport(behavior: ScrollBehavior = 'smooth'): () =>
   };
 }
 
+/** Clear body scroll lock when no modal is open (e.g. after client navigation). */
+export function releaseStuckModalViewport(): void {
+  if (typeof document === 'undefined') return;
+  const hasOpenModal = document.querySelector(APP_MODAL_SELECTOR);
+  if (!hasOpenModal) {
+    document.body.style.overflow = '';
+  }
+}
+
 /** True when the element is a visible, interactive modal (excludes closed mobile drawer backdrop). */
 export function isActiveAppModal(el: HTMLElement): boolean {
   if (!el.isConnected) return false;

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getDashboardSession } from '@/lib/dashboard-session';
 import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery';
 import { prisma } from '@/lib/prisma';
+import { withPrismaRetryOrFallback } from '@/lib/prisma-retry';
 import { parseTemplateFields } from '@/lib/formTemplate';
 import { safeParseJsonRecord } from '@/lib/safe-json';
 import {
@@ -23,12 +24,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 async function safeQuery<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await fn();
-  } catch (error) {
-    console.error(`[forms/page] ${label} failed`, error);
-    return fallback;
-  }
+  return withPrismaRetryOrFallback(`forms/page ${label}`, fn, fallback);
 }
 
 export default async function FormsPage() {
@@ -97,6 +93,7 @@ export default async function FormsPage() {
               ctx,
               {
                 category: t.category,
+                title: t.title,
                 departmentAssignments: t.departmentAssignments,
                 employeeAssignments: t.employeeAssignments,
                 active: t.active,

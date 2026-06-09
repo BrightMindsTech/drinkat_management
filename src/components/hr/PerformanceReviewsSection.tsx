@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatAppDate } from '@/lib/format-datetime';
 
 type Review = { id: string; reviewedAt: string | Date; rating: number; notes: string | null };
 
@@ -68,7 +69,7 @@ export function PerformanceReviewsSection({
   canAddReviews: boolean;
   initialData?: Review[];
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [reviews, setReviews] = useState<Review[]>(initialData ?? []);
   const [loading, setLoading] = useState(!initialData);
   const [adding, setAdding] = useState(false);
@@ -136,7 +137,7 @@ export function PerformanceReviewsSection({
           <li key={r.id} className="py-2">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-sm text-app-secondary tabular-nums">
-                {new Date(r.reviewedAt).toLocaleDateString()}
+                {formatAppDate(r.reviewedAt, locale)}
               </span>
               <StarsReadOnly rating={r.rating} size="sm" />
             </div>

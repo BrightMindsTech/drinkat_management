@@ -1,6 +1,6 @@
 'use client';
 
-import { ensurePushRegistered, bindPushRegistrationKeepalive } from '@/lib/push-registration-client';
+import { bindPushRegistrationKeepalive } from '@/lib/push-registration-client';
 import { isCapacitorIos, setupNativePushDelivery } from '@/lib/native-push-client';
 
 /** Fired after login resume: refresh badges, review queue, chat, time clock. */
@@ -36,7 +36,8 @@ function shouldRunServerRefresh(): boolean {
 
 async function pingSession(): Promise<void> {
   try {
-    await fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' });
+    const { fetchWithAuthSessionRetry } = await import('@/lib/auth-session-client');
+    await fetchWithAuthSessionRetry('/api/auth/session', { credentials: 'include', cache: 'no-store' });
   } catch {
     /* non-fatal */
   }
@@ -57,7 +58,11 @@ export async function runAppResumeSync(opts: RunAppResumeSyncOptions = {}): Prom
       if (isCapacitorIos()) {
         await setupNativePushDelivery();
       }
-      await ensurePushRegistered();
+      // Never block resume/navigation on push — D1 blips on /api/push/register must not freeze the UI.
+      void import('@/lib/push-registration-client').then(async ({ needsPushPermissionPrompt, ensurePushRegistered }) => {
+        const requestPermission = await needsPushPermissionPrompt();
+        void ensurePushRegistered({ requestPermission });
+      });
       if (shouldRefreshServer) {
         opts.refreshServerUi?.();
       }
@@ -130,12 +135,15 @@ export function bindAppResumeSync(refreshServerUi?: () => void): () => void {
     }
   })();
 
-  // Cold open only — avoid re-running heavy SSR on every quick tab switch.
-  sync({ refreshServer: true });
+  // Defer cold-open sync so NextAuth / SSR session is not raced on hard refresh.
+  const coldOpenTimer = window.setTimeout(() => {
+    sync({ refreshServer: false });
+  }, 2_500);
 
   const stopPushKeepalive = bindPushRegistrationKeepalive();
 
   return () => {
+    window.clearTimeout(coldOpenTimer);
     document.removeEventListener('visibilitychange', onVisible);
     window.removeEventListener('focus', onVisible);
     window.removeEventListener('pageshow', onVisible);

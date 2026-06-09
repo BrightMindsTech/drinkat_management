@@ -3,9 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
 
 const patchSchema = z.object({
-  latitude: z.number().min(-90).max(90).optional(),
-  longitude: z.number().min(-180).max(180).optional(),
-  geofenceRadiusM: z.number().min(10).max(500).optional(),
   shiftProfile: z.enum(['default', 'airport']).optional(),
 });
 
@@ -24,9 +21,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const updated = await prisma.branch.update({
     where: { id },
     data: {
-      ...(parsed.data.latitude !== undefined ? { latitude: parsed.data.latitude } : {}),
-      ...(parsed.data.longitude !== undefined ? { longitude: parsed.data.longitude } : {}),
-      ...(parsed.data.geofenceRadiusM !== undefined ? { geofenceRadiusM: parsed.data.geofenceRadiusM } : {}),
       ...(parsed.data.shiftProfile !== undefined ? { shiftProfile: parsed.data.shiftProfile } : {}),
     },
   });
@@ -34,9 +28,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   return Response.json({
     id: updated.id,
     name: updated.name,
-    latitude: updated.latitude,
-    longitude: updated.longitude,
-    geofenceRadiusM: updated.geofenceRadiusM,
     shiftProfile: updated.shiftProfile,
   });
 }

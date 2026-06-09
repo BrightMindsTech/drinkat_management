@@ -1,15 +1,9 @@
 import { prisma } from '@/lib/prisma';
 import type { FormFieldDef } from '@/lib/formTemplate';
+import { departmentNameMatchesKitchenForm } from '@/lib/kitchen-department';
 
 export function departmentMatchesKitchen(name: string): boolean {
-  const n = name.trim().toLowerCase();
-  return (
-    n.includes('kitchen') ||
-    n.includes('chef') ||
-    n.includes('barista') ||
-    n.includes('cafe') ||
-    n.includes('coffee')
-  );
+  return departmentNameMatchesKitchenForm(name);
 }
 
 export async function getKitchenDepartmentIds(): Promise<string[]> {

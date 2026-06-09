@@ -105,11 +105,10 @@ export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
       const bound = (value as (...a: unknown[]) => unknown).bind(client);
       const useRetry = hasD1Binding();
       return (...args: unknown[]) => {
-        const result = bound(...args);
-        if (useRetry && result != null && typeof (result as Promise<unknown>).then === 'function') {
-          return withPrismaRetry(() => result as Promise<unknown>);
+        if (useRetry) {
+          return withPrismaRetry(() => bound(...args) as Promise<unknown>);
         }
-        return result;
+        return bound(...args);
       };
     }
     return value;

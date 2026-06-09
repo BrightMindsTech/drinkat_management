@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Checklist, ChecklistItem, ChecklistAssignment, Employee, Branch, Department, QcSubmission, SubmissionPhoto } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
-import { formatAppClockTimeLabel, formatAppDateTime } from '@/lib/format-datetime';
+import { formatAppClockTimeLabel, formatAppDate, formatAppDateTime, formatAppMonthYear } from '@/lib/format-datetime';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
 
 type ChecklistWithItems = Checklist & { branch: Branch | null; items: ChecklistItem[] };
@@ -17,6 +17,62 @@ type SubmissionWithRelations = QcSubmission & {
   employee: Employee & { branch: Branch };
   photos: SubmissionPhoto[];
 };
+
+type AssignmentNotifySummary = {
+  notified: number;
+  pushSent: number;
+  pushPending: number;
+  skippedNoLogin: number;
+  failed: number;
+};
+
+type AssignResult = {
+  created: AssignmentWithRelations[];
+  skipped: { employeeId: string; reason: string }[];
+  notify: AssignmentNotifySummary | null;
+};
+
+function buildAssignFeedback(
+  t: ReturnType<typeof useLanguage>['t'],
+  created: number,
+  skipped: number,
+  notify: AssignmentNotifySummary | null | undefined
+): { tone: 'success' | 'warning'; lines: string[] } | null {
+  const lines: string[] = [];
+  let hasWarning = skipped > 0;
+
+  if (created > 0) {
+    lines.push(interpolate(t.qc.assignNotifyCreated, { count: String(created) }));
+  }
+  if (skipped > 0) {
+    lines.push(interpolate(t.qc.assignSkippedSummary, { count: String(skipped) }));
+  }
+  if (notify) {
+    const allPushOk =
+      notify.notified > 0 &&
+      notify.pushPending === 0 &&
+      notify.skippedNoLogin === 0 &&
+      notify.failed === 0;
+    if (allPushOk) {
+      lines.push(interpolate(t.qc.assignNotifyPushOk, { count: String(notify.notified) }));
+    }
+    if (notify.skippedNoLogin > 0) {
+      hasWarning = true;
+      lines.push(interpolate(t.qc.assignNotifyNoLogin, { count: String(notify.skippedNoLogin) }));
+    }
+    if (notify.pushPending > 0) {
+      hasWarning = true;
+      lines.push(interpolate(t.qc.assignNotifyPushPending, { count: String(notify.pushPending) }));
+    }
+    if (notify.failed > 0) {
+      hasWarning = true;
+      lines.push(interpolate(t.qc.assignNotifyFailed, { count: String(notify.failed) }));
+    }
+  }
+
+  if (lines.length === 0) return null;
+  return { tone: hasWarning ? 'warning' : 'success', lines };
+}
 
 export function QCReviewView({
   checklists: initialChecklists,
@@ -151,8 +207,8 @@ export function QCReviewView({
     checklistId: string,
     employeeIds: string[],
     dueDate?: string
-  ): Promise<{ created: AssignmentWithRelations[]; skipped: { employeeId: string; reason: string }[] }> {
-    let result = { created: [] as AssignmentWithRelations[], skipped: [] as { employeeId: string; reason: string }[] };
+  ): Promise<AssignResult> {
+    let result: AssignResult = { created: [], skipped: [], notify: null };
     await run('qc', async () => {
     const res = await fetch('/api/assignments', {
       method: 'POST',
@@ -162,13 +218,14 @@ export function QCReviewView({
     const data = (await res.json()) as {
       created?: AssignmentWithRelations[];
       skipped?: { employeeId: string; reason: string }[];
+      notify?: AssignmentNotifySummary | null;
       error?: string;
     };
     if (!res.ok || !data.created) {
       throw new Error(typeof data.error === 'string' ? data.error : 'Assignment failed');
     }
     setAssignments((prev) => [...prev, ...data.created!]);
-    result = { created: data.created, skipped: data.skipped ?? [] };
+    result = { created: data.created, skipped: data.skipped ?? [], notify: data.notify ?? null };
     });
     return result;
   }
@@ -442,7 +499,7 @@ export function QCReviewView({
                   </div>
                   <ul className="divide-y divide-gray-200/80 dark:divide-ios-dark-separator">
                     {group.rows.map((a, rowIndex) => {
-                      const dueDate = a.dueDate ? new Date(a.dueDate).toLocaleDateString() : '—';
+                      const dueDate = a.dueDate ? formatAppDate(a.dueDate, locale) : '—';
                       return (
                         <li
                           key={a.id}
@@ -513,7 +570,7 @@ export function QCReviewView({
               .map(([monthKey, rows]) => (
                 <div key={monthKey}>
                   <h3 className="text-sm font-semibold text-app-secondary mb-2">
-                    {new Date(`${monthKey}-01`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                    {formatAppMonthYear(monthKey, locale)}
                   </h3>
                   <ul className="space-y-3">
                     {rows.map((s) => (
@@ -790,11 +847,7 @@ function AssignForm({
   checklists: ChecklistWithItems[];
   employees: (Employee & { branch: Branch; department?: Department | null })[];
   branches: Branch[];
-  onAssign: (
-    checklistId: string,
-    employeeIds: string[],
-    dueDate?: string
-  ) => Promise<{ created: AssignmentWithRelations[]; skipped: { employeeId: string; reason: string }[] }>;
+  onAssign: (checklistId: string, employeeIds: string[], dueDate?: string) => Promise<AssignResult>;
   onCancel: () => void;
 }) {
   const { t } = useLanguage();
@@ -804,7 +857,7 @@ function AssignForm({
   const [dueDate, setDueDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: 'success' | 'warning'; lines: string[] } | null>(null);
 
   const selectedChecklist = checklists.find((c) => c.id === checklistId);
   const needsDueDate = Boolean(selectedChecklist && !selectedChecklist.repeatsDaily);
@@ -852,9 +905,14 @@ function AssignForm({
         }
         setBusy(true);
         try {
-          const { skipped } = await onAssign(checklistId, selectedIds, needsDueDate ? dueDate : undefined);
-          if (skipped.length > 0) {
-            setFeedback(interpolate(t.qc.assignSkippedSummary, { count: String(skipped.length) }));
+          const { created, skipped, notify } = await onAssign(
+            checklistId,
+            selectedIds,
+            needsDueDate ? dueDate : undefined
+          );
+          const summary = buildAssignFeedback(t, created.length, skipped.length, notify);
+          if (summary?.tone === 'warning') {
+            setFeedback(summary);
           } else {
             onCancel();
           }
@@ -964,7 +1022,22 @@ function AssignForm({
       </div>
 
       {formError && <p className="text-sm text-red-600 dark:text-red-400">{formError}</p>}
-      {feedback && <p className="text-sm text-amber-700 dark:text-amber-300">{feedback}</p>}
+      {feedback ? (
+        <div
+          className={`rounded-lg border px-3 py-2.5 text-sm ${
+            feedback.tone === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-100'
+              : 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100'
+          }`}
+          role="status"
+        >
+          <ul className="list-disc ps-5 space-y-1">
+            {feedback.lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <button

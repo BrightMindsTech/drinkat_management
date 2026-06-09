@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { SignOutButton } from '@/components/SignOutButton';
 import { PushConnectionNotice } from '@/components/PushConnectionNotice';
 import { PendingReviewNotice } from '@/components/PendingReviewNotice';
+import { WeeklyRatingNotice } from '@/components/WeeklyRatingNotice';
 import { InAppNotificationStack } from '@/components/in-app/InAppNotificationStack';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { isAppForeground, setForegroundInterval } from '@/lib/app-foreground';
@@ -18,6 +19,8 @@ import { DashboardScrollMain } from './DashboardScrollMain';
 import { DashboardSearchOverlay } from './DashboardSearchOverlay';
 import { usePathname, useRouter } from 'next/navigation';
 import { roleMayUseChat } from '@/lib/chat-policy';
+import { clearDashboardAutoRetry } from '@/lib/dashboard-auto-retry';
+import { releaseStuckModalViewport } from '@/lib/modal-present';
 
 function SidebarAccountBlock({ email, bottomSafeArea = true }: { email: string; bottomSafeArea?: boolean }) {
   return (
@@ -57,6 +60,12 @@ export function DashboardLayoutClient({
   const router = useRouter();
   const pathname = usePathname();
   const { dir } = useLanguage();
+
+  useEffect(() => {
+    clearDashboardAutoRetry();
+    releaseStuckModalViewport();
+    setSearchOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -185,6 +194,7 @@ export function DashboardLayoutClient({
       {/* Main column */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overscroll-none">
         <PendingReviewNotice role={role} />
+        <WeeklyRatingNotice role={role} />
         <InAppNotificationStack />
         {/* touch-none: drags on chrome must not scroll the main column / webview (iOS scroll chaining) */}
         {/* safe-pt-top once for push banner + header — banner was above this and hid under the notch */}

@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import type { LeaveRequest } from '@prisma/client';
 import type { Employee } from '@prisma/client';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import { useSubmitLock } from '@/lib/use-async-action-lock';
+import { parseApiErrorPayload } from '@/lib/parse-api-error';
+import { submitJsonWithRetry } from '@/lib/submit-json-with-retry';
 
 type LeaveWithEmployee = LeaveRequest & { employee: Employee & { branch: { name: string } } };
 
@@ -16,6 +18,7 @@ export function RequestLeaveForm({ onRequested }: { onRequested: (l: LeaveWithEm
   const [note, setNote] = useState('');
   const submitLock = useSubmitLock();
   const [error, setError] = useState('');
+  const [retryStatus, setRetryStatus] = useState('');
   const leaveDays =
     startDate && endDate
       ? Math.max(
@@ -35,17 +38,28 @@ export function RequestLeaveForm({ onRequested }: { onRequested: (l: LeaveWithEm
     }
     void submitLock.run(async () => {
       setError('');
-      const res = await fetch('/api/leave', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ startDate, endDate, type, note: note || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || t.leave.failedRequest);
+      setRetryStatus('');
+      const result = await submitJsonWithRetry<LeaveWithEmployee>(
+        '/api/leave',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ startDate, endDate, type, note: note || undefined }),
+        },
+        {
+          onRetry: ({ attempt, attempts }) => {
+            setRetryStatus(
+              interpolate(t.leave.retryingSubmit, { attempt: String(attempt), max: String(attempts) })
+            );
+          },
+        }
+      );
+      setRetryStatus('');
+      if (!result.ok) {
+        setError(parseApiErrorPayload(result.data, t.leave.failedRequest));
         return;
       }
-      onRequested(data);
+      onRequested(result.data);
       setStartDate('');
       setEndDate('');
       setNote('');
@@ -105,9 +119,14 @@ export function RequestLeaveForm({ onRequested }: { onRequested: (l: LeaveWithEm
           placeholder={t.advances.notePlaceholder}
         />
       </div>
+      {retryStatus && !error && (
+        <p className="text-sm text-amber-700 dark:text-amber-300 w-full mt-2" role="status">
+          {retryStatus}
+        </p>
+      )}
       {error && <p className="text-sm text-red-600 w-full mt-2">{error}</p>}
       <button type="submit" disabled={submitLock.busy} className="mt-3 rounded-ios bg-ios-blue text-white px-4 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50">
-        {submitLock.busy ? t.leave.submitting : t.leave.submit}
+        {submitLock.busy ? (retryStatus || t.leave.submitting) : t.leave.submit}
       </button>
     </form>
   );

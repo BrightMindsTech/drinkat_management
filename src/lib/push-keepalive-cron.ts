@@ -47,11 +47,12 @@ export async function sendPushKeepaliveIfDue(prisma: PrismaClient): Promise<{
   for (const userId of userIds) {
     const userSubs = subsByUser.get(userId);
     if (!userSubs?.length) continue;
-    deliveries += await sendPushToUser(userId, userSubs, {
+    const { delivered } = await sendPushToUser(userId, userSubs, {
       title: '',
       body: '',
       data: { type: 'push_keepalive' },
     });
+    deliveries += delivered;
   }
 
   await prisma.appCronWatermark.upsert({

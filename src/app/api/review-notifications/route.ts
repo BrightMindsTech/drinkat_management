@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
+import { isTransientDbError } from '@/lib/prisma-retry';
+import { logErrorThrottled } from '@/lib/log-throttle';
 
 export async function GET() {
   try {
@@ -79,6 +81,7 @@ export async function GET() {
           template: { category: 'qc' },
           branchId: managerBranchId,
           status: 'submitted',
+          reviewedAt: null,
           submittedAt: { gte: qcFormSince },
         },
         select: {
@@ -194,7 +197,15 @@ export async function GET() {
     });
   } catch (e) {
     if (e instanceof Response) return e;
-    console.error('[review-notifications GET]', e);
+    if (isTransientDbError(e)) {
+      logErrorThrottled(
+        'api:review-notifications',
+        () => console.error('[review-notifications GET] transient after retries', e),
+        5 * 60 * 1000
+      );
+    } else {
+      console.error('[review-notifications GET]', e);
+    }
     return Response.json({ total: 0, items: [] }, { status: 200 });
   }
 }

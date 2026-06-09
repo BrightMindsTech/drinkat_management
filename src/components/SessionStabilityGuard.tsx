@@ -3,32 +3,34 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
+import { fetchAuthSession } from '@/lib/auth-session-client';
 
 const API_UNAUTHORIZED = 'drinkat:api-unauthorized';
 const RECOVER_ATTEMPTS = 8;
 const RECOVER_MS = 600;
 
 async function sessionStillValid(): Promise<boolean> {
-  try {
-    const res = await fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { user?: unknown };
-    return !!data?.user;
-  } catch {
-    return false;
-  }
+  const result = await fetchAuthSession();
+  return result.hasUser;
 }
 
 async function recoverSession(router: ReturnType<typeof useRouter>): Promise<boolean> {
   for (let i = 0; i < RECOVER_ATTEMPTS; i++) {
     if (await sessionStillValid()) {
-      router.refresh();
+      const now = Date.now();
+      if (now - lastSessionRefreshAt >= MIN_SESSION_REFRESH_MS) {
+        lastSessionRefreshAt = now;
+        router.refresh();
+      }
       return true;
     }
     await new Promise((r) => setTimeout(r, RECOVER_MS));
   }
   return false;
 }
+
+let lastSessionRefreshAt = 0;
+const MIN_SESSION_REFRESH_MS = 30_000;
 
 /**
  * Soft recovery when an API returns 401 but the session cookie may still be valid

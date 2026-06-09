@@ -26,7 +26,6 @@ function readLocalePath(t: LocaleMessages, path: string): string {
 
 const PAGE_PATHS = [
   '/dashboard',
-  '/dashboard/time-clock',
   '/dashboard/messages',
   '/dashboard/hr',
   '/dashboard/forms',
@@ -38,7 +37,6 @@ const PAGE_PATHS = [
 
 const STATIC_KEYWORDS: Record<string, string[]> = {
   '/dashboard': ['home', 'dashboard', 'overview'],
-  '/dashboard/time-clock': ['time', 'clock', 'attendance', 'shift', 'away', 'punch'],
   '/dashboard/messages': ['chat', 'messages', 'inbox', 'thread'],
   '/dashboard/hr': ['hr', 'employees', 'leave', 'advance', 'salary'],
   '/dashboard/forms': ['forms', 'submissions', 'checkup', 'template'],

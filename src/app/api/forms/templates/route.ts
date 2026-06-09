@@ -75,6 +75,7 @@ export async function GET(req: NextRequest) {
       ctx,
       {
         category: t.category,
+        title: t.title,
         departmentAssignments: t.departmentAssignments,
         employeeAssignments: t.employeeAssignments,
       },

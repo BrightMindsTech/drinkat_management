@@ -72,7 +72,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
           push: {
             title: 'Checklist unassigned',
             body: `You are no longer assigned to "${assignment.checklist.name}".`,
-            data: { type: 'qc_assignment_removed', url: href, checklistId: assignment.checklistId },
+            data: {
+              type: 'qc_assignment_removed',
+              url: href,
+              checklistId: assignment.checklistId,
+              assignmentId: assignment.id,
+            },
           },
         });
       } catch (notifyErr) {

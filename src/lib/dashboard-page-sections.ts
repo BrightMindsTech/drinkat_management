@@ -65,8 +65,6 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
     if (role === 'owner') {
       return [
         { id: 'hr-owner-push-broadcast', labelRef: 'hr.pushBroadcastTitle' },
-        { id: 'hr-branch-geofence', labelRef: 'hr.branchGeofenceTitle' },
-        { id: 'hr-owner-live-attendance', labelRef: 'hr.liveAttendanceTitle' },
         { id: 'hr-owner-staff', labelRef: 'hr.staff' },
         { id: 'hr-owner-departments', labelRef: 'hr.departments' },
         { id: 'hr-owner-manager-assignments', labelRef: 'hr.assignToManager' },
@@ -99,15 +97,6 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
     return [];
   }
 
-  if (path.startsWith('/dashboard/time-clock')) {
-    const out: PageSectionDef[] = [{ id: 'section-tc-main', labelRef: 'timeClock.title' }];
-    if (role === 'manager') {
-      out.push({ id: 'section-tc-alerts', labelRef: 'timeClock.clockAlertsTitle' });
-      out.push({ id: 'section-tc-logs', labelRef: 'timeClock.employeeLogsTitle' });
-    }
-    return out;
-  }
-
   if (path.startsWith('/dashboard/messages')) {
     // Chat already has its own navigation/header patterns; the sticky bottom
     // "On this page" bar overlaps the composer on phones.
@@ -126,10 +115,6 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
         labelRef: 'managerReports.categoryWeeklyRating',
       },
       { id: 'section-mgr-rpt-cat-manager_form_report', labelRef: 'managerReports.categoryForm' },
-      {
-        id: 'section-mgr-rpt-cat-manager_time_clock_report',
-        labelRef: 'managerReports.categoryTimeClock',
-      },
     ];
   }
 

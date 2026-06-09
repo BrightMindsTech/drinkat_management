@@ -4,6 +4,8 @@ import { useState, useMemo } from 'react';
 import type { Advance, Employee } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import { useSubmitLock } from '@/lib/use-async-action-lock';
+import { parseApiErrorPayload } from '@/lib/parse-api-error';
+import { submitJsonWithRetry } from '@/lib/submit-json-with-retry';
 
 type AdvanceWithEmployee = Advance & { employee: Employee & { branch: { name: string } } };
 
@@ -21,6 +23,7 @@ export function RequestAdvanceForm({
   const [note, setNote] = useState('');
   const submitLock = useSubmitLock();
   const [error, setError] = useState('');
+  const [retryStatus, setRetryStatus] = useState('');
 
   const remaining = advanceLimit != null ? advanceLimit - approvedSum : null;
   const wouldExceed = useMemo(() => {
@@ -42,17 +45,28 @@ export function RequestAdvanceForm({
     }
     void submitLock.run(async () => {
       setError('');
-      const res = await fetch('/api/advances', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: num, note: note || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || t.advances.failedRequest);
+      setRetryStatus('');
+      const result = await submitJsonWithRetry<AdvanceWithEmployee>(
+        '/api/advances',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: num, note: note || undefined }),
+        },
+        {
+          onRetry: ({ attempt, attempts }) => {
+            setRetryStatus(
+              interpolate(t.advances.retryingSubmit, { attempt: String(attempt), max: String(attempts) })
+            );
+          },
+        }
+      );
+      setRetryStatus('');
+      if (!result.ok) {
+        setError(parseApiErrorPayload(result.data, t.advances.failedRequest));
         return;
       }
-      onRequested(data);
+      onRequested(result.data);
       setAmount('');
       setNote('');
     });
@@ -114,6 +128,11 @@ export function RequestAdvanceForm({
           />
         </div>
       </div>
+      {retryStatus && !error && (
+        <p className="mt-2 text-sm text-amber-700 dark:text-amber-300 w-full" role="status">
+          {retryStatus}
+        </p>
+      )}
       {error && <p className="mt-2 text-sm text-red-600 w-full">{error}</p>}
       <div className="mt-3 flex items-center justify-end">
         <button
@@ -121,7 +140,7 @@ export function RequestAdvanceForm({
           disabled={submitLock.busy || wouldExceed}
           className="rounded-ios bg-ios-blue text-white px-4 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50"
         >
-          {submitLock.busy ? t.advances.submitting : t.advances.requestAdvance}
+          {submitLock.busy ? (retryStatus || t.advances.submitting) : t.advances.requestAdvance}
         </button>
       </div>
     </form>

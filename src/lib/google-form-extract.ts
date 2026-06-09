@@ -90,37 +90,65 @@ type RawFormItem = [
   ...unknown[],
 ];
 
+function choiceOptionsFromItem(item: RawFormItem): string[] {
+  const block = item[4];
+  if (!block || !Array.isArray(block)) return [];
+  const inner = block[0];
+  if (!Array.isArray(inner) || inner.length < 2) return [];
+  const choices = inner[1];
+  if (!Array.isArray(choices)) return [];
+  return choices
+    .map((c) => (Array.isArray(c) ? c[0] : null))
+    .filter((o): o is string => typeof o === 'string' && o.length > 0);
+}
+
+function normalizeSelectOptions(options: string[]): string[] {
+  const opts = options.map((o) => (o === 'yes' ? 'Yes' : o === 'no' ? 'No' : o));
+  return opts.length > 0 ? opts : ['Yes', 'No'];
+}
+
 export function parseGoogleFormPayload(data: unknown[]): {
   title: string;
   description?: string;
   fields: FormFieldDef[];
 } {
-  const row = data[1] as unknown[];
-  const title = String(row[8] ?? '').trim();
+  const row = data[1] as unknown[] | undefined;
+  if (!row) {
+    return { title: '', fields: [] };
+  }
+  const title = String(row[8] ?? row[10] ?? '').trim();
   const desc = row[0] ? String(row[0]) : undefined;
-  const items = (row[1] as RawFormItem[] | null) ?? [];
+  const rawItems = row[1];
+  const items = Array.isArray(rawItems) ? (rawItems as RawFormItem[]) : [];
   const fields: FormFieldDef[] = [];
   const used = new Set<string>();
   let idx = 0;
 
   for (const item of items) {
     if (!item || !item[1]) continue;
-    idx++;
     const label = String(item[1]).replace(/\s+/g, ' ').trim();
     const typeId = item[3];
-    const choiceBlock = (item[4] as [unknown, [string, unknown][]] | undefined)?.[0]?.[1];
-    const options = (choiceBlock ?? [])
-      .map((c) => (Array.isArray(c) ? c[0] : null))
-      .filter((o): o is string => typeof o === 'string' && o.length > 0);
+    if (typeId === 1) continue;
+    idx++;
+    const options = choiceOptionsFromItem(item);
     const key = makeFieldKey(label, idx, used);
 
     if (typeId === 0) {
       fields.push({ key, label, type: 'text', required: true });
     } else if (typeId === 2 || typeId === 3) {
-      const opts = options.map((o) => (o === 'yes' ? 'Yes' : o === 'No' ? 'No' : o));
-      fields.push({ key, label, type: 'select', required: true, options: opts });
+      fields.push({
+        key,
+        label,
+        type: 'select',
+        required: true,
+        options: normalizeSelectOptions(options),
+      });
     } else if (typeId === 4) {
       fields.push({ key, label, type: 'checkbox', required: false });
+    } else if (typeId === 9) {
+      fields.push({ key, label, type: 'date', required: false });
+    } else if (typeId === 13) {
+      fields.push({ key, label, type: 'photo', required: false });
     } else {
       fields.push({ key, label, type: 'text', required: false });
     }
@@ -133,6 +161,21 @@ export type ParseGoogleFormPasteResult =
   | { ok: true; title: string; description?: string; fields: FormFieldDef[] }
   | { ok: false; error: string };
 
+function validateParsedGoogleForm(parsed: {
+  title: string;
+  description?: string;
+  fields: FormFieldDef[];
+}): ParseGoogleFormPasteResult {
+  if (!parsed.title) return { ok: false, error: 'Form title missing in pasted data.' };
+  if (parsed.fields.length === 0) return { ok: false, error: 'No questions found in pasted data.' };
+  try {
+    const fields = formTemplateFieldsSchema.parse(parsed.fields);
+    return { ok: true, title: parsed.title, description: parsed.description, fields };
+  } catch {
+    return { ok: false, error: 'Imported fields are invalid. Try copying the form JSON again.' };
+  }
+}
+
 export function parseGoogleFormPaste(raw: string): ParseGoogleFormPasteResult {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -142,20 +185,28 @@ export function parseGoogleFormPaste(raw: string): ParseGoogleFormPasteResult {
   if (trimmed.includes('FB_PUBLIC_LOAD_DATA_')) {
     const data = extractJson(trimmed);
     if (data) {
-      const parsed = parseGoogleFormPayload(data);
-      if (!parsed.title) return { ok: false, error: 'Form title missing in pasted data.' };
-      if (parsed.fields.length === 0) return { ok: false, error: 'No questions found in pasted data.' };
-      return { ok: true, ...parsed };
+      try {
+        const parsed = parseGoogleFormPayload(data);
+        const validated = validateParsedGoogleForm(parsed);
+        if (!validated.ok) return validated;
+        return { ok: true, ...validated };
+      } catch {
+        return { ok: false, error: 'Could not read questions from pasted form data.' };
+      }
     }
   }
 
   try {
     const json = JSON.parse(trimmed) as unknown;
     if (Array.isArray(json) && json[1]) {
-      const parsed = parseGoogleFormPayload(json);
-      if (!parsed.title) return { ok: false, error: 'Form title missing in pasted data.' };
-      if (parsed.fields.length === 0) return { ok: false, error: 'No questions found in pasted data.' };
-      return { ok: true, ...parsed };
+      try {
+        const parsed = parseGoogleFormPayload(json);
+        const validated = validateParsedGoogleForm(parsed);
+        if (!validated.ok) return validated;
+        return { ok: true, ...validated };
+      } catch {
+        return { ok: false, error: 'Could not read questions from pasted form data.' };
+      }
     }
     if (json && typeof json === 'object' && !Array.isArray(json)) {
       const o = json as Record<string, unknown>;

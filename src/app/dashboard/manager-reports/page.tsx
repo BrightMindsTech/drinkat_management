@@ -15,21 +15,14 @@ export default async function OwnerManagerReportsPage() {
   const role = normalizeUserRole(session.user.role);
   if (role !== 'owner') redirect('/dashboard');
 
-  const [reports, timeClockAlerts] = await Promise.all([
-    prisma.inboxNotification.findMany({
-      where: {
-        userId: session.user.id,
-        category: { in: ['manager_time_clock_report', 'manager_form_report', 'weekly_rating_submitted'] },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    }),
-    prisma.inboxNotification.findMany({
-      where: { userId: session.user.id, category: 'time_clock' },
-      orderBy: { createdAt: 'desc' },
-      take: 80,
-    }),
-  ]);
+  const reports = await prisma.inboxNotification.findMany({
+    where: {
+      userId: session.user.id,
+      category: { in: ['manager_form_report', 'weekly_rating_submitted'] },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
 
   const parsed = reports.map((r) => {
     let data: Record<string, unknown> = {};
@@ -40,10 +33,7 @@ export default async function OwnerManagerReportsPage() {
     }
     return {
       id: r.id,
-      category: r.category as
-        | 'manager_time_clock_report'
-        | 'manager_form_report'
-        | 'weekly_rating_submitted',
+      category: r.category as 'manager_form_report' | 'weekly_rating_submitted',
       title: r.title,
       body: r.body,
       createdAt: r.createdAt.toISOString(),
@@ -93,59 +83,10 @@ export default async function OwnerManagerReportsPage() {
     details: r.details,
   }));
 
-  const alertEmployeeIds = [
-    ...new Set(
-      timeClockAlerts
-        .map((n) => {
-          try {
-            const data = n.dataJson ? (JSON.parse(n.dataJson) as Record<string, unknown>) : {};
-            const id = data.employeeId;
-            return typeof id === 'string' && id.length > 0 ? id : null;
-          } catch {
-            return null;
-          }
-        })
-        .filter((id): id is string => !!id)
-    ),
-  ];
-  const alertEmployeesById = new Map(
-    (
-      alertEmployeeIds.length > 0
-        ? await prisma.employee.findMany({
-            where: { id: { in: alertEmployeeIds } },
-            select: { id: true, name: true, branch: { select: { name: true } } },
-          })
-        : []
-    ).map((e) => [e.id, e] as const)
-  );
-
-  const normalizedTimeClockAlerts: OwnerTimeClockAlert[] = timeClockAlerts.map((n) => {
-    let data: Record<string, unknown> = {};
-    try {
-      data = n.dataJson ? (JSON.parse(n.dataJson) as Record<string, unknown>) : {};
-    } catch {
-      data = {};
-    }
-    const employeeId = typeof data.employeeId === 'string' ? data.employeeId : '';
-    const resolved = employeeId ? alertEmployeesById.get(employeeId) : null;
-    const employeeName =
-      (typeof data.employeeName === 'string' && data.employeeName.trim()) || resolved?.name || '—';
-    const branchName =
-      (typeof data.branchName === 'string' && data.branchName.trim()) || resolved?.branch.name || '—';
-    return {
-      id: n.id,
-      title: n.title,
-      body: n.body,
-      createdAt: n.createdAt.toISOString(),
-      employeeName,
-      branchName,
-    };
-  });
-
   return (
     <ManagerReportsInbox
       initialReports={normalized}
-      initialTimeClockAlerts={normalizedTimeClockAlerts}
+      initialTimeClockAlerts={[] satisfies OwnerTimeClockAlert[]}
     />
   );
 }
