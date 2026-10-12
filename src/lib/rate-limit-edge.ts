@@ -56,6 +56,7 @@ function tierForRequest(pathname: string, method: string): LimitTier | null {
     return null;
   }
   if (pathname.startsWith('/api/auth/')) return 'auth';
+  if (pathname.startsWith('/api/ai/')) return 'write';
   if (pathname === '/api/reports' && method === 'GET') return 'heavy';
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return 'read';
   if (method === 'POST' || method === 'PATCH' || method === 'DELETE' || method === 'PUT') {

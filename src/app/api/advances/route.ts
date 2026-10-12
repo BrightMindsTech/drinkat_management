@@ -7,6 +7,7 @@ import { normalizeUserRole } from '@/lib/formVisibility';
 import { currentAdvancePeriodMonth } from '@/lib/advance-period-month';
 import { withPrismaRetry } from '@/lib/prisma-retry';
 import { z } from 'zod';
+import { hrOperationsFrozenResponse } from '@/lib/hr-operations-freeze';
 
 const RECENT_REQUEST_WINDOW_MS = 5 * 60 * 1000;
 
@@ -17,6 +18,7 @@ const createSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
+  return hrOperationsFrozenResponse();
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
   const { searchParams } = new URL(req.url);
@@ -59,6 +61,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  return hrOperationsFrozenResponse();
   try {
   const session = await requireSession();
   const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });

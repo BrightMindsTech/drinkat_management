@@ -2,10 +2,12 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import { formatAppDateTime, isSameAmmanCalendarDay } from '@/lib/format-datetime';
 import type { FormFieldDef } from '@/lib/formTemplate';
+import { isStaffLevelRole } from '@/lib/permissions';
 import { scrollIntoViewById } from '@/lib/scrollIntoViewDeferred';
 import { buildSubmissionReportTable, type SubmissionReportCsvInput } from '@/lib/formSubmissionCsv';
 import { ReportTableModal } from '@/components/ReportTableModal';
@@ -590,7 +592,10 @@ export function ManagementFormsView({
 
   const showReview = role === 'owner' || role === 'manager';
   const showFillSection =
-    role === 'staff' || role === 'qc' || role === 'marketing' || (role === 'manager' && templatesForFill.length > 0);
+    isStaffLevelRole(role) ||
+    role === 'qc' ||
+    role === 'marketing' ||
+    (role === 'manager' && templatesForFill.length > 0);
 
   return (
     <div className="app-page">
@@ -632,6 +637,9 @@ export function ManagementFormsView({
                         <p className="text-xs text-app-muted">{categoryTitle(tpl.category)} - {tpl.fields.length} fields</p>
                       </div>
                       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        <Link href={`/dashboard/forms/templates/${tpl.id}`} className="app-btn-secondary">
+                          {t.qcOps.versionsTitle}
+                        </Link>
                         <button type="button" onClick={() => startOwnerEdit(tpl)} className="app-btn-secondary">
                           {t.common.edit}
                         </button>
@@ -869,7 +877,7 @@ export function ManagementFormsView({
         </section>
       )}
 
-      {(role === 'staff' || role === 'qc' || role === 'marketing' || role === 'manager') && (
+      {(isStaffLevelRole(role) || role === 'qc' || role === 'marketing' || role === 'manager') && (
         <section id="section-forms-my-submissions" className={sectionClass}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold text-app-primary">{t.forms.mySubmissions}</h2>

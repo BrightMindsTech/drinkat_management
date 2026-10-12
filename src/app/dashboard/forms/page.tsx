@@ -4,6 +4,8 @@ import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery'
 import { prisma } from '@/lib/prisma';
 import { withPrismaRetryOrFallback } from '@/lib/prisma-retry';
 import { parseTemplateFields } from '@/lib/formTemplate';
+import { pinnedSubmissionFieldsJson } from '@/lib/form-template-version';
+import { isStaffLevelRole } from '@/lib/permissions';
 import { safeParseJsonRecord } from '@/lib/safe-json';
 import {
   canManagerAssignTemplate,
@@ -25,6 +27,22 @@ export const dynamic = 'force-dynamic';
 
 async function safeQuery<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
   return withPrismaRetryOrFallback(`forms/page ${label}`, fn, fallback);
+}
+
+function parsePinnedSubmissionFields(s: {
+  templateVersion?: { fieldsJson: string } | null;
+  template: { fieldsJson: string };
+}) {
+  try {
+    return parseTemplateFields(
+      pinnedSubmissionFieldsJson({
+        versionFieldsJson: s.templateVersion?.fieldsJson,
+        liveFieldsJson: s.template.fieldsJson,
+      })
+    );
+  } catch {
+    return [];
+  }
 }
 
 export default async function FormsPage() {
@@ -197,6 +215,7 @@ export default async function FormsPage() {
             where: managerManagementFormSubmissionWhere(managerEmployee),
             include: {
               template: { include: { departmentAssignments: true } },
+              templateVersion: { select: { fieldsJson: true } },
               employee: {
                 include: {
                   branch: true,
@@ -226,13 +245,7 @@ export default async function FormsPage() {
           title: s.template.title,
           description: s.template.description,
           departmentIds: s.template.departmentAssignments.map((a) => a.departmentId),
-          fields: (() => {
-            try {
-              return parseTemplateFields(s.template.fieldsJson);
-            } catch {
-              return [];
-            }
-          })(),
+          fields: parsePinnedSubmissionFields(s),
         },
         employee: { name: s.employee.name },
         branch: { name: s.branch.name },
@@ -250,6 +263,7 @@ export default async function FormsPage() {
             where: whereSub,
             include: {
               template: { include: { departmentAssignments: true } },
+              templateVersion: { select: { fieldsJson: true } },
               employee: {
                 include: {
                   branch: true,
@@ -278,13 +292,7 @@ export default async function FormsPage() {
           title: s.template.title,
           description: s.template.description,
           departmentIds: s.template.departmentAssignments.map((a) => a.departmentId),
-          fields: (() => {
-            try {
-              return parseTemplateFields(s.template.fieldsJson);
-            } catch {
-              return [];
-            }
-          })(),
+          fields: parsePinnedSubmissionFields(s),
         },
         employee: { name: s.employee.name },
         branch: { name: s.branch.name },
@@ -297,14 +305,18 @@ export default async function FormsPage() {
   }
 
   let mySubmissions: FormsMySubmission[] = [];
-  if (role === 'staff' || role === 'qc' || role === 'marketing' || role === 'manager') {
+  if (isStaffLevelRole(role) || role === 'qc' || role === 'marketing' || role === 'manager') {
     if (user?.employee) {
       const list = await safeQuery(
         'load my submissions',
         () =>
           prisma.managementFormSubmission.findMany({
             where: { employeeId: user.employee.id },
-            include: { template: true, branch: true },
+            include: {
+              template: true,
+              templateVersion: { select: { fieldsJson: true } },
+              branch: true,
+            },
             orderBy: { submittedAt: 'desc' },
             take: 100,
           }),
@@ -319,13 +331,7 @@ export default async function FormsPage() {
           id: s.template.id,
           title: s.template.title,
           category: s.template.category,
-          fields: (() => {
-            try {
-              return parseTemplateFields(s.template.fieldsJson);
-            } catch {
-              return [];
-            }
-          })(),
+          fields: parsePinnedSubmissionFields(s),
         },
         branch: { name: s.branch.name },
       }));
@@ -333,7 +339,7 @@ export default async function FormsPage() {
   }
 
   let staffEmptyHint: 'noEmployee' | 'noDepartment' | 'noneForDept' | null = null;
-  if ((role === 'staff' || role === 'marketing' || role === 'manager') && templatesForFill.length === 0) {
+  if ((isStaffLevelRole(role) || role === 'marketing' || role === 'manager') && templatesForFill.length === 0) {
     if (!user?.employee) staffEmptyHint = 'noEmployee';
     else if (!user.employee.departmentId) staffEmptyHint = 'noDepartment';
     else staffEmptyHint = 'noneForDept';

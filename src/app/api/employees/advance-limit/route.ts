@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
+import { hrOperationsFrozenResponse } from '@/lib/hr-operations-freeze';
 
 const bulkAdvanceLimitSchema = z.object({
   advanceLimit: z.number().min(0).nullable(),
@@ -10,7 +12,8 @@ const bulkAdvanceLimitSchema = z.object({
  * Owner-only bulk update: set one advance limit for all active employees.
  * Pass `null` to clear the limit.
  */
-export async function PATCH(req: Request) {
+export const PATCH = withApiErrors(async function PATCH(req: Request) {
+  return hrOperationsFrozenResponse();
   await requireOwner();
 
   const raw = await req.json().catch(() => null);
@@ -30,4 +33,4 @@ export async function PATCH(req: Request) {
     updatedEmployees: result.count,
     advanceLimit,
   });
-}
+});

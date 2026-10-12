@@ -4,6 +4,7 @@
 .cursor/
 
 .dev.vars
+.dev.vars.staging
 .env
 .env*.local
 .wrangler
@@ -13,6 +14,7 @@ public/uploads
 
 # Local DB exports (may contain sensitive data)
 backups/
+.backups/
 
 # Dependencies & build (do not commit)
 node_modules/

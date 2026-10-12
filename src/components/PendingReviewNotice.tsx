@@ -7,6 +7,7 @@ import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { setForegroundInterval } from '@/lib/app-foreground';
 import { useInAppNotifications } from '@/contexts/InAppNotificationContext';
 import { fetchWithRetry } from '@/lib/fetch-with-retry';
+import { isStaffLevelRole } from '@/lib/permissions';
 
 type PendingItem = {
   id: string;
@@ -51,7 +52,14 @@ export function PendingReviewNotice({ role }: { role: string }) {
   const itemKeyRef = useRef('');
 
   useEffect(() => {
-    if (role !== 'owner' && role !== 'qc' && role !== 'staff' && role !== 'manager' && role !== 'marketing') return;
+    if (
+      role !== 'owner' &&
+      role !== 'qc' &&
+      role !== 'manager' &&
+      role !== 'marketing' &&
+      !isStaffLevelRole(role)
+    )
+      return;
 
     let mounted = true;
     async function load() {

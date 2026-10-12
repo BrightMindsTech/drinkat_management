@@ -2,8 +2,9 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireQc } from '@/lib/session';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = withApiErrors(async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireQc();
   const { id } = await params;
   const checklist = await prisma.checklist.findUnique({
@@ -12,7 +13,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   });
   if (!checklist) return new Response(null, { status: 404 });
   return Response.json(checklist);
-}
+});
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -21,7 +22,7 @@ const updateSchema = z.object({
   deadlineTime: z.string().regex(/^\d{1,2}:\d{2}$/).optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = withApiErrors(async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireQc();
   const { id } = await params;
   const body = await req.json();
@@ -34,11 +35,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { branch: true, items: { orderBy: { sortOrder: 'asc' } } },
   });
   return Response.json(checklist);
-}
+});
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = withApiErrors(async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireQc();
   const { id } = await params;
   await prisma.checklist.delete({ where: { id } });
   return new Response(null, { status: 204 });
-}
+});

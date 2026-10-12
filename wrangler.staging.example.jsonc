@@ -1,0 +1,29 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "drinkat-qc-staging",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2026-03-17",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public",
+		"no_handle_cross_request_promise_resolution"
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "drinkat-qc-staging",
+			"database_id": "REPLACE_AFTER_wrangler_d1_create_drinkat-qc-staging"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "UPLOADS",
+			"bucket_name": "drinkat-qc-staging-uploads"
+		}
+	],
+	"vars": {
+		"AUTH_TRUST_HOST": "1",
+		"DATABASE_URL": "",
+		"WORKER_PUBLIC_URL": "https://drinkat-qc-staging.REPLACE.workers.dev"
+	}
+}

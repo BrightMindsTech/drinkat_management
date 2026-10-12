@@ -1,14 +1,15 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireOwner } from '@/lib/session';
+import { requireHrStaffAdmin } from '@/lib/session';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
 
 const bodySchema = z.object({
   toBranchId: z.string().min(1),
 });
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireOwner();
+export const POST = withApiErrors(async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await requireHrStaffAdmin();
 
   const body = await req.json();
   const parsed = bodySchema.safeParse(body);
@@ -65,4 +66,4 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
   });
   return Response.json(updated);
-}
+});

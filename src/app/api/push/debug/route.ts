@@ -1,10 +1,11 @@
 import { requireOwner } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
+import { withApiErrors } from '@/lib/api-route-error';
 
 /**
  * Owner-only push diagnostics for the signed-in account.
  */
-export async function GET() {
+export const GET = withApiErrors(async function GET() {
   try {
     const session = await requireOwner();
     const subs = await prisma.pushSubscription.findMany({
@@ -48,4 +49,4 @@ export async function GET() {
     if (e instanceof Response) return e;
     return Response.json({ error: 'Failed' }, { status: 500 });
   }
-}
+});

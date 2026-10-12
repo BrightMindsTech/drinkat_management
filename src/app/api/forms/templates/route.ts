@@ -2,12 +2,14 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner, requireSession } from '@/lib/session';
 import { formTemplateFieldsSchema } from '@/lib/formTemplate';
+import { publishFormTemplateVersion } from '@/lib/form-template-version';
 import {
   canUserFillTemplate,
   normalizeUserRole,
   type FormViewContext,
 } from '@/lib/formVisibility';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
 
 const createSchema = z.object({
   category: z.string().min(1),
@@ -34,7 +36,7 @@ function mapTemplatesForResponse(templates: TemplateWithDepts[]) {
   }));
 }
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrors(async function GET(req: NextRequest) {
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
   const { searchParams } = new URL(req.url);
@@ -85,9 +87,9 @@ export async function GET(req: NextRequest) {
   );
 
   return Response.json(mapTemplatesForResponse(visible));
-}
+});
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrors(async function POST(req: NextRequest) {
   await requireOwner();
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
@@ -124,9 +126,17 @@ export async function POST(req: NextRequest) {
     include: { departmentAssignments: true },
   });
 
+  await publishFormTemplateVersion(prisma, {
+    templateId: t.id,
+    category: t.category,
+    title: t.title,
+    description: t.description,
+    fieldsJson: t.fieldsJson,
+  });
+
   return Response.json({
     ...t,
     fields: fieldsParsed.data,
     departmentIds: t.departmentAssignments.map((a) => a.departmentId),
   });
-}
+});

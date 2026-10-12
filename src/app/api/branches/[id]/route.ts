@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
 
 const patchSchema = z.object({
   shiftProfile: z.enum(['default', 'airport']).optional(),
 });
 
-export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+export const PATCH = withApiErrors(async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   await requireOwner();
   const { id } = await ctx.params;
   const raw = await req.json();
@@ -30,4 +31,4 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     name: updated.name,
     shiftProfile: updated.shiftProfile,
   });
-}
+});

@@ -10,6 +10,7 @@ import {
   findDirectThreadForPair,
   listThreadsForUser,
 } from '@/lib/chat-thread';
+import { qcChatForbiddenResponse } from '@/lib/qc-chat-freeze';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +34,7 @@ const postSchema = z.union([
 ]);
 
 export async function GET() {
+  return qcChatForbiddenResponse();
   try {
     const session = await requireSession();
     const role = normalizeUserRole(session.user.role);
@@ -53,6 +55,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  return qcChatForbiddenResponse();
   try {
     const session = await requireSession();
     const role = normalizeUserRole(session.user.role);

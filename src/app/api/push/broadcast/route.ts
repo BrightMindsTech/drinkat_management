@@ -7,6 +7,7 @@ import {
   OwnerPushBroadcastCooldownError,
   sendOwnerPushBroadcast,
 } from '@/lib/owner-push-broadcast';
+import { withApiErrors } from '@/lib/api-route-error';
 
 const bodySchema = z.object({
   title: z.string().trim().min(1).max(80),
@@ -14,16 +15,16 @@ const bodySchema = z.object({
   href: z.string().trim().max(200).optional(),
 });
 
-export async function GET() {
+export const GET = withApiErrors(async function GET() {
   await requireOwner();
   const [audience, cooldownRemainingMs] = await Promise.all([
     getOwnerPushBroadcastAudienceStats(prisma),
     getOwnerPushBroadcastCooldownRemainingMs(prisma),
   ]);
   return Response.json({ ...audience, cooldownRemainingMs });
-}
+});
 
-export async function POST(req: Request) {
+export const POST = withApiErrors(async function POST(req: Request) {
   await requireOwner();
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) {
@@ -46,4 +47,4 @@ export async function POST(req: Request) {
     console.error('[push/broadcast POST]', e);
     return Response.json({ error: 'Broadcast failed' }, { status: 500 });
   }
-}
+});

@@ -28,6 +28,10 @@ const PUSH_TYPE_ROUTES: Record<string, RouteBuilder> = {
       ? `/dashboard/qc#qc-assignment-${d.assignmentId}`
       : '/dashboard/qc',
   qc_assignment_removed: () => '/dashboard/qc',
+  staff_qc_submit: (d) =>
+    d.assignmentId
+      ? `/dashboard/qc#qc-assignment-${d.assignmentId}`
+      : '/dashboard/qc',
   advance_request_pending_review: () => '/dashboard/hr#hr-owner-advances',
   advance_decided: () => '/dashboard/hr',
   leave_request_pending_review: () => '/dashboard/hr#hr-owner-leave',
@@ -39,6 +43,15 @@ const PUSH_TYPE_ROUTES: Record<string, RouteBuilder> = {
   weekly_rating_reminder: () => '/dashboard/ratings',
   push_test: () => '/dashboard/messages',
   push_connected: () => '/dashboard',
+  daily_app_reminder: () => '/dashboard',
+  inspection_submitted: () => '/dashboard/issues',
+  inspection_due: () => '/dashboard/tasks',
+  inspection_overdue: () => '/dashboard/tasks',
+  issue_escalation: (d) => (d.issueId ? `/dashboard/issues/${d.issueId}` : '/dashboard/issues'),
+  photo_check_due: (d) => (d.taskId ? `/dashboard/photo?task=${encodeURIComponent(d.taskId)}` : '/dashboard/photo'),
+  photo_check_overdue: (d) => (d.taskId ? `/dashboard/photo?task=${encodeURIComponent(d.taskId)}` : '/dashboard/photo'),
+  staff_note: () => '/dashboard',
+  qc_field_report: (d) => (d.reportId ? `/dashboard/qc-reports#${d.reportId}` : '/dashboard/qc-reports'),
 };
 
 /** Normalize absolute or relative URLs to an in-app path. */

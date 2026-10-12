@@ -97,6 +97,51 @@ const APNS_EXPIRED_REASONS = new Set([
   'InvalidProviderToken',
 ]);
 
+/**
+ * Apple throttles provider-token churn (TooManyProviderTokenUpdates) — reuse one JWT
+ * for ~45 min (must be < 1h old) instead of minting per push.
+ */
+let apnsJwtCache: { token: string; mintedAt: number; sig: string } | null = null;
+const APNS_JWT_TTL_MS = 45 * 60 * 1000;
+
+async function getApnsJwtCached(keyId: string, teamId: string, pem: string): Promise<string> {
+  const sig = `${keyId}:${teamId}`;
+  const now = Date.now();
+  if (apnsJwtCache && apnsJwtCache.sig === sig && now - apnsJwtCache.mintedAt < APNS_JWT_TTL_MS) {
+    return apnsJwtCache.token;
+  }
+  const token = await makeApnsJwt(keyId, teamId, pem);
+  apnsJwtCache = { token, mintedAt: now, sig };
+  return token;
+}
+
+function invalidateApnsJwtCache(): void {
+  apnsJwtCache = null;
+}
+
+/** Hosts whose environment rejects our key (BadEnvironmentKeyInToken) — skip until restart/expiry. */
+const apnsHostUnusableUntil = new Map<string, number>();
+const APNS_HOST_UNUSABLE_MS = 6 * 60 * 60 * 1000;
+
+function apnsHostUnusable(host: string): boolean {
+  const until = apnsHostUnusableUntil.get(host);
+  return until != null && Date.now() < until;
+}
+
+function markApnsHostUnusable(host: string): void {
+  apnsHostUnusableUntil.set(host, Date.now() + APNS_HOST_UNUSABLE_MS);
+}
+
+function reasonText(reasonRaw: string): string {
+  const trimmed = reasonRaw.trim();
+  try {
+    const parsed = JSON.parse(trimmed) as { reason?: string };
+    return parsed.reason ?? trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
 function apnsFailureIsExpired(status: number, reasonRaw: string): boolean {
   if (status === 410) return true;
   if (status !== 400) return false;
@@ -122,7 +167,7 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
 
   let jwt: string;
   try {
-    jwt = await makeApnsJwt(keyId, teamId, rawKey);
+    jwt = await getApnsJwtCached(keyId, teamId, rawKey);
   } catch (e) {
     console.error('[push/apns] jwt generation failed', {
       bundleId,
@@ -151,7 +196,7 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
     }
   }
 
-  const sendToHost = async (host: string): Promise<PushDeliveryResult> => {
+  const sendToHost = async (host: string, retriedFreshJwt = false): Promise<PushDeliveryResult> => {
     const res = await fetch(`https://${host}/3/device/${tok}`, {
       method: 'POST',
       headers: {
@@ -168,6 +213,17 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
     const reasonBody = await res.text().catch(() => '');
     const reasonHeader = res.headers.get('apns-reason') ?? '';
     const reason = reasonHeader || reasonBody;
+    const reasonName = reasonText(reason);
+
+    if (reasonName === 'ExpiredProviderToken' && !retriedFreshJwt) {
+      invalidateApnsJwtCache();
+      jwt = await getApnsJwtCached(keyId!, teamId!, rawKey!);
+      return sendToHost(host, true);
+    }
+    if (reasonName === 'BadEnvironmentKeyInToken') {
+      markApnsHostUnusable(host);
+    }
+
     const expired = apnsFailureIsExpired(res.status, reason);
     console.error('[push/apns] delivery failed', {
       host,
@@ -190,6 +246,7 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
       error: e instanceof Error ? e.message : String(e),
     });
   }
+  if (apnsHostUnusable(fallbackHost)) return 'failed';
   try {
     return await sendToHost(fallbackHost);
   } catch (e) {
@@ -216,7 +273,7 @@ export async function sendApnsBackgroundPush(
 
   let jwt: string;
   try {
-    jwt = await makeApnsJwt(keyId, teamId, rawKey);
+    jwt = await getApnsJwtCached(keyId, teamId, rawKey);
   } catch {
     return 'failed';
   }
@@ -229,7 +286,7 @@ export async function sendApnsBackgroundPush(
     ...data,
   };
 
-  const sendToHost = async (host: string): Promise<PushDeliveryResult> => {
+  const sendToHost = async (host: string, retriedFreshJwt = false): Promise<PushDeliveryResult> => {
     const res = await fetch(`https://${host}/3/device/${tok}`, {
       method: 'POST',
       headers: {
@@ -244,7 +301,17 @@ export async function sendApnsBackgroundPush(
     if (res.ok) return 'ok';
     const reasonHeader = res.headers.get('apns-reason') ?? '';
     const reasonBody = await res.text().catch(() => '');
-    const expired = apnsFailureIsExpired(res.status, reasonHeader || reasonBody);
+    const reason = reasonHeader || reasonBody;
+    const reasonName = reasonText(reason);
+    if (reasonName === 'ExpiredProviderToken' && !retriedFreshJwt) {
+      invalidateApnsJwtCache();
+      jwt = await getApnsJwtCached(keyId!, teamId!, rawKey!);
+      return sendToHost(host, true);
+    }
+    if (reasonName === 'BadEnvironmentKeyInToken') {
+      markApnsHostUnusable(host);
+    }
+    const expired = apnsFailureIsExpired(res.status, reason);
     return expired ? 'expired' : 'failed';
   };
 
@@ -254,6 +321,7 @@ export async function sendApnsBackgroundPush(
   } catch {
     /* try fallback */
   }
+  if (apnsHostUnusable(fallbackHost)) return 'failed';
   try {
     return await sendToHost(fallbackHost);
   } catch {

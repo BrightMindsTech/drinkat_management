@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession, requireOwner } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = withApiErrors(async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const { id } = await params;
 
@@ -19,4 +20,4 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: { periodMonth: 'desc' },
   });
   return Response.json(salaryCopies);
-}
+});

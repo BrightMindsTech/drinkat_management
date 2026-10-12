@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
+import { hrOperationsFrozenResponse } from '@/lib/hr-operations-freeze';
 
 const upsertSchema = z.object({
   /** Ignored for storage — salaries are permanent on the employee profile. Kept for older clients. */
@@ -13,7 +15,8 @@ const upsertSchema = z.object({
   source: z.enum(['manual', 'upload']).optional(),
 });
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrors(async function GET(req: NextRequest) {
+  return hrOperationsFrozenResponse();
   await requireOwner();
   const { searchParams } = new URL(req.url);
   const branchId = searchParams.get('branchId');
@@ -34,9 +37,10 @@ export async function GET(req: NextRequest) {
       amount: employee.salaryAmount ?? 0,
     }))
   );
-}
+});
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrors(async function POST(req: NextRequest) {
+  return hrOperationsFrozenResponse();
   await requireOwner();
   const body = await req.json();
   const parsed = upsertSchema.safeParse(body);
@@ -65,4 +69,4 @@ export async function POST(req: NextRequest) {
       amount: employee.salaryAmount ?? 0,
     }))
   );
-}
+});

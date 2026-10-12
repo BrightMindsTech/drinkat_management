@@ -342,7 +342,11 @@ export function WeeklyRatingsClient() {
                     type="number"
                     min={0}
                     max={100}
-                    className="app-input mt-1"
+                    className={`app-input mt-1 ${
+                      needReason
+                        ? 'border-red-500 dark:border-red-500 text-red-600 dark:text-red-400 font-semibold focus:ring-red-500'
+                        : ''
+                    }`}
                     value={sc}
                     onChange={(e) => setScores((prev) => ({ ...prev, [row.id]: e.target.value }))}
                   />

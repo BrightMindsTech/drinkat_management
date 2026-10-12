@@ -6,6 +6,7 @@ import {
   upsertKitchenFormTemplate,
   type KitchenTemplateInput,
 } from '@/lib/importKitchenFormTemplate';
+import { withApiErrors } from '@/lib/api-route-error';
 
 /** Additional barista Google Forms (imported live when publicly accessible). */
 const EXTRA_GOOGLE_FORM_IDS = [
@@ -13,7 +14,7 @@ const EXTRA_GOOGLE_FORM_IDS = [
   '1FAIpQLScPWD0X38-pFW6ljHuKkgaVonid9oBCc-LhHqvKbv79p4sfNQ',
 ] as const;
 
-export async function POST() {
+export const POST = withApiErrors(async function POST() {
   await requireOwner();
 
   const matchingDepartmentIds = await getKitchenDepartmentIds();
@@ -74,4 +75,4 @@ export async function POST() {
         ? 'For forms that require sign-in: open each form in your browser, use “Import private Google Form” below, and paste the copied JSON.'
         : undefined,
   });
-}
+});

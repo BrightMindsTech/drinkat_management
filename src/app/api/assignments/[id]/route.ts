@@ -5,7 +5,7 @@ import { requireQc } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { getUserIdForEmployeeId } from '@/lib/employee-user';
 import { notifyUser } from '@/lib/user-notify';
-import { apiErrorResponse } from '@/lib/api-route-error';
+import { apiErrorResponse, withApiErrors } from '@/lib/api-route-error';
 
 async function deleteAssignmentAndSubmissions(assignmentId: string) {
   const submissions = await prisma.qcSubmission.findMany({
@@ -24,7 +24,7 @@ async function deleteAssignmentAndSubmissions(assignmentId: string) {
   await prisma.checklistAssignment.delete({ where: { id: assignmentId } });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = withApiErrors(async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireQc();
     const role = normalizeUserRole(session.user.role);
@@ -96,4 +96,4 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     }
     return apiErrorResponse('assignments/[id] DELETE', e, 'Could not unassign');
   }
-}
+});

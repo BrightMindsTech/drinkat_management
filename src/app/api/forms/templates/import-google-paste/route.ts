@@ -6,12 +6,13 @@ import {
   getKitchenDepartmentIds,
   upsertKitchenFormTemplate,
 } from '@/lib/importKitchenFormTemplate';
+import { withApiErrors } from '@/lib/api-route-error';
 
 const bodySchema = z.object({
   paste: z.string().min(1),
 });
 
-export async function POST(req: Request) {
+export const POST = withApiErrors(async function POST(req: Request) {
   try {
     await requireOwner();
   } catch (e) {
@@ -60,4 +61,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
+});

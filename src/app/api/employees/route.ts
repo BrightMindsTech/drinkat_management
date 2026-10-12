@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession, requireOwner } from '@/lib/session';
+import { requireSession, requireHrStaffAdmin, sessionHasHrStaffAdmin } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { isStaffLevelRole } from '@/lib/permissions';
 import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import { z } from 'zod';
 import * as bcrypt from 'bcryptjs';
@@ -10,7 +12,7 @@ const createSchema = z.object({
   name: z.string().min(1),
   contact: z.string().optional(),
   salaryAmount: z.number().optional(),
-  role: z.enum(['staff', 'qc', 'marketing']),
+  role: z.enum(['staff', 'assistant_manager', 'qc', 'marketing']),
   branchId: z.string().min(1),
   departmentId: z.string().nullable().optional(),
   advanceLimit: z.number().nullable().optional(),
@@ -24,13 +26,13 @@ const createSchema = z.object({
   idCardPhotoPath: z.string().optional(),
 });
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrors(async function GET(req: NextRequest) {
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
   const { searchParams } = new URL(req.url);
   const branchId = searchParams.get('branchId');
 
-  if (role === 'owner' || role === 'qc') {
+  if (role === 'owner' || role === 'qc' || (await sessionHasHrStaffAdmin(session))) {
     const employees = await prisma.employee.findMany({
       where: { status: { not: 'terminated' }, ...(branchId ? { branchId } : {}) },
       include: { branch: true, department: true, user: { select: { email: true } } },
@@ -57,7 +59,7 @@ export async function GET(req: NextRequest) {
     return Response.json(employees);
   }
 
-  if (role === 'staff' && (await userHasQcReviewerScope(prisma, session))) {
+  if (isStaffLevelRole(role) && (await userHasQcReviewerScope(prisma, session))) {
     const employees = await prisma.employee.findMany({
       where: { status: { not: 'terminated' }, ...(branchId ? { branchId } : {}) },
       include: { branch: true, department: true, user: { select: { email: true } } },
@@ -73,10 +75,10 @@ export async function GET(req: NextRequest) {
   });
   if (!user?.employee) return Response.json([]);
   return Response.json([user.employee]);
-}
+});
 
-export async function POST(req: NextRequest) {
-  await requireOwner();
+export const POST = withApiErrors(async function POST(req: NextRequest) {
+  await requireHrStaffAdmin();
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return Response.json(parsed.error.flatten(), { status: 400 });
@@ -103,6 +105,7 @@ export async function POST(req: NextRequest) {
   const isManagerDepartment = !!department && department.name.trim().toLowerCase() === 'manager';
   const resolvedUserRole = (isManagerDepartment ? 'manager' : role) as
     | 'staff'
+    | 'assistant_manager'
     | 'qc'
     | 'manager'
     | 'marketing';
@@ -138,4 +141,4 @@ export async function POST(req: NextRequest) {
     include: { branch: true, department: true, user: { select: { email: true } } },
   });
   return Response.json(employee);
-}
+});

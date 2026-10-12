@@ -1,5 +1,6 @@
 import { isTransientDbError } from '@/lib/prisma-retry';
 import { logErrorThrottled } from '@/lib/log-throttle';
+import { AuthHttpError } from '@/lib/session';
 
 /** Safe error detail for API JSON (no stack traces in production). */
 export function apiErrorMessage(e: unknown): string {
@@ -13,6 +14,7 @@ export function apiErrorResponse(
   fallback: string,
   status = 500
 ): Response {
+  if (e instanceof AuthHttpError) return e.toResponse();
   if (e instanceof Response) return e;
   const transient = isTransientDbError(e);
   if (transient) {
@@ -31,4 +33,17 @@ export function apiErrorResponse(
     },
     { status: transient ? 503 : status }
   );
+}
+
+/** Catch AuthHttpError (and thrown Response) so OpenNext returns 401/403 instead of 500. */
+export function withApiErrors<A extends unknown[]>(
+  handler: (...args: A) => Promise<Response>
+): (...args: A) => Promise<Response> {
+  return async (...args: A) => {
+    try {
+      return await handler(...args);
+    } catch (e) {
+      return apiErrorResponse('api', e, 'Request failed');
+    }
+  };
 }

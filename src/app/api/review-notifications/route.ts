@@ -14,7 +14,11 @@ export async function GET() {
     if ((role === 'staff' && !qcReviewerScope) || role === 'marketing') {
       const user = await prisma.user.findUnique({
         where: { id: session.user.id },
-        select: { employee: { select: { id: true } } },
+        select: {
+          employee: {
+            select: { id: true, photoCheckSetting: { select: { required: true } } },
+          },
+        },
       });
       if (!user?.employee) return Response.json({ total: 0, items: [] });
 
@@ -22,32 +26,30 @@ export async function GET() {
         return Response.json({ total: 0, items: [] });
       }
 
-      const assignments = await prisma.checklistAssignment.findMany({
-        where: { employeeId: user.employee.id },
-        include: {
-          checklist: { select: { id: true, name: true, repeatsDaily: true } },
-          submissions: { select: { id: true, submittedAt: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
+      if (!user.employee.photoCheckSetting?.required) {
+        return Response.json({ total: 0, items: [] });
+      }
 
       const now = new Date();
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-      const needsSubmission = assignments.filter((a) => {
-        if (a.checklist.repeatsDaily) {
-          return !a.submissions.some((s) => s.submittedAt >= startOfToday && s.submittedAt <= endOfToday);
-        }
-        return a.submissions.length === 0;
+      const openTasks = await prisma.photoCheckTask.findMany({
+        where: {
+          assigneeEmployeeId: user.employee.id,
+          status: { in: ['scheduled', 'due', 'in_progress', 'overdue'] },
+          windowStartAt: { lte: now },
+          dueAt: { gte: now },
+        },
+        select: { id: true, type: { select: { titleEn: true } } },
+        orderBy: { dueAt: 'asc' },
+        take: 8,
       });
-
+      if (!openTasks.length) return Response.json({ total: 0, items: [] });
       return Response.json({
-        total: needsSubmission.length,
-        items: needsSubmission.map((a) => ({
-          id: a.id,
-          type: 'staff_qc_submit',
-          title: a.checklist.name,
-          href: `/dashboard/qc#qc-assignment-${a.id}`,
+        total: openTasks.length,
+        items: openTasks.map((task) => ({
+          id: `photo-${task.id}`,
+          type: 'staff_photo_check',
+          title: task.type.titleEn,
+          href: `/dashboard/photo?task=${encodeURIComponent(task.id)}`,
         })),
       });
     }
@@ -154,6 +156,13 @@ export async function GET() {
           : Promise.resolve([]);
     }
 
+    const pendingPhotos = await prisma.photoCheckSubmission.findMany({
+      where: { status: 'pending_qc' },
+      include: { employee: { select: { name: true } } },
+      orderBy: { submittedAt: 'asc' },
+      take: 20,
+    });
+
     const [pendingQc, pendingLeave, pendingAdvances, pendingQcForms] = await Promise.all([
       pendingQcPromise,
       pendingLeavePromise,
@@ -162,6 +171,12 @@ export async function GET() {
     ]);
 
     const items = [
+      ...pendingPhotos.map((p) => ({
+        id: `photo-${p.id}`,
+        type: 'photo_review',
+        title: p.employee.name,
+        href: '/dashboard/photo-review',
+      })),
       ...pendingQcForms.map((f) => ({
         id: `qcform-${f.id}`,
         type: 'qc_form_submitted' as const,

@@ -1,4 +1,5 @@
 import { normalizeUserRole, type AppUserRole } from '@/lib/formVisibility';
+import { isStaffLevelRole } from '@/lib/permissions';
 
 export type PageSectionDef = {
   id: string;
@@ -18,10 +19,26 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
   const role = normalizeUserRole(roleRaw);
 
   if (path === '/dashboard') {
-    return [
-      { id: 'section-home-overview', labelRef: 'dashboard.title' },
-      { id: 'section-home-apps', labelRef: 'dashboard.allTools' },
-    ];
+    if (isStaffLevelRole(role) || role === 'qc') {
+      return [{ id: 'section-home-apps', labelRef: 'dashboard.allTools' }];
+    }
+    return [{ id: 'section-home-overview', labelRef: 'dashboard.title' }];
+  }
+
+  if (path === '/dashboard/photo' || path === '/dashboard/photo-review') {
+    return [{ id: 'section-home-overview', labelRef: 'dashboard.title' }];
+  }
+  if (path.startsWith('/dashboard/photo-ops')) {
+    return [{ id: 'section-photo-ops', labelRef: 'nav.photoOps' }];
+  }
+  if (path.startsWith('/dashboard/qc-reports')) {
+    return [{ id: 'section-qc-reports', labelRef: 'nav.qcReports' }];
+  }
+  if (path.startsWith('/dashboard/notes') || path.startsWith('/dashboard/broadcast')) {
+    return [{ id: 'section-notes', labelRef: 'nav.broadcast' }];
+  }
+  if (path.startsWith('/dashboard/hr-notes')) {
+    return [{ id: 'section-hr-notes', labelRef: 'nav.hrNotes' }];
   }
 
   if (path.startsWith('/dashboard/forms')) {
@@ -30,10 +47,10 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
     if (role === 'manager') {
       out.push({ id: 'section-forms-manager-assign', labelRef: 'forms.assignTitle' });
     }
-    if (role === 'staff' || role === 'qc' || role === 'marketing' || role === 'manager') {
+    if (isStaffLevelRole(role) || role === 'qc' || role === 'marketing' || role === 'manager') {
       out.push({ id: 'section-forms-available', labelRef: 'forms.availableForms' });
     }
-    if (role === 'staff' || role === 'qc' || role === 'marketing' || role === 'manager') {
+    if (isStaffLevelRole(role) || role === 'qc' || role === 'marketing' || role === 'manager') {
       out.push({ id: 'section-forms-my-submissions', labelRef: 'forms.mySubmissions' });
     }
     if (role === 'owner' || role === 'manager' || role === 'qc') {
@@ -43,14 +60,11 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
   }
 
   if (path.startsWith('/dashboard/hr')) {
-    if (role === 'staff' || role === 'marketing' || role === 'qc') {
+    if (isStaffLevelRole(role) || role === 'marketing' || role === 'qc') {
       return [
-        { id: 'hr-staff-info', labelRef: 'hr.myInfoTitle' },
-        { id: 'hr-staff-leave', labelRef: 'hr.myLeave' },
-        { id: 'hr-staff-documents', labelRef: 'employeeCard.myDocuments' },
-        { id: 'hr-staff-salary', labelRef: 'employeeCard.mySalaryHistory' },
-        { id: 'hr-staff-reviews', labelRef: 'employeeCard.myReviews' },
-        { id: 'hr-staff-advances', labelRef: 'hr.advances' },
+        { id: 'hr-owner-staff', labelRef: 'hr.staff' },
+        { id: 'hr-owner-departments', labelRef: 'hr.departments' },
+        { id: 'hr-owner-manager-assignments', labelRef: 'hr.assignToManager' },
       ];
     }
     if (role === 'manager') {
@@ -68,16 +82,14 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
         { id: 'hr-owner-staff', labelRef: 'hr.staff' },
         { id: 'hr-owner-departments', labelRef: 'hr.departments' },
         { id: 'hr-owner-manager-assignments', labelRef: 'hr.assignToManager' },
-        { id: 'hr-owner-leave', labelRef: 'hr.leaveRequests' },
-        { id: 'hr-owner-advances', labelRef: 'hr.advances' },
-        { id: 'hr-owner-salary', labelRef: 'salary.salary' },
+        { id: 'hr-owner-export', labelRef: 'hr.historicalExport' },
       ];
     }
     return [];
   }
 
   if (path.startsWith('/dashboard/qc')) {
-    if (role === 'staff') {
+    if (isStaffLevelRole(role)) {
       return [
         { id: 'qc-staff-checklists', labelRef: 'qc.checklists' },
         { id: 'qc-staff-submissions', labelRef: 'qc.submissionsTitle' },
@@ -101,6 +113,25 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
     // Chat already has its own navigation/header patterns; the sticky bottom
     // "On this page" bar overlaps the composer on phones.
     return [];
+  }
+
+  if (path.startsWith('/dashboard/tasks')) {
+    return [{ id: 'section-tasks-today', labelRef: 'qcOps.myTasksTitle' }];
+  }
+  if (path.startsWith('/dashboard/issues')) {
+    return [{ id: 'section-issues', labelRef: 'qcOps.issuesTitle' }];
+  }
+  if (path.startsWith('/dashboard/kpi')) {
+    return [{ id: 'section-kpi', labelRef: 'qcOps.kpiTitle' }];
+  }
+  if (path.startsWith('/dashboard/ai')) {
+    return [{ id: 'section-ai', labelRef: 'qcOps.aiTitle' }];
+  }
+  if (path.startsWith('/dashboard/qc-overview')) {
+    return [{ id: 'section-overview', labelRef: 'qcOps.overviewTitle' }];
+  }
+  if (path.startsWith('/dashboard/sop')) {
+    return [{ id: 'section-sop-drafts', labelRef: 'qcOps.sopDraftsTitle', roles: ['owner', 'qc'] }];
   }
 
   if (path.startsWith('/dashboard/ratings')) {

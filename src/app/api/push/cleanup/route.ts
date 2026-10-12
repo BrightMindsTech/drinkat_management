@@ -1,9 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
 import { pruneDuplicatePushSubscriptions } from '@/lib/push-subscription-maintenance';
+import { withApiErrors } from '@/lib/api-route-error';
 
 /** Remove duplicate rows that share the same push endpoint (owner maintenance). */
-export async function POST() {
+export const POST = withApiErrors(async function POST() {
   await requireOwner();
   const before = await prisma.pushSubscription.count();
   const { removed } = await pruneDuplicatePushSubscriptions(prisma);
@@ -20,4 +21,4 @@ export async function POST() {
     subscriptionsAfter: after,
     pushUserCount: pushUserRows.length,
   });
-}
+});

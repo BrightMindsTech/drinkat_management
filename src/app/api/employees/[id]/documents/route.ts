@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/session';
+import { requireSession, sessionHasHrStaffAdmin } from '@/lib/session';
 import { saveUploadedFile } from '@/lib/upload-storage';
+import { recordUploadObject } from '@/lib/upload-access';
 import { z } from 'zod';
 
 const docTypeValues = ['criminal_record', 'contract', 'certificate', 'id_copy', 'other'] as const;
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const session = await requireSession();
   const { id } = await params;
 
-  if (session.user.role === 'owner') {
+  if (await sessionHasHrStaffAdmin(session)) {
     const employee = await prisma.employee.findUnique({ where: { id } });
     if (!employee) return new Response(null, { status: 404 });
   } else {
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const employee = await prisma.employee.findUnique({ where: { id } });
   if (!employee) return new Response(null, { status: 404 });
 
-  if (session.user.role !== 'owner') {
+  if (!(await sessionHasHrStaffAdmin(session))) {
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: { employee: { select: { id: true } } },
@@ -77,6 +78,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let filePath: string;
   try {
     filePath = (await saveUploadedFile(file)).filePath;
+    await recordUploadObject(prisma, filePath, session.user.id);
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Upload failed';
     return Response.json({ error: message }, { status: 503 });

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireQc } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -11,7 +12,7 @@ const createSchema = z.object({
   items: z.array(z.object({ title: z.string().min(1), sortOrder: z.number().optional() })).optional(),
 });
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrors(async function GET(req: NextRequest) {
   await requireQc();
   const { searchParams } = new URL(req.url);
   const branchId = searchParams.get('branchId');
@@ -26,9 +27,9 @@ export async function GET(req: NextRequest) {
     orderBy: { name: 'asc' },
   });
   return Response.json(checklists);
-}
+});
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrors(async function POST(req: NextRequest) {
   const session = await requireQc();
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
@@ -55,4 +56,4 @@ export async function POST(req: NextRequest) {
     include: { branch: true, items: { orderBy: { sortOrder: 'asc' } } },
   });
   return Response.json(checklist);
-}
+});

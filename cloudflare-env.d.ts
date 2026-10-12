@@ -6,6 +6,8 @@ declare global {
     CRON_SECRET?: string;
     /** Public Worker URL for cron self-fetch (must not use https://internal/). */
     WORKER_PUBLIC_URL?: string;
+    /** Production photo task generation + reminders (Asia/Amman windows). */
+    PHOTO_CHECK_SCHEDULER_ENABLED?: string;
     DB: D1Database;
     /** Employee / QC uploads (R2). Prefer `UPLOADS`; Wrangler CLI may use `drinkat_management_uploads`. */
     UPLOADS?: R2Bucket;

@@ -6,76 +6,35 @@ import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useInAppNotifications } from '@/contexts/InAppNotificationContext';
-
-const DEFAULT_AUTO_DISMISS_MS = 10_000;
+import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
+import { setForegroundInterval } from '@/lib/app-foreground';
+import { fetchWithRetry } from '@/lib/fetch-with-retry';
 
 function InAppNotificationCard({
   id,
   title,
   body,
-  persistent,
-  autoDismissMs,
-  minimizable,
-  minimizedLabel,
   actionLabel,
   onAction,
   href,
   content,
-  minimized,
-  onMinimize,
   onDismiss,
   onDismissed,
 }: {
   id: string;
   title: string;
   body?: string;
-  persistent?: boolean;
-  autoDismissMs?: number;
-  minimizable?: boolean;
-  minimizedLabel?: string;
   actionLabel?: string;
   onAction?: () => void;
   href?: string;
   content?: React.ReactNode;
-  minimized: boolean;
-  onMinimize: (minimized: boolean) => void;
   onDismiss: () => void;
   onDismissed?: () => void;
 }) {
-  const { t, dir } = useLanguage();
+  const { t } = useLanguage();
   const router = useRouter();
-  const dismissedRef = useRef(false);
-  const duration = persistent ? 0 : (autoDismissMs ?? DEFAULT_AUTO_DISMISS_MS);
-
-  useEffect(() => {
-    if (persistent || duration <= 0) return;
-    dismissedRef.current = false;
-    const timer = window.setTimeout(() => {
-      if (!dismissedRef.current) onDismiss();
-    }, duration);
-    return () => window.clearTimeout(timer);
-  }, [persistent, duration, onDismiss, id]);
-
-  function acknowledgeDismiss() {
-    dismissedRef.current = true;
-    onDismissed?.();
-    onDismiss();
-  }
-
-  if (minimized && minimizable) {
-    return (
-      <button
-        type="button"
-        onClick={() => onMinimize(false)}
-        className="pointer-events-auto w-full max-w-[18rem] rounded-ios border border-amber-300 dark:border-amber-600 bg-amber-100 dark:bg-ios-dark-elevated px-3 py-2 text-xs font-semibold text-amber-900 dark:text-amber-200 shadow-md app-animate-in text-start"
-      >
-        {minimizedLabel ?? title}
-      </button>
-    );
-  }
 
   function handlePrimaryAction() {
-    dismissedRef.current = true;
     onDismissed?.();
     if (onAction) {
       onAction();
@@ -88,45 +47,34 @@ function InAppNotificationCard({
   }
 
   return (
-    <div className="pointer-events-auto relative w-full max-w-[18rem]" role="status" aria-live="polite">
-      <div className="overflow-hidden rounded-ios-lg border border-amber-300 dark:border-amber-600 bg-white dark:bg-ios-dark-elevated shadow-lg app-animate-in">
-        <div className="p-4 pb-3">
+    <div className="relative w-full" role="status">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-ios-dark-separator dark:bg-ios-dark-elevated">
+        <div className="p-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="font-semibold text-amber-900 dark:text-amber-200">{title}</p>
-              {body ? <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">{body}</p> : null}
+              <p className="font-semibold text-app-primary">{title}</p>
+              {body ? <p className="mt-1 text-sm text-app-muted">{body}</p> : null}
             </div>
-            <div className="flex shrink-0 flex-col gap-1">
-              {minimizable ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onDismissed?.();
-                    onMinimize(true);
-                  }}
-                  className="rounded-ios border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-ios-dark-elevated-2 px-2 py-1 text-xs font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-ios-dark-fill"
-                >
-                  {t.common.hide}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={acknowledgeDismiss}
-                className="rounded-ios border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-ios-dark-elevated-2 px-2 py-1 text-xs font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-ios-dark-fill"
-                aria-label={t.common.close}
-              >
-                ×
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onDismissed?.();
+                onDismiss();
+              }}
+              className="shrink-0 rounded-full px-2 py-1 text-sm font-bold text-app-muted"
+              aria-label={t.common.close}
+            >
+              ×
+            </button>
           </div>
-          {content ? <div className="mt-3">{content}</div> : null}
+          {content ? <div className="mt-2">{content}</div> : null}
           {(actionLabel && (onAction || href)) || href ? (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               {actionLabel && (onAction || href) ? (
                 <button
                   type="button"
                   onClick={handlePrimaryAction}
-                  className="rounded-ios border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-ios-dark-elevated-2 px-3 py-1.5 text-xs font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-ios-dark-fill"
+                  className="rounded-full bg-ios-blue px-3 py-1.5 text-xs font-semibold text-white"
                 >
                   {actionLabel}
                 </button>
@@ -135,11 +83,10 @@ function InAppNotificationCard({
                 <Link
                   href={href}
                   onClick={() => {
-                    dismissedRef.current = true;
                     onDismissed?.();
                     onDismiss();
                   }}
-                  className="rounded-ios border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-ios-dark-elevated-2 px-3 py-1.5 text-xs font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-ios-dark-fill"
+                  className="rounded-full bg-ios-blue px-3 py-1.5 text-xs font-semibold text-white"
                 >
                   {t.common.goToPending}
                 </Link>
@@ -147,56 +94,172 @@ function InAppNotificationCard({
             </div>
           ) : null}
         </div>
-        {!persistent && duration > 0 ? (
-          <div className="h-1 bg-amber-200 dark:bg-amber-800" aria-hidden>
-            <div
-              key={`${id}-${duration}`}
-              className="in-app-notif-timer-bar h-full bg-amber-500 dark:bg-amber-400"
-              style={{
-                animationDuration: `${duration}ms`,
-                transformOrigin: dir === 'rtl' ? 'right' : 'left',
-              }}
-            />
-          </div>
-        ) : null}
       </div>
     </div>
   );
 }
 
+async function countUnfinishedWork(): Promise<number> {
+  let n = 0;
+  try {
+    const res = await fetchWithRetry('/api/review-notifications', { cache: 'no-store' });
+    if (res.ok) {
+      const json = (await res.json()) as { total?: number };
+      n += Math.max(0, Number(json.total) || 0);
+    }
+  } catch {
+    /* non-blocking */
+  }
+  try {
+    const res = await fetchWithRetry('/api/photo-checks/tasks', { cache: 'no-store' });
+    if (res.ok) {
+      const json = (await res.json()) as {
+        required?: boolean;
+        items?: { status: string; windowStartAt?: string; dueAt?: string }[];
+      };
+      if (json.required && Array.isArray(json.items)) {
+        const now = Date.now();
+        n += json.items.filter((row) => {
+          if (row.status !== 'due' && row.status !== 'overdue' && row.status !== 'in_progress') return false;
+          if (!row.windowStartAt || !row.dueAt) return false;
+          const start = new Date(row.windowStartAt).getTime();
+          const due = new Date(row.dueAt).getTime();
+          return start <= now && now <= due;
+        }).length;
+      }
+    }
+  } catch {
+    /* non-blocking */
+  }
+  return n;
+}
+
 export function InAppNotificationStack() {
   const pathname = usePathname();
-  const { entries, minimizedIds, dismissedIds, dismiss, setMinimized } = useInAppNotifications();
+  const { t } = useLanguage();
+  const { entries, dismissedIds, dismiss } = useInAppNotifications();
   const [portalReady, setPortalReady] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [unfinished, setUnfinished] = useState(0);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setPortalReady(true);
   }, []);
 
-  const visible = entries.filter((e) => !dismissedIds.has(e.id));
-  if (!portalReady || visible.length === 0) return null;
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
 
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      const n = await countUnfinishedWork();
+      if (mounted) setUnfinished(n);
+    }
+    const onWake = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    void load();
+    const stop = setForegroundInterval(onWake, 15000);
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener(APP_RESUME_EVENT, onWake);
+    return () => {
+      mounted = false;
+      stop();
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener(APP_RESUME_EVENT, onWake);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(e: MouseEvent | TouchEvent) {
+      const el = rootRef.current;
+      if (!el) return;
+      const target = e.target as Node | null;
+      if (target && el.contains(target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('touchstart', onPointer);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('touchstart', onPointer);
+    };
+  }, [open]);
+
+  const visible = entries.filter((e) => !dismissedIds.has(e.id));
+  const count = visible.length;
+  const badge = count > 9 ? '9+' : String(count);
+  const shake = !open && (count > 0 || unfinished > 0);
   const path = pathname ?? '';
-  const isMessagesPage = path.startsWith('/dashboard/messages');
-  const positionClass = isMessagesPage
-    ? 'top-[calc(9rem+env(safe-area-inset-top))] sm:top-[calc(6.5rem+env(safe-area-inset-top))]'
-    : 'top-[calc(5.5rem+env(safe-area-inset-top))] sm:top-[calc(5rem+env(safe-area-inset-top))]';
+  const aboveSectionNav = !path.startsWith('/dashboard/messages');
+  const bottomClass = aboveSectionNav
+    ? 'bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))]'
+    : 'bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))]';
+
+  if (!portalReady) return null;
 
   return createPortal(
     <div
-      className={`pointer-events-none fixed end-3 z-[600] flex w-[min(18rem,88vw)] flex-col gap-2 ${positionClass}`}
-      aria-label="Notifications"
+      ref={rootRef}
+      className={`pointer-events-auto fixed right-4 z-[600] flex flex-col items-end gap-2 ${bottomClass}`}
     >
-      {visible.map((entry) => (
-        <InAppNotificationCard
-          key={entry.id}
-          {...entry}
-          minimized={minimizedIds.has(entry.id)}
-          onMinimize={(m) => setMinimized(entry.id, m)}
-          onDismiss={() => dismiss(entry.id)}
-          onDismissed={entry.onDismissed}
-        />
-      ))}
+      {open ? (
+        <div
+          className="flex max-h-[min(60vh,28rem)] w-[min(20rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xl dark:border-ios-dark-separator dark:bg-ios-dark-elevated"
+          role="dialog"
+          aria-label={t.common.inboxBell}
+        >
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-ios-dark-separator">
+            <p className="text-sm font-bold text-app-primary">{t.common.inboxBell}</p>
+            <button type="button" className="text-sm font-semibold text-app-muted" onClick={() => setOpen(false)}>
+              {t.common.close}
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+            {visible.length === 0 ? (
+              <p className="px-1 py-6 text-center text-sm text-app-muted">{t.common.inboxEmpty}</p>
+            ) : (
+              visible.map((entry) => (
+                <InAppNotificationCard
+                  key={entry.id}
+                  {...entry}
+                  onDismiss={() => dismiss(entry.id)}
+                  onDismissed={entry.onDismissed}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-ios-blue text-white shadow-[0_8px_24px_rgba(0,122,255,0.35)]"
+        aria-label={count > 0 ? `${t.common.inboxBell} ${badge}` : t.common.inboxBell}
+        aria-expanded={open}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className={`h-6 w-6 ${shake ? 'bell-vibrate' : ''}`}
+          aria-hidden
+        >
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {count > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-extrabold leading-none text-white">
+            {badge}
+          </span>
+        ) : null}
+      </button>
     </div>,
     document.body
   );

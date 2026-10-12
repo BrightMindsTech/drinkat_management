@@ -3,12 +3,14 @@ import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { roleMayUseChat } from '@/lib/chat-policy';
 import { userParticipatesInThread } from '@/lib/chat-thread';
+import { qcChatForbiddenResponse } from '@/lib/qc-chat-freeze';
 
 const TYPING_TTL_MS = 5000;
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, ctx: RouteCtx) {
+  return qcChatForbiddenResponse();
   try {
     const session = await requireSession();
     const role = normalizeUserRole(session.user.role);
@@ -38,6 +40,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
 }
 
 export async function POST(_req: Request, ctx: RouteCtx) {
+  return qcChatForbiddenResponse();
   try {
     const session = await requireSession();
     const role = normalizeUserRole(session.user.role);

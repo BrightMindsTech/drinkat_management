@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireOwner } from '@/lib/session';
+import { requireHrStaffAdmin } from '@/lib/session';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireOwner();
+export const GET = withApiErrors(async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await requireHrStaffAdmin();
   const { id } = await params;
   const employee = await prisma.employee.findUnique({
     where: { id },
@@ -12,17 +13,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
   if (!employee) return new Response(null, { status: 404 });
   return Response.json(employee);
-}
+});
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireOwner();
+export const DELETE = withApiErrors(async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  await requireHrStaffAdmin();
   const { id } = await params;
   const employee = await prisma.employee.findUnique({ where: { id }, include: { user: true } });
   if (!employee) return new Response(null, { status: 404 });
   if (employee.userId) await prisma.user.delete({ where: { id: employee.userId } });
   await prisma.employee.delete({ where: { id } });
   return new Response(null, { status: 204 });
-}
+});
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -43,8 +44,8 @@ const patchSchema = z.object({
   idCardBackPhotoPath: z.string().nullable().optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireOwner();
+export const PATCH = withApiErrors(async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  await requireHrStaffAdmin();
 
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);
@@ -136,4 +137,4 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
 
   return Response.json(updated);
-}
+});

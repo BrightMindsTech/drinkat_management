@@ -12,6 +12,7 @@ import {
   userParticipatesInThread,
 } from '@/lib/chat-thread';
 import { notifyUsers } from '@/lib/user-notify';
+import { qcChatForbiddenResponse } from '@/lib/qc-chat-freeze';
 
 const postSchema = z.object({
   body: z.string().min(1).max(4000),
@@ -22,6 +23,7 @@ const PAGE = 50;
 type RouteCtx = { params: Promise<{ id: string }> };
 
 export async function GET(req: Request, ctx: RouteCtx) {
+  return qcChatForbiddenResponse();
   try {
     const session = await requireSession();
     const role = normalizeUserRole(session.user.role);
@@ -103,6 +105,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
 }
 
 export async function POST(req: Request, ctx: RouteCtx) {
+  return qcChatForbiddenResponse();
   try {
     const session = await requireSession();
     const role = normalizeUserRole(session.user.role);

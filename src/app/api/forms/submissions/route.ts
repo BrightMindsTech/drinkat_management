@@ -3,6 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/session';
 import { parseTemplateFields, validateAnswersAgainstFields } from '@/lib/formTemplate';
 import {
+  ensurePublishedVersion,
+  pinnedSubmissionFieldsJson,
+  resolveTemplateFieldsJson,
+} from '@/lib/form-template-version';
+import {
   canUserFillTemplate,
   managerManagementFormSubmissionWhere,
   normalizeUserRole,
@@ -12,6 +17,7 @@ import { getManagerUserIdsForBranch, getOwnerUserIds } from '@/lib/notify-helper
 import { resolveBranchIdByName } from '@/lib/branch-resolve';
 import { notifyUsers } from '@/lib/user-notify';
 import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
+import { withApiErrors } from '@/lib/api-route-error';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -19,7 +25,7 @@ const createSchema = z.object({
   answers: z.record(z.unknown()),
 });
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrors(async function GET(req: NextRequest) {
   await maybePurgeOldManagementFormSubmissions(prisma);
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
@@ -35,6 +41,7 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         template: true,
+        templateVersion: { select: { id: true, versionNumber: true, fieldsJson: true } },
         employee: { include: { branch: true, department: true } },
         branch: true,
       },
@@ -44,7 +51,16 @@ export async function GET(req: NextRequest) {
       list.map((s) => ({
         ...s,
         answers: JSON.parse(s.answersJson) as Record<string, string>,
-        template: { ...s.template, fields: JSON.parse(s.template.fieldsJson) },
+        template: {
+          ...s.template,
+          fields: JSON.parse(
+            pinnedSubmissionFieldsJson({
+              versionFieldsJson: s.templateVersion?.fieldsJson,
+              liveFieldsJson: s.template.fieldsJson,
+            })
+          ),
+          versionNumber: s.templateVersion?.versionNumber ?? null,
+        },
       }))
     );
   }
@@ -60,6 +76,7 @@ export async function GET(req: NextRequest) {
       where: managerManagementFormSubmissionWhere(mgr),
       include: {
         template: true,
+        templateVersion: { select: { id: true, versionNumber: true, fieldsJson: true } },
         employee: { include: { branch: true, department: true, reportsToEmployee: { select: { id: true, name: true } } } },
         branch: true,
       },
@@ -69,7 +86,16 @@ export async function GET(req: NextRequest) {
       list.map((s) => ({
         ...s,
         answers: JSON.parse(s.answersJson) as Record<string, string>,
-        template: { ...s.template, fields: JSON.parse(s.template.fieldsJson) },
+        template: {
+          ...s.template,
+          fields: JSON.parse(
+            pinnedSubmissionFieldsJson({
+              versionFieldsJson: s.templateVersion?.fieldsJson,
+              liveFieldsJson: s.template.fieldsJson,
+            })
+          ),
+          versionNumber: s.templateVersion?.versionNumber ?? null,
+        },
       }))
     );
   }
@@ -84,6 +110,7 @@ export async function GET(req: NextRequest) {
     where: { employeeId: user.employee.id },
     include: {
       template: true,
+      templateVersion: { select: { id: true, versionNumber: true, fieldsJson: true } },
       employee: { include: { branch: true } },
       branch: true,
     },
@@ -93,12 +120,21 @@ export async function GET(req: NextRequest) {
     list.map((s) => ({
       ...s,
       answers: JSON.parse(s.answersJson) as Record<string, string>,
-      template: { ...s.template, fields: JSON.parse(s.template.fieldsJson) },
+      template: {
+        ...s.template,
+        fields: JSON.parse(
+          pinnedSubmissionFieldsJson({
+            versionFieldsJson: s.templateVersion?.fieldsJson,
+            liveFieldsJson: s.template.fieldsJson,
+          })
+        ),
+        versionNumber: s.templateVersion?.versionNumber ?? null,
+      },
     }))
   );
-}
+});
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrors(async function POST(req: NextRequest) {
   await maybePurgeOldManagementFormSubmissions(prisma);
   const session = await requireSession();
   const user = await prisma.user.findUnique({
@@ -144,9 +180,14 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  const pinned = await ensurePublishedVersion(prisma, template, session.user.id);
+  const resolved = await resolveTemplateFieldsJson(prisma, {
+    ...template,
+    currentVersionId: pinned.id,
+  });
   let fields;
   try {
-    fields = parseTemplateFields(template.fieldsJson);
+    fields = parseTemplateFields(resolved.fieldsJson);
   } catch {
     return Response.json({ error: 'Invalid template' }, { status: 500 });
   }
@@ -174,6 +215,7 @@ export async function POST(req: NextRequest) {
       branchId: submissionBranchId,
       answersJson: JSON.stringify(answersNorm),
       status: 'submitted',
+      templateVersionId: pinned.id,
     },
     include: {
       template: true,
@@ -260,4 +302,4 @@ export async function POST(req: NextRequest) {
     answers: answersNorm,
     template: { ...submission.template, fields },
   });
-}
+});

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/session';
+import { requireSession, sessionHasHrStaffAdmin } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { z } from 'zod';
 
@@ -12,7 +12,7 @@ const createSchema = z.object({
 
 async function assertCanReadEmployeeReviews(session: { user: { id: string; role: string } }, employeeId: string) {
   const role = normalizeUserRole(session.user.role);
-  if (role === 'owner') {
+  if (role === 'owner' || (await sessionHasHrStaffAdmin(session))) {
     const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
     if (!employee) return new Response(null, { status: 404 });
     return null;
@@ -49,7 +49,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const role = normalizeUserRole(session.user.role);
   const { id } = await params;
 
-  if (role !== 'owner' && role !== 'manager') {
+  const isHrStaffAdmin = await sessionHasHrStaffAdmin(session);
+  if (role !== 'owner' && role !== 'manager' && !isHrStaffAdmin) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 

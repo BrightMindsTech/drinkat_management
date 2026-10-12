@@ -1,12 +1,15 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
+import { hrOperationsFrozenResponse } from '@/lib/hr-operations-freeze';
 
 /**
  * POST body: multipart form with file, or JSON { periodMonth, rows: [ { employeeId, amount } ] }
  * Or CSV text in body with periodMonth header and columns: employeeId or email, amount
  */
-export async function POST(req: NextRequest) {
+export const POST = withApiErrors(async function POST(req: NextRequest) {
+  return hrOperationsFrozenResponse();
   await requireOwner();
 
   const contentType = req.headers.get('content-type') ?? '';
@@ -68,9 +71,10 @@ export async function POST(req: NextRequest) {
     uploaded: valid.length,
     salaryCopies: list.map((employee) => ({ employee, amount: employee.salaryAmount ?? 0 })),
   });
-}
+});
 
-function parseCsvSalary(csvText: string): { employeeId?: string; email?: string; amount: number }[] {
+function parseCsvSalary(csvText: string): {
+  employeeId?: string; email?: string; amount: number }[] {
   const lines = csvText.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
   const header = lines[0].toLowerCase().split(',').map((h) => h.trim());

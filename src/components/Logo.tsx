@@ -19,13 +19,13 @@ export function Logo({ className = '', size = 36, showPoweredBy = true, subtitle
             className="font-semibold tracking-tight block sm:hidden max-w-[42vw] truncate text-black dark:text-white"
             style={{ fontSize: size }}
           >
-            DrinkatHR
+            Drinkat QC
           </span>
           <span
             className="font-semibold tracking-tight hidden sm:block text-black dark:text-white"
             style={{ fontSize: size }}
           >
-            DrinkatHR — Management System
+            Drinkat QC
           </span>
         </>
       ) : (
@@ -33,7 +33,7 @@ export function Logo({ className = '', size = 36, showPoweredBy = true, subtitle
           className="font-semibold tracking-tight block text-black dark:text-white"
           style={{ fontSize: size }}
         >
-          DrinkatHR — Management System
+          Drinkat QC
         </span>
       )}
       {subtitle && (

@@ -6,7 +6,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
  */
 const config: CapacitorConfig = {
   appId: 'com.bmtechs.drinkat',
-  appName: 'DrinkatHR',
+  appName: 'Drinkat QC',
   webDir: 'www',
   server: {
     url: 'https://drinkat-management.technologiesbrightminds.workers.dev',

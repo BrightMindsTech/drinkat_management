@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireOwner } from '@/lib/session';
+import { requireHrStaffAdmin } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string; docId: string }> }) {
-  await requireOwner();
+export const DELETE = withApiErrors(async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string; docId: string }> }) {
+  await requireHrStaffAdmin();
 
   const { id, docId } = await params;
 
@@ -14,4 +15,4 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   await prisma.employeeDocument.delete({ where: { id: docId } });
   return new Response(null, { status: 204 });
-}
+});

@@ -3,8 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
 import { runSalaryDistributionIfDue } from '@/lib/salary-distribution';
 import { getSalaryDeductionReport } from '@/lib/salary-deduction-report';
+import { withApiErrors } from '@/lib/api-route-error';
+import { hrOperationsFrozenResponse } from '@/lib/hr-operations-freeze';
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrors(async function GET(req: NextRequest) {
+  return hrOperationsFrozenResponse();
   await requireOwner();
   await runSalaryDistributionIfDue();
   const { searchParams } = new URL(req.url);
@@ -33,4 +36,4 @@ export async function GET(req: NextRequest) {
     rows,
     totals: report.totals,
   });
-}
+});

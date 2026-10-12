@@ -6,12 +6,15 @@ import { periodMonthFromDate } from '@/lib/advance-period-month';
 import { getUserIdForEmployeeId } from '@/lib/employee-user';
 import { notifyUser } from '@/lib/user-notify';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
+import { hrOperationsFrozenResponse } from '@/lib/hr-operations-freeze';
 
 const patchSchema = z.object({
   status: z.enum(['approved', 'denied']),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = withApiErrors(async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return hrOperationsFrozenResponse();
   const session = await requireOwnerOrManager();
   const { id } = await params;
   const body = await req.json();
@@ -75,4 +78,4 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   return Response.json(updated);
-}
+});

@@ -1,0 +1,53 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "drinkat-qc-staging",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2026-03-17",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public",
+		"no_handle_cross_request_promise_resolution"
+	],
+	"limits": {
+		"cpu_ms": 120000
+	},
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "drinkat-qc-staging"
+		}
+	],
+	"images": {
+		"binding": "IMAGES"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "drinkat-qc-staging",
+			"database_id": "9d1e8590-38c8-4cf8-afe0-ca21a7bcc91c"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "UPLOADS",
+			"bucket_name": "drinkat-qc-staging-uploads"
+		}
+	],
+	"vars": {
+		"AUTH_TRUST_HOST": "1",
+		"DATABASE_URL": "",
+		"WORKER_PUBLIC_URL": "https://drinkat-qc-staging.technologiesbrightminds.workers.dev",
+		"NEXTAUTH_URL": "https://drinkat-qc-staging.technologiesbrightminds.workers.dev",
+		"INSPECTION_SCHEDULER_ENABLED": "1",
+		"PHOTO_CHECK_SCHEDULER_ENABLED": "1",
+		"AI_PROVIDER": "openai",
+		"AI_PAID_USAGE_APPROVED": "1",
+		"AI_VISION_MODEL": "gpt-4o",
+		"AI_TEXT_MODEL": "gpt-4o-mini",
+		"AI_TRANSCRIBE_MODEL": "whisper-1"
+	}
+}

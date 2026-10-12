@@ -26,7 +26,7 @@ export function RegisterStaffForm({
   const [residentialArea, setResidentialArea] = useState('');
   const [shiftTimeFrom, setShiftTimeFrom] = useState('09:00');
   const [shiftTimeUntil, setShiftTimeUntil] = useState('17:00');
-  const [role, setRole] = useState<'staff' | 'qc' | 'marketing'>('staff');
+  const [role, setRole] = useState<'staff' | 'assistant_manager' | 'qc' | 'marketing'>('staff');
   const [employmentType, setEmploymentType] = useState<'full_time' | 'part_time'>('full_time');
   const [branchId, setBranchId] = useState(branches[0]?.id ?? '');
   const [departmentId, setDepartmentId] = useState('');
@@ -151,6 +151,7 @@ export function RegisterStaffForm({
             className="w-full rounded-lg border border-gray-300 px-3 py-2"
           />
         </div>
+        {false && (
         <div>
           <label className="block text-sm text-app-label mb-1">{t.registerStaff.salaryAmount}</label>
           <input
@@ -165,6 +166,7 @@ export function RegisterStaffForm({
             <p className="text-xs text-app-muted mt-1">{t.registerStaff.partTimeSalaryDailyHint}</p>
           ) : null}
         </div>
+        )}
         <div>
           <label className="block text-sm text-app-label mb-1">{t.common.residentialArea}</label>
           <input
@@ -198,10 +200,11 @@ export function RegisterStaffForm({
           <label className="block text-sm text-app-label mb-1">{t.registerStaff.role}</label>
           <select
             value={role}
-            onChange={(e) => setRole(e.target.value as 'staff' | 'qc' | 'marketing')}
+            onChange={(e) => setRole(e.target.value as 'staff' | 'assistant_manager' | 'qc' | 'marketing')}
             className="w-full rounded-lg border border-gray-300 px-3 py-2"
           >
             <option value="staff">{t.registerStaff.staff}</option>
+            <option value="assistant_manager">{t.registerStaff.assistantManager}</option>
             <option value="qc">{t.registerStaff.qc}</option>
             <option value="marketing">{t.registerStaff.marketing}</option>
           </select>
@@ -249,6 +252,7 @@ export function RegisterStaffForm({
             ))}
           </select>
         </div>
+        {false && (
         <div>
           <label className="block text-sm text-app-label mb-1">{t.registerStaff.advanceLimit}</label>
           <input
@@ -261,6 +265,7 @@ export function RegisterStaffForm({
             className="w-full rounded-lg border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-3 py-2"
           />
         </div>
+        )}
         <div>
           <label className="block text-sm text-app-label mb-1">{t.registerStaff.emailLogin}</label>
           <input

@@ -1,15 +1,16 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireOwner } from '@/lib/session';
+import { requireHrStaffAdmin } from '@/lib/session';
 import { z } from 'zod';
 import * as bcrypt from 'bcryptjs';
+import { withApiErrors } from '@/lib/api-route-error';
 
 const resetSchema = z.object({
   password: z.string().min(6),
 });
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireOwner();
+export const POST = withApiErrors(async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  await requireHrStaffAdmin();
 
   const { id } = await params;
   const body = await req.json();
@@ -30,5 +31,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
 
   return Response.json({ ok: true });
-}
+});
 

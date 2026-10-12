@@ -14,7 +14,8 @@ function detailId(detail: PushReceivedDetail): string {
     detail.advanceId ??
     detail.submissionId ??
     detail.threadId ??
-    detail.weekStartKey;
+    detail.weekStartKey ??
+    detail.taskId;
   return `push-${type}-${entity ?? Date.now()}`;
 }
 
@@ -28,7 +29,7 @@ export function PushForegroundBridge() {
       const detail = (event as CustomEvent<PushReceivedDetail>).detail ?? {};
       if (detail.type === 'push_keepalive') return;
 
-      const title = typeof detail.title === 'string' && detail.title.trim() ? detail.title : 'DrinkatHR';
+      const title = typeof detail.title === 'string' && detail.title.trim() ? detail.title : 'Drinkat QC';
       const body = typeof detail.body === 'string' ? detail.body : '';
       const stringData: Record<string, string> = {};
       for (const [k, v] of Object.entries(detail)) {

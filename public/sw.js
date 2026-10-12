@@ -2,7 +2,7 @@
 importScripts('/push-navigation-sw.js');
 
 function parsePushPayload(event) {
-  const fallback = { title: 'DrinkatHR', body: '', data: {} };
+  const fallback = { title: 'Drinkat QC', body: '', data: {} };
   if (!event.data) return Promise.resolve(fallback);
   return event.data.text().then((t) => {
     if (!t) return fallback;
@@ -16,7 +16,7 @@ function parsePushPayload(event) {
 
 self.addEventListener('push', (event) => {
   const show = (payload) => {
-    const title = payload.title || 'DrinkatHR';
+    const title = payload.title || 'Drinkat QC';
     const body = payload.body || '';
     const tag = payload.data?.type || payload.data?.threadId || 'drinkat-alert';
     const data = enrichPushData(payload.data || {});

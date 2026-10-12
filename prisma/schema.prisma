@@ -33,6 +33,13 @@ model Branch {
   timeClockEntries TimeClockEntry[]
   awaySessions AwaySession[]
   weeklyRatings WeeklyRating[]
+  inspectionSchedules InspectionSchedule[]
+  inspectionTasks     InspectionTask[]
+  issues              Issue[]
+  photoCheckSubmissions PhotoCheckSubmission[]
+  photoCheckSchedules   PhotoCheckSchedule[]
+  photoCheckTasks       PhotoCheckTask[]
+  qcFieldReports        QcFieldReport[]
 }
 
 model Department {
@@ -47,7 +54,8 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   passwordHash  String
-  role          String    // owner | qc | staff | manager
+  role          String    // owner | qc | staff | manager | assistant_manager | marketing
+  publishedFormVersions FormTemplateVersion[]
   branchId      String?
   branch        Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   employee      Employee?
@@ -62,6 +70,23 @@ model User {
   chatMessagesSent  ChatMessage[]       @relation("ChatMessageSender")
   chatTypingStates  ChatTypingState[]
   supportReports    SupportReport[]
+  issueEvents       IssueEvent[]
+  issueComments     IssueComment[]
+  aiRuns            AiRun[]
+  uploadObjects     UploadObject[]
+  /// Owner-assigned KPI HR reviewer. Does not restore payroll/leave/advances.
+  hrKpiReviewer     Boolean   @default(false)
+  /// Narrow: photo-submission ON/OFF and per-inspection assignments. Not payroll.
+  photoOpsAdmin     Boolean   @default(false)
+  /// Narrow: read QC field reports inbox. Not payroll.
+  qcReportsInbox    Boolean   @default(false)
+  kpiHrReviews      KpiHrReview[]
+  hrNotesWritten    HrNote[]
+  photoCheckReviews PhotoCheckSubmission[] @relation("PhotoCheckReviewer")
+  photoOpsAudits    PhotoCheckAssignmentAudit[] @relation("PhotoOpsActor")
+  photoCheckReferencesCreated PhotoCheckReference[] @relation("PhotoRefCreator")
+  photoCheckReferencesApproved PhotoCheckReference[] @relation("PhotoRefApprover")
+  qcFieldReports    QcFieldReport[]
 }
 
 /// User-submitted app bug / technical support tickets (screenshots stored as upload paths JSON).
@@ -148,7 +173,7 @@ model Employee {
   idCardPhotoPath String?
   idCardFrontPhotoPath String?
   idCardBackPhotoPath String?
-  role        String    // staff | qc | manager
+  role        String    // staff | assistant_manager | qc | manager | marketing
   /// full_time (default) | part_time — part-time staff are expected ≥15 distinct clock-in days per calendar month
   employmentType String @default("full_time")
   status      String    @default("active") // active | on_leave | terminated
@@ -178,6 +203,16 @@ model Employee {
   awaySessions     AwaySession[]
   weeklyRatingsAsRater   WeeklyRating[] @relation("WeeklyRatingRater")
   weeklyRatingsAsTarget  WeeklyRating[] @relation("WeeklyRatingTarget")
+  inspectionSchedules InspectionSchedule[]
+  inspectionTasks     InspectionTask[]
+  assignedIssues      Issue[] @relation("IssueAssignee")
+  kpiPeriodScores     KpiPeriodScore[]
+  hrNotes             HrNote[]
+  photoCheckSubmissions PhotoCheckSubmission[]
+  photoCheckSetting   PhotoCheckEmployeeSetting?
+  photoCheckTypeAssignments PhotoCheckEmployeeType[]
+  photoCheckTasks     PhotoCheckTask[]
+  photoCheckSchedules PhotoCheckSchedule[]
 }
 
 /// One directional weekly score (0–100). Unique per rater + target + ISO week (Monday key YYYY-MM-DD in APP_TIMEZONE).
@@ -438,6 +473,10 @@ model ManagementFormTemplate {
   submissions  ManagementFormSubmission[]
   departmentAssignments FormTemplateDepartment[]
   employeeAssignments FormTemplateEmployee[]
+  currentVersionId String?
+  currentVersion   FormTemplateVersion? @relation("CurrentFormTemplateVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  versions         FormTemplateVersion[] @relation("TemplateVersions")
+  inspectionSchedules InspectionSchedule[]
 }
 
 model FormTemplateEmployee {
@@ -474,8 +513,522 @@ model ManagementFormSubmission {
   reviewedById String?
   submittedAt  DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  /// Immutable snapshot this submission was answered against (null only for pre-versioning rows until backfill).
+  templateVersionId String?
+  templateVersion   FormTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: SetNull)
 
   @@index([templateId])
   @@index([employeeId])
   @@index([branchId])
+  @@index([templateVersionId])
+}
+
+/// Immutable published snapshot of a management/inspection form template.
+model FormTemplateVersion {
+  id             String   @id @default(cuid())
+  templateId     String
+  template       ManagementFormTemplate @relation("TemplateVersions", fields: [templateId], references: [id], onDelete: Cascade)
+  versionNumber  Int
+  category       String
+  title          String
+  description    String?
+  fieldsJson     String
+  publishedAt    DateTime @default(now())
+  publishedById  String?
+  publishedBy    User?    @relation(fields: [publishedById], references: [id], onDelete: SetNull)
+  currentOf      ManagementFormTemplate[] @relation("CurrentFormTemplateVersion")
+  submissions    ManagementFormSubmission[]
+  inspectionSchedules InspectionSchedule[]
+  inspectionTasks     InspectionTask[]
+
+  @@unique([templateId, versionNumber])
+  @@index([templateId])
+}
+
+/// Scheduling. Generation is gated by INSPECTION_SCHEDULER_ENABLED (staging only) AND active=true.
+model InspectionSchedule {
+  id           String   @id @default(cuid())
+  templateId   String
+  template     ManagementFormTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateVersionId String?
+  templateVersion   FormTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: SetNull)
+  branchId     String?
+  branch       Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  employeeId   String?
+  employee     Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  role         String?
+  recurrence   String   @default("daily")
+  deadlineTime String   @default("23:59")
+  /// opening | daytime | closing | any
+  window       String   @default("any")
+  label        String?
+  active       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tasks        InspectionTask[]
+
+  @@index([templateId])
+  @@index([branchId])
+  @@index([active])
+}
+
+model InspectionTask {
+  id                  String   @id @default(cuid())
+  scheduleId          String
+  schedule            InspectionSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  templateVersionId   String
+  templateVersion     FormTemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  assigneeEmployeeId  String
+  assignee            Employee @relation(fields: [assigneeEmployeeId], references: [id], onDelete: Cascade)
+  branchId            String
+  branch              Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  periodKey           String
+  dueAt               DateTime
+  /// scheduled | due | in_progress | completed | overdue | excused | cancelled
+  status              String   @default("scheduled")
+  startedAt           DateTime?
+  submittedAt         DateTime?
+  draftJson           String?
+  submissionId        String?
+  excusedReason       String?
+  lastRemindedAt      DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now()) @updatedAt
+  issues              Issue[]
+
+  @@unique([scheduleId, assigneeEmployeeId, periodKey])
+  @@index([assigneeEmployeeId, periodKey])
+  @@index([branchId])
+  @@index([status, dueAt])
+}
+
+/// One issue per source answer (unique sourceAnswerId).
+model Issue {
+  id                         String   @id @default(cuid())
+  sourceAnswerId             String   @unique
+  status                     String   @default("open")
+  branchId                   String?
+  branch                     Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  inspectionTaskId           String?
+  inspectionTask             InspectionTask? @relation(fields: [inspectionTaskId], references: [id], onDelete: SetNull)
+  submissionId               String?
+  questionKey                String   @default("")
+  questionLabel              String   @default("")
+  severity                   String   @default("medium")
+  assigneeEmployeeId         String?
+  assignee                   Employee? @relation("IssueAssignee", fields: [assigneeEmployeeId], references: [id], onDelete: SetNull)
+  responsibilitySuggested    String?
+  responsibilityApproved     String?
+  responsibilityApprovedById String?
+  beforePhotoPath            String?
+  afterPhotoPath             String?
+  correctiveAction           String?
+  verifiedAt                 DateTime?
+  verifiedById               String?
+  closedAt                   DateTime?
+  reopenCount                Int      @default(0)
+  lastEscalatedAt            DateTime?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @default(now()) @updatedAt
+  events                     IssueEvent[]
+  comments                   IssueComment[]
+  responsibilityDecision     ResponsibilityDecision?
+
+  @@index([branchId])
+  @@index([status])
+  @@index([inspectionTaskId])
+  @@index([assigneeEmployeeId])
+}
+
+model IssueEvent {
+  id          String   @id @default(cuid())
+  issueId     String
+  issue       Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  fromStatus  String?
+  toStatus    String
+  actorUserId String?
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([issueId, createdAt])
+}
+
+model IssueComment {
+  id          String   @id @default(cuid())
+  issueId     String
+  issue       Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  body        String
+  createdAt   DateTime @default(now())
+
+  @@index([issueId, createdAt])
+}
+
+model EscalationRule {
+  id                String   @id @default(cuid())
+  severity          String
+  slaHours          Int
+  notifyRolesJson   String   @default("[]")
+  notifyUserIdsJson String   @default("[]")
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  @@index([severity])
+}
+
+model KpiWeightConfig {
+  id            String   @id @default(cuid())
+  subjectRole   String
+  versionNumber Int
+  weightsJson   String
+  createdAt     DateTime @default(now())
+  createdById   String?
+
+  @@unique([subjectRole, versionNumber])
+}
+
+model KpiPeriodScore {
+  id              String   @id @default(cuid())
+  employeeId      String
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  subjectRole     String
+  periodKey       String
+  mode            String   @default("shadow")
+  total           Float?
+  explanationJson String
+  createdAt       DateTime @default(now())
+
+  @@unique([employeeId, periodKey, mode])
+  @@index([periodKey])
+}
+
+/// Unlimited HR 0–10 notes. Average in a period feeds the `hr_notes` KPI component.
+model HrNote {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  reviewerId String
+  reviewer   User     @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+  score      Int
+  reason     String
+  createdAt  DateTime @default(now())
+
+  @@index([employeeId, createdAt])
+  @@index([reviewerId])
+}
+
+/// HR manual review of system-calculated KPI. Cannot overwrite totals.
+model KpiHrReview {
+  id                     String   @id @default(cuid())
+  employeeId             String
+  periodKey              String
+  mode                   String   @default("operational")
+  /// pending | flagged | completed
+  status                 String   @default("pending")
+  comments               String?
+  flaggedReason          String?
+  calculatedTotal        Float?
+  calculatedSnapshotJson String
+  reviewedById           String?
+  reviewedBy             User?    @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt             DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @default(now()) @updatedAt
+
+  @@unique([employeeId, periodKey, mode])
+  @@index([periodKey, status])
+  @@index([reviewedById])
+}
+
+model ResponsibilityDecision {
+  id             String    @id @default(cuid())
+  issueId        String    @unique
+  issue          Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  classification String
+  approvedById   String?
+  approvedAt     DateTime?
+  note           String?
+}
+
+model AiRun {
+  id             String   @id @default(cuid())
+  kind           String
+  inputJson      String
+  outputJson     String
+  provider       String   @default("openai")
+  mocked         Boolean  @default(false)
+  errorCode      String?
+  tokensIn       Int      @default(0)
+  tokensOut      Int      @default(0)
+  estimatedUsd   Float    @default(0)
+  latencyMs      Int      @default(0)
+  createdById    String?
+  createdBy      User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@index([kind, createdAt])
+}
+
+/// Blob ownership for /api/uploads authorization. Keys remain unguessable UUIDs.
+model UploadObject {
+  id               String   @id @default(cuid())
+  objectKey        String   @unique
+  uploadedByUserId String
+  uploadedBy       User     @relation(fields: [uploadedByUserId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+
+  @@index([uploadedByUserId])
+}
+
+/// Approved DRINKAT SOP text only. Empty table means SOP assistant is BLOCKED.
+model SopDocument {
+  id           String    @id @default(cuid())
+  title        String
+  locale       String    @default("en")
+  body         String
+  sourceRef    String
+  approved     Boolean   @default(false)
+  qcDomain     String?
+  /// draft | qc_reviewed | needs_info | rejected
+  reviewStatus String    @default("draft")
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+  adoptedFromId String?
+  approvedById  String?
+  approvedAt    DateTime?
+  documentVersion Int      @default(1)
+  createdAt     DateTime  @default(now())
+
+  @@index([approved, locale])
+  @@index([sourceRef])
+  @@index([qcDomain, reviewStatus])
+}
+
+/// Configurable titled photo inspection. Not hardcoded in app logic.
+model PhotoCheckType {
+  id                   String   @id @default(cuid())
+  code                 String   @unique
+  sortOrder            Int      @default(0)
+  titleEn              String
+  titleAr              String
+  /// barista | kitchen
+  groupKey             String   @default("barista")
+  active               Boolean  @default(false)
+  provisional          Boolean  @default(false)
+  requiresMeasurement  Boolean  @default(false)
+  measurementUnit      String?
+  /// Handwritten owner notes. Not approved DRINKAT specifications.
+  handwrittenNote      String?
+  /// [{key,labelEn,labelAr,weight}] observable criteria only
+  criteriaJson         String   @default("[]")
+  /// Minimum photographs in one submission. Owner 2026-10-12: 1–3 for every type.
+  minPhotos            Int      @default(1)
+  maxPhotos            Int      @default(3)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  references           PhotoCheckReference[]
+  employeeAssignments  PhotoCheckEmployeeType[]
+  schedules            PhotoCheckSchedule[]
+  tasks                PhotoCheckTask[]
+  submissions          PhotoCheckSubmission[]
+}
+
+model PhotoCheckReference {
+  id            String   @id @default(cuid())
+  typeId        String
+  type          PhotoCheckType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  uploadPath    String
+  approved      Boolean  @default(false)
+  createdById   String
+  createdBy     User     @relation("PhotoRefCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  approvedById  String?
+  approvedBy    User?    @relation("PhotoRefApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([typeId, approved])
+}
+
+/// Global photo-submission switch. Missing row = OFF (do not auto-enable).
+model PhotoCheckEmployeeSetting {
+  employeeId  String   @id
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  required    Boolean  @default(false)
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+model PhotoCheckEmployeeType {
+  id         String         @id @default(cuid())
+  employeeId String
+  employee   Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  typeId     String
+  type       PhotoCheckType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  assigned   Boolean        @default(true)
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([employeeId, typeId])
+  @@index([employeeId, assigned])
+}
+
+model PhotoCheckAssignmentAudit {
+  id           String   @id @default(cuid())
+  employeeId   String
+  actorUserId  String
+  actor        User     @relation("PhotoOpsActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  action       String
+  beforeJson   String
+  afterJson    String
+  createdAt    DateTime @default(now())
+
+  @@index([employeeId, createdAt])
+}
+
+/// One row per daily time slot. Unique tasks use (scheduleId, assignee, periodKey=yyyy-MM-dd).
+model PhotoCheckSchedule {
+  id                      String         @id @default(cuid())
+  typeId                  String
+  type                    PhotoCheckType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  branchId                String?
+  branch                  Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  employeeId              String?
+  employee                Employee?      @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  role                    String?
+  /// JSON array of JS weekday numbers 0=Sun..6=Sat in Asia/Amman. Empty = every day.
+  daysOfWeekJson          String         @default("[]")
+  slotKey                 String
+  slotLabelEn             String
+  slotLabelAr             String
+  startTime               String         @default("00:00")
+  dueTime                 String         @default("23:59")
+  reminderMinutesBefore   Int?
+  overdueReminderMinutes  Int?
+  maxReminders            Int            @default(3)
+  reminderCooldownMinutes Int            @default(180)
+  active                  Boolean        @default(false)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  tasks                   PhotoCheckTask[]
+
+  @@index([typeId, active])
+  @@index([branchId, active])
+}
+
+model PhotoCheckTask {
+  id                  String             @id @default(cuid())
+  scheduleId          String
+  schedule            PhotoCheckSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  typeId              String
+  type                PhotoCheckType     @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  assigneeEmployeeId  String
+  assignee            Employee           @relation(fields: [assigneeEmployeeId], references: [id], onDelete: Cascade)
+  branchId            String
+  branch              Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  periodKey           String
+  slotKey             String
+  windowStartAt       DateTime
+  dueAt               DateTime
+  /// scheduled | due | in_progress | completed | overdue | excused | cancelled
+  status              String             @default("scheduled")
+  submissionId        String?
+  reminderCount       Int                @default(0)
+  lastRemindedAt      DateTime?
+  lastReminderKind    String?
+  excusedReason       String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  submission          PhotoCheckSubmission?
+
+  @@unique([scheduleId, assigneeEmployeeId, periodKey])
+  @@index([assigneeEmployeeId, periodKey])
+  @@index([status, dueAt])
+  @@index([typeId, status])
+}
+
+/// Staff camera QC check. AI stores criterion assessments; QC swipe is the approval KPI source.
+model PhotoCheckSubmission {
+  id              String    @id @default(cuid())
+  employeeId      String
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  branchId        String
+  branch          Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  taskId          String?   @unique
+  task            PhotoCheckTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  typeId          String?
+  type            PhotoCheckType? @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  uploadPath      String
+  measuredValue   String?
+  /// pass | fail | unassessable | pending | unavailable
+  aiVerdict       String    @default("pending")
+  aiScore         Float?
+  aiExplanation   String?
+  aiClarity       String?
+  aiProblemsJson  String?
+  aiCriteriaJson  String?
+  aiRunId         String?
+  /// pending_qc | approved | rejected | ai_rejected
+  status          String    @default("pending_qc")
+  qcReviewedById  String?
+  qcReviewedBy    User?     @relation("PhotoCheckReviewer", fields: [qcReviewedById], references: [id], onDelete: SetNull)
+  qcReviewedAt    DateTime?
+  qcNote          String?
+  submittedAt     DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  images          PhotoCheckSubmissionImage[]
+
+  @@index([employeeId, submittedAt])
+  @@index([status, submittedAt])
+  @@index([branchId, status])
+  @@index([typeId, status])
+}
+
+/// Extra photographs on one PhotoCheckSubmission (360° corners, extra angles).
+model PhotoCheckSubmissionImage {
+  id            String               @id @default(cuid())
+  submissionId  String
+  submission    PhotoCheckSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  uploadPath    String
+  sortOrder     Int                  @default(0)
+  createdAt     DateTime             @default(now())
+
+  @@index([submissionId, sortOrder])
+  @@index([uploadPath])
+}
+
+/// Independent QC operational observations. Never writes KPI.
+model QcFieldReport {
+  id            String   @id @default(cuid())
+  createdById   String
+  createdBy     User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  branchId      String
+  branch        Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  category      String
+  severity      String   @default("medium")
+  comments      String
+  photosJson    String   @default("[]")
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([branchId, createdAt])
+}
+
+model QcAppConfig {
+  key   String @id
+  value String
+}
+
+/// Audit of staff photo objects discarded before a valid QC submission (cancelled/failed upload).
+model PhotoUploadDiscard {
+  id        String   @id @default(cuid())
+  userId    String
+  objectKey String
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([objectKey])
 }

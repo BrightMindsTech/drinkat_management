@@ -36,6 +36,10 @@ const PUSH_TYPE_ROUTES = {
       ? `/dashboard/qc#qc-assignment-${d.assignmentId}`
       : '/dashboard/qc',
   qc_assignment_removed: () => '/dashboard/qc',
+  staff_qc_submit: (d) =>
+    d.assignmentId
+      ? `/dashboard/qc#qc-assignment-${d.assignmentId}`
+      : '/dashboard/qc',
   advance_request_pending_review: () => '/dashboard/hr#hr-owner-advances',
   advance_decided: () => '/dashboard/hr',
   leave_request_pending_review: () => '/dashboard/hr#hr-owner-leave',
@@ -47,6 +51,7 @@ const PUSH_TYPE_ROUTES = {
   weekly_rating_reminder: () => '/dashboard/ratings',
   push_test: () => '/dashboard/messages',
   push_connected: () => '/dashboard',
+  daily_app_reminder: () => '/dashboard',
 };
 
 function resolvePushNavigationUrl(data) {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { getDashboardNavItems, isNavActive, type DashboardNavItem } from '@/lib/dashboard-nav-config';
+import { getDashboardNavItems, isNavActive, type DashboardNavFlags, type DashboardNavItem } from '@/lib/dashboard-nav-config';
 import { usePathname } from 'next/navigation';
 
 function IconHome({ className }: { className?: string }) {
@@ -93,11 +93,21 @@ function IconLifeBuoy({ className }: { className?: string }) {
   );
 }
 
+function IconMegaphone({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="m3 11 19-7v16L3 13v-2z" />
+      <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+    </svg>
+  );
+}
+
 const base = '/dashboard';
 
 function iconForItem(item: DashboardNavItem) {
   const { href } = item;
   if (href === base) return IconHome;
+  if (href.includes('/broadcast')) return IconMegaphone;
   if (href.includes('/hr')) return IconUsers;
   if (href.includes('/qc')) return IconClipboardCheck;
   if (href.includes('/forms')) return IconDocument;
@@ -106,23 +116,27 @@ function iconForItem(item: DashboardNavItem) {
   if (href.includes('/ratings')) return IconStar;
   if (href.includes('/messages')) return IconMessages;
   if (href.includes('/support')) return IconLifeBuoy;
+  if (href.includes('/photo')) return IconClipboardCheck;
+  if (href.includes('/kpi')) return IconChart;
   return IconHome;
 }
 
 export function DashboardNavLinks({
   role,
+  flags,
   layout,
   onNavigate,
   className = '',
 }: {
   role: string;
+  flags?: DashboardNavFlags;
   layout: 'sidebar' | 'drawer';
   onNavigate?: () => void;
   className?: string;
 }) {
   const { t } = useLanguage();
   const pathname = usePathname();
-  const items = getDashboardNavItems(role);
+  const items = getDashboardNavItems(role, flags);
 
   const isDrawer = layout === 'drawer';
 

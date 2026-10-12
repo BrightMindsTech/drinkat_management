@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireQc } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
 
-export async function DELETE(
+export const DELETE = withApiErrors(async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; itemId: string }> }
 ) {
@@ -16,4 +17,4 @@ export async function DELETE(
 
   await prisma.checklistItem.delete({ where: { id: itemId } });
   return new Response(null, { status: 204 });
-}
+});

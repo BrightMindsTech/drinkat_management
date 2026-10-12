@@ -17,8 +17,8 @@ type EmployeeWithRelations = Employee & {
   documents?: EmployeeDocument[];
 };
 
-function normalizeStaffRoleForEdit(r: string): 'staff' | 'qc' | 'marketing' | 'manager' {
-  if (r === 'staff' || r === 'qc' || r === 'marketing' || r === 'manager') return r;
+function normalizeStaffRoleForEdit(r: string): 'staff' | 'assistant_manager' | 'qc' | 'marketing' | 'manager' {
+  if (r === 'staff' || r === 'assistant_manager' || r === 'qc' || r === 'marketing' || r === 'manager') return r;
   return 'staff';
 }
 
@@ -65,7 +65,7 @@ export function EmployeeCard({
   const [draftShiftTimeFrom, setDraftShiftTimeFrom] = useState(parseShiftTime(employee.shiftTime).from);
   const [draftShiftTimeUntil, setDraftShiftTimeUntil] = useState(parseShiftTime(employee.shiftTime).until);
   const [draftDepartmentId, setDraftDepartmentId] = useState(employee.departmentId ?? '');
-  const [draftRole, setDraftRole] = useState<'staff' | 'qc' | 'marketing' | 'manager'>(() =>
+  const [draftRole, setDraftRole] = useState<'staff' | 'assistant_manager' | 'qc' | 'marketing' | 'manager'>(() =>
     normalizeStaffRoleForEdit(employee.role)
   );
   const [draftAdvanceLimit, setDraftAdvanceLimit] = useState(employee.advanceLimit != null ? String(employee.advanceLimit) : '');
@@ -396,7 +396,7 @@ export function EmployeeCard({
                 <dd className="text-app-primary">{employee.contact}</dd>
               </>
             )}
-            {employee.salaryAmount != null && (
+            {false && employee.salaryAmount != null && (
               <>
                 <dt className="text-app-muted">{t.common.salaryAmount}</dt>
                 <dd className="text-app-primary tabular-nums">
@@ -407,7 +407,7 @@ export function EmployeeCard({
                 </dd>
               </>
             )}
-            {employee.advanceLimit != null && (
+            {false && employee.advanceLimit != null && (
               <>
                 <dt className="text-app-muted">{t.registerStaff.advanceLimit}</dt>
                 <dd className="text-app-primary tabular-nums">{employee.advanceLimit.toFixed(2)}</dd>
@@ -481,6 +481,7 @@ export function EmployeeCard({
       )}
       {detailsVisible && (
       <>
+      {false && (
       <fieldset className="mt-3 rounded-lg border border-gray-200 dark:border-ios-dark-separator px-3 pb-3 pt-2">
         <legend className="px-1 text-xs font-semibold text-app-primary">{t.employeeCard.salaryHistory}</legend>
         <button type="button" onClick={() => setShowSalaryHistory(!showSalaryHistory)} className="text-sm text-ios-blue font-medium">
@@ -492,6 +493,7 @@ export function EmployeeCard({
           </div>
         )}
       </fieldset>
+      )}
       <fieldset className="mt-3 rounded-lg border border-gray-200 dark:border-ios-dark-separator px-3 pb-3 pt-2">
         <legend className="px-1 text-xs font-semibold text-app-primary">{t.employeeCard.performanceReviews}</legend>
         <p className="text-sm font-medium text-app-primary mb-1">{t.employeeCard.performanceReviews}</p>
@@ -551,6 +553,7 @@ export function EmployeeCard({
                 className="mt-1 w-full rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1 text-sm"
               />
             </label>
+            {false && (
             <label className="block text-sm text-app-label">
               {t.common.salaryAmount}
               <input
@@ -565,6 +568,7 @@ export function EmployeeCard({
                 <span className="block text-xs text-app-muted mt-1">{t.employeeCard.partTimeSalaryDailyHint}</span>
               ) : null}
             </label>
+            )}
             <label className="block text-sm text-app-label">
               {t.common.residentialArea}
               <input
@@ -596,10 +600,11 @@ export function EmployeeCard({
               {t.registerStaff.role}
               <select
                 value={draftRole}
-                onChange={(e) => setDraftRole(e.target.value as 'staff' | 'qc' | 'marketing' | 'manager')}
+                onChange={(e) => setDraftRole(e.target.value as 'staff' | 'assistant_manager' | 'qc' | 'marketing' | 'manager')}
                 className="mt-1 w-full rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1 text-sm"
               >
                 <option value="staff">{t.registerStaff.staff}</option>
+                <option value="assistant_manager">{t.registerStaff.assistantManager}</option>
                 <option value="qc">{t.registerStaff.qc}</option>
                 <option value="marketing">{t.registerStaff.marketing}</option>
                 <option value="manager">{t.registerStaff.manager}</option>
@@ -620,6 +625,7 @@ export function EmployeeCard({
                 </select>
               </label>
             )}
+            {false && (
             <label className="block text-sm text-app-label">
               {t.registerStaff.advanceLimit}
               <input
@@ -632,6 +638,7 @@ export function EmployeeCard({
                 className="mt-1 w-full rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1 text-sm"
               />
             </label>
+            )}
           </div>
 
           <div className="mt-3">

@@ -26,7 +26,30 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        disableWebViewHistorySwipe()
+    }
+
+    /// iOS WKWebView history swipe would steal the leading-edge gesture from the in-app menu.
+    private func disableWebViewHistorySwipe() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                disableHistorySwipe(in: window.rootViewController)
+            }
+        }
+    }
+
+    private func disableHistorySwipe(in controller: UIViewController?) {
+        guard let controller else { return }
+        if let bridge = controller as? CAPBridgeViewController {
+            bridge.webView?.allowsBackForwardNavigationGestures = false
+        }
+        for child in controller.children {
+            disableHistorySwipe(in: child)
+        }
+        if let presented = controller.presentedViewController {
+            disableHistorySwipe(in: presented)
+        }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

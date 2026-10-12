@@ -10,10 +10,18 @@ const SESSION_UPDATE_AGE_SEC = 24 * 60 * 60;
 const useSecureCookies =
   process.env.NEXTAUTH_URL?.startsWith('https://') ?? process.env.NODE_ENV === 'production';
 
+function isProductionWorkerHost(): boolean {
+  const url = `${process.env.WORKER_PUBLIC_URL ?? ''} ${process.env.NEXTAUTH_URL ?? ''}`;
+  return url.includes('drinkat-management') && !url.includes('drinkat-qc-staging') && !url.includes('localhost');
+}
+
 function resolveAuthSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
   if (secret) return secret;
-  // Local dev only — production Workers must set NEXTAUTH_SECRET via wrangler secret.
+  if (isProductionWorkerHost() || process.env.REQUIRE_AUTH_SECRET === '1') {
+    throw new Error('NEXTAUTH_SECRET is required outside local development');
+  }
+  // Local / staging-without-secret only — production Workers must set NEXTAUTH_SECRET.
   return 'dev-insecure-nextauth-secret';
 }
 

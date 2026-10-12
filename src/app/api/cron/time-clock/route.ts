@@ -6,6 +6,13 @@ import { purgeExpiredChat } from '@/lib/chat-retention';
 import { sendWeeklyRatingRemindersIfDue } from '@/lib/weekly-rating-reminders';
 import { sendPushKeepaliveIfDue } from '@/lib/push-keepalive-cron';
 import { flushPendingPushBatch } from '@/lib/push-pending-flush';
+import { sendQcSubmitRemindersIfDue } from '@/lib/qc-submit-reminders';
+import { sendDailyAppRemindersIfDue } from '@/lib/daily-app-reminders';
+import { generateInspectionTasksForDay, isInspectionSchedulerEnabled } from '@/lib/inspection-generate';
+import { sendInspectionTaskRemindersIfDue, sendIssueEscalationsIfDue } from '@/lib/inspection-reminders';
+import { generatePhotoCheckTasksForDay, isPhotoCheckSchedulerEnabled } from '@/lib/photo-generate';
+import { ensureOfficialPhotoProgram } from '@/lib/photo-ops-program';
+import { sendPhotoCheckRemindersIfDue } from '@/lib/photo-reminders';
 
 /**
  * Authenticated with CRON_SECRET (query `?secret=` or `Authorization: Bearer`).
@@ -63,6 +70,57 @@ export async function GET(req: Request) {
     console.error('[cron/maintenance] pending push flush failed', e);
   }
 
+  let qcSubmitReminders: Awaited<ReturnType<typeof sendQcSubmitRemindersIfDue>> | null = null;
+  try {
+    qcSubmitReminders = await sendQcSubmitRemindersIfDue(prisma);
+  } catch (e) {
+    console.error('[cron/maintenance] QC submit reminders failed', e);
+  }
+
+  let dailyAppReminders: Awaited<ReturnType<typeof sendDailyAppRemindersIfDue>> | null = null;
+  try {
+    dailyAppReminders = await sendDailyAppRemindersIfDue(prisma);
+  } catch (e) {
+    console.error('[cron/maintenance] daily app reminders failed', e);
+  }
+
+  let inspectionGeneration: { created: number; skipped: number; overdue: number } | null = null;
+  let inspectionReminders: { sent: number } | null = null;
+  let issueEscalations: { sent: number } | null = null;
+  if (isInspectionSchedulerEnabled()) {
+    try {
+      inspectionGeneration = await generateInspectionTasksForDay(prisma);
+    } catch (e) {
+      console.error('[cron/maintenance] inspection generation failed', e);
+    }
+    try {
+      inspectionReminders = await sendInspectionTaskRemindersIfDue(prisma);
+    } catch (e) {
+      console.error('[cron/maintenance] inspection reminders failed', e);
+    }
+    try {
+      issueEscalations = await sendIssueEscalationsIfDue(prisma);
+    } catch (e) {
+      console.error('[cron/maintenance] issue escalations failed', e);
+    }
+  }
+
+  let photoGeneration: { created: number; skipped: number; overdue: number } | null = null;
+  let photoReminders: { sent: number; skipped: number } | null = null;
+  if (isPhotoCheckSchedulerEnabled()) {
+    try {
+      await ensureOfficialPhotoProgram(prisma);
+      photoGeneration = await generatePhotoCheckTasksForDay(prisma);
+    } catch (e) {
+      console.error('[cron/maintenance] photo-check generation failed', e);
+    }
+    try {
+      photoReminders = await sendPhotoCheckRemindersIfDue(prisma);
+    } catch (e) {
+      console.error('[cron/maintenance] photo-check reminders failed', e);
+    }
+  }
+
   return Response.json({
     ok: true,
     db: true,
@@ -70,5 +128,14 @@ export async function GET(req: Request) {
     weeklyRatings,
     pushKeepalive,
     pushPendingFlush,
+    qcSubmitReminders,
+    dailyAppReminders,
+    inspectionGeneration,
+    inspectionReminders,
+    issueEscalations,
+    inspectionScheduler: isInspectionSchedulerEnabled(),
+    photoGeneration,
+    photoReminders,
+    photoCheckScheduler: isPhotoCheckSchedulerEnabled(),
   });
 }

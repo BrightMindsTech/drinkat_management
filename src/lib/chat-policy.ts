@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { normalizeUserRole, type AppUserRole } from '@/lib/formVisibility';
+import { hasCapability } from '@/lib/permissions';
 
 /** Effective branch for chat rules: User.branchId, else linked Employee.branchId. */
 export async function getEffectiveBranchId(
@@ -60,8 +61,8 @@ export async function canUsersChat(
 }
 
 export function roleMayUseChat(role: string): boolean {
-  const r = normalizeUserRole(role);
-  return r === 'owner' || r === 'qc' || r === 'staff' || r === 'manager' || r === 'marketing';
+  // Centralized; includes assistant_manager (API kept; chat nav removed in Phase 1).
+  return hasCapability(role, 'chat:use');
 }
 
 export type ChatUserListRow = {

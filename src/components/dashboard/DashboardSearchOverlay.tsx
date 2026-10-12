@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { LocaleMessages } from '@/locales/en';
-import { getDashboardNavItems } from '@/lib/dashboard-nav-config';
+import { getDashboardNavItems, type DashboardNavFlags } from '@/lib/dashboard-nav-config';
 import { getPageSections } from '@/lib/dashboard-page-sections';
 
 type SearchItem = {
@@ -33,17 +33,35 @@ const PAGE_PATHS = [
   '/dashboard/ratings',
   '/dashboard/manager-reports',
   '/dashboard/reports',
+  '/dashboard/tasks',
+  '/dashboard/issues',
+  '/dashboard/kpi',
+  '/dashboard/qc-overview',
+  '/dashboard/sop',
+  '/dashboard/photo',
+  '/dashboard/photo-review',
+  '/dashboard/broadcast',
+  '/dashboard/hr-notes',
 ] as const;
 
 const STATIC_KEYWORDS: Record<string, string[]> = {
   '/dashboard': ['home', 'dashboard', 'overview'],
   '/dashboard/messages': ['chat', 'messages', 'inbox', 'thread'],
-  '/dashboard/hr': ['hr', 'employees', 'leave', 'advance', 'salary'],
+  '/dashboard/hr': ['team', 'access', 'employees', 'branches', 'roles'],
   '/dashboard/forms': ['forms', 'submissions', 'checkup', 'template'],
   '/dashboard/qc': ['qc', 'quality', 'checklist', 'review'],
   '/dashboard/ratings': ['ratings', 'weekly', 'score'],
   '/dashboard/manager-reports': ['manager', 'reports', 'alerts'],
   '/dashboard/reports': ['reports', 'analytics', 'charts'],
+  '/dashboard/tasks': ['tasks', 'inspection', 'today'],
+  '/dashboard/issues': ['issues', 'corrective', 'fail'],
+  '/dashboard/kpi': ['kpi', 'score', 'shadow'],
+  '/dashboard/qc-overview': ['overview', 'dashboard', 'qc'],
+  '/dashboard/sop': ['sop', 'fda', 'draft', 'food code', 'إجراء', 'مسودة'],
+  '/dashboard/photo': ['photo', 'camera', 'qc', 'صورة'],
+  '/dashboard/photo-review': ['photo', 'swipe', 'review', 'qc', 'مراجعة'],
+  '/dashboard/broadcast': ['broadcast', 'notes', 'notify', 'hr', 'تعميم'],
+  '/dashboard/hr-notes': ['hr', 'notes', 'score', 'kpi', 'موارد'],
   'hr-owner-advances': ['advance', 'loan', 'salary advance', 'team advance'],
   'hr-owner-leave': ['leave', 'vacation', 'time off'],
   'hr-owner-staff': ['staff', 'employee', 'workers'],
@@ -53,8 +71,8 @@ const STATIC_KEYWORDS: Record<string, string[]> = {
   'section-home-activity': ['activity', 'recent', 'updates'],
 };
 
-function buildSearchItems(role: string): SearchItem[] {
-  const fromNav = getDashboardNavItems(role).map((item) => ({
+function buildSearchItems(role: string, flags?: DashboardNavFlags): SearchItem[] {
+  const fromNav = getDashboardNavItems(role, flags).map((item) => ({
     id: `nav:${item.href}`,
     href: item.href,
     titleRef: `nav.${item.labelKey}`,
@@ -83,16 +101,18 @@ function buildSearchItems(role: string): SearchItem[] {
 
 export function DashboardSearchOverlay({
   role,
+  flags,
   open,
   onClose,
 }: {
   role: string;
+  flags?: DashboardNavFlags;
   open: boolean;
   onClose: () => void;
 }) {
   const { t } = useLanguage();
   const [query, setQuery] = useState('');
-  const items = useMemo(() => buildSearchItems(role), [role]);
+  const items = useMemo(() => buildSearchItems(role, flags), [role, flags]);
 
   useEffect(() => {
     if (!open) return;

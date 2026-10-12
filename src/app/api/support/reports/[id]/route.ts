@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
-import { apiErrorResponse } from '@/lib/api-route-error';
+import { apiErrorResponse, withApiErrors } from '@/lib/api-route-error';
 import { deleteUploadedFile } from '@/lib/upload-storage';
 import { parseScreenshotPaths } from '@/lib/support-reports';
 
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
-export async function DELETE(_req: Request, ctx: RouteCtx) {
+export const DELETE = withApiErrors(async function DELETE(_req: Request, ctx: RouteCtx) {
   try {
     await requireOwner();
     const { id } = await ctx.params;
@@ -32,4 +32,4 @@ export async function DELETE(_req: Request, ctx: RouteCtx) {
   } catch (e) {
     return apiErrorResponse('support/reports DELETE', e, 'Failed to delete support report');
   }
-}
+});

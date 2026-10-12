@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, format } from 'date-fns';
 import { DEFAULT_APP_TIMEZONE } from '@/lib/shifts';
 import { weekStartKeysBetweenRange, weekStartKeysOverlappingMonth } from '@/lib/weekly-ratings';
@@ -13,7 +14,7 @@ import { buildCashFormReport } from '@/lib/cash-form-report';
 import { buildManagerRatingReport } from '@/lib/manager-rating-report';
 import { normalizeUserRole } from '@/lib/formVisibility';
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrors(async function GET(req: NextRequest) {
   const session = await requireOwner();
   await maybePurgeOldManagementFormSubmissions(prisma);
   const { searchParams } = new URL(req.url);
@@ -849,7 +850,7 @@ export async function GET(req: NextRequest) {
       },
     },
   });
-}
+});
 
 function getFormsTrend(
   submissions: { submittedAt: Date; status: string }[],

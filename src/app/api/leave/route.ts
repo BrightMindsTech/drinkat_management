@@ -12,6 +12,8 @@ import {
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { withPrismaRetry } from '@/lib/prisma-retry';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
+import { hrOperationsFrozenResponse } from '@/lib/hr-operations-freeze';
 
 const RECENT_REQUEST_WINDOW_MS = 5 * 60 * 1000;
 
@@ -22,7 +24,8 @@ const createSchema = z.object({
   note: z.string().optional(),
 });
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrors(async function GET(req: NextRequest) {
+  return hrOperationsFrozenResponse();
   const session = await requireSession();
 
   if (session.user.role === 'owner') {
@@ -55,11 +58,12 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
   });
   return Response.json(leaveRequests);
-}
+});
 
 const LEAVE_REQUEST_ROLES = new Set(['staff', 'qc', 'manager', 'marketing']);
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrors(async function POST(req: NextRequest) {
+  return hrOperationsFrozenResponse();
   try {
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
@@ -170,4 +174,4 @@ export async function POST(req: NextRequest) {
     const { apiErrorResponse } = await import('@/lib/api-route-error');
     return apiErrorResponse('leave POST', e, 'Failed to request leave');
   }
-}
+});

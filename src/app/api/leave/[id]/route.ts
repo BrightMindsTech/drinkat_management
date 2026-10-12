@@ -11,12 +11,15 @@ import {
 import { getUserIdForEmployeeId } from '@/lib/employee-user';
 import { notifyUser } from '@/lib/user-notify';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
+import { hrOperationsFrozenResponse } from '@/lib/hr-operations-freeze';
 
 const patchSchema = z.object({
   status: z.enum(['approved', 'denied']),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = withApiErrors(async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return hrOperationsFrozenResponse();
   try {
     const session = await requireOwnerOrManager();
 
@@ -116,4 +119,4 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       { status: 500 }
     );
   }
-}
+});

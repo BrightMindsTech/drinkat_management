@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
 import { DEFAULT_FORM_TEMPLATES } from '@/lib/defaultFormTemplates';
 import { departmentNameMatchesKitchenForm } from '@/lib/kitchen-department';
+import { withApiErrors } from '@/lib/api-route-error';
 
 function departmentMatchesCategory(name: string, category: string): boolean {
   const n = name.trim().toLowerCase();
@@ -12,7 +13,7 @@ function departmentMatchesCategory(name: string, category: string): boolean {
   return false;
 }
 
-export async function POST() {
+export const POST = withApiErrors(async function POST() {
   await requireOwner();
 
   const departments = await prisma.department.findMany({
@@ -83,5 +84,5 @@ export async function POST() {
     updated,
     total: DEFAULT_FORM_TEMPLATES.length,
   });
-}
+});
 

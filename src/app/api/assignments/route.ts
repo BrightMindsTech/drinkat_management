@@ -6,6 +6,7 @@ import { normalizeUserRole } from '@/lib/formVisibility';
 import { getUserIdsForEmployeeIds } from '@/lib/employee-user';
 import { notifyQcAssignment } from '@/lib/qc-assignment-notify';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
 
 type AssignmentNotifyRow = {
   id: string;
@@ -79,7 +80,7 @@ const bulkSchema = z.object({
   dueDate: z.string().optional(),
 });
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrors(async function GET(req: NextRequest) {
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
   const { searchParams } = new URL(req.url);
@@ -133,7 +134,7 @@ export async function GET(req: NextRequest) {
     },
   });
   return Response.json(assignments);
-}
+});
 
 const assignmentInclude = {
   checklist: { include: { items: { orderBy: { sortOrder: 'asc' as const } } } },
@@ -141,7 +142,7 @@ const assignmentInclude = {
   branch: true,
 } as const;
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrors(async function POST(req: NextRequest) {
   const session = await requireQc();
   const role = normalizeUserRole(session.user.role);
   const body: unknown = await req.json();
@@ -268,4 +269,4 @@ export async function POST(req: NextRequest) {
     console.error('[assignments POST] notifyChecklistAssigned failed (single)', err);
   }
   return Response.json({ created: [assignment], skipped: [] as { employeeId: string; reason: string }[], notify: notifySummary });
-}
+});

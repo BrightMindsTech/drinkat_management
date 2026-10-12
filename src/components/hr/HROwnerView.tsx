@@ -1,15 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Branch, Department, Employee, Advance } from '@prisma/client';
+import type { Branch, Department, Employee } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
-import type { LeaveRequest } from '@prisma/client';
 import { EmployeeCard } from './EmployeeCard';
 import { RegisterStaffForm } from './RegisterStaffForm';
-import { AdvancesList } from './AdvancesList';
-import { SalarySection } from './SalarySection';
 import { DepartmentSection } from './DepartmentSection';
-import { LeaveRequestsSection } from './LeaveRequestsSection';
 import { ManagerAssignmentsSection } from './ManagerAssignmentsSection';
 import { OwnerPushBroadcastSection } from './OwnerPushBroadcastSection';
 
@@ -33,30 +29,26 @@ function employeeMatchesSearch(emp: EmployeeWithRelations, query: string): boole
     .toLowerCase();
   return haystack.includes(needle);
 }
-type AdvanceWithEmployee = Advance & { employee: Employee & { branch: { name: string } } };
-type LeaveWithEmployee = LeaveRequest & { employee: Employee & { branch: { name: string } } };
-
 export function HROwnerView({
   initialEmployees,
-  initialAdvances,
-  initialLeaveRequests,
   branches,
   departments,
+  showOwnerTools = true,
 }: {
   initialEmployees: EmployeeWithRelations[];
-  initialAdvances: AdvanceWithEmployee[];
-  initialLeaveRequests: LeaveWithEmployee[];
   branches: Branch[];
   departments: Department[];
+  showOwnerTools?: boolean;
 }) {
   const { t } = useLanguage();
   const [employees, setEmployees] = useState(initialEmployees);
-  const [advances, setAdvances] = useState(initialAdvances);
   const [departmentsList, setDepartmentsList] = useState<Department[]>(departments);
   const [showRegister, setShowRegister] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
   const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -66,9 +58,6 @@ export function HROwnerView({
     const w = root.clientWidth;
     root.scrollTo({ left: Math.max(0, index) * w, behavior });
   };
-  const [bulkAdvanceLimit, setBulkAdvanceLimit] = useState('');
-  const [bulkAdvanceSaving, setBulkAdvanceSaving] = useState(false);
-  const [bulkAdvanceNotice, setBulkAdvanceNotice] = useState<string | null>(null);
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
       const matchesSearch = employeeMatchesSearch(emp, searchQuery);
@@ -126,47 +115,27 @@ export function HROwnerView({
     setEmployees((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
   }
 
-  async function onAdvanceUpdated(updated: AdvanceWithEmployee) {
-    setAdvances((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-  }
-
-  async function applyBulkAdvanceLimit() {
-    const trimmed = bulkAdvanceLimit.trim();
-    const parsed = trimmed ? Number(trimmed) : null;
-    if (trimmed && (Number.isNaN(parsed) || (parsed ?? 0) < 0)) {
-      setBulkAdvanceNotice(t.hr.bulkAdvanceLimitInvalid);
-      return;
-    }
-
-    const confirmed = window.confirm(
-      trimmed
-        ? t.hr.bulkAdvanceLimitConfirm.replace('{amount}', Number(parsed).toFixed(2))
-        : t.hr.bulkAdvanceLimitClearConfirm
-    );
-    if (!confirmed) return;
-
-    setBulkAdvanceSaving(true);
-    setBulkAdvanceNotice(null);
+  async function downloadHrExport() {
+    setExporting(true);
+    setExportNotice(null);
     try {
-      const res = await fetch('/api/employees/advance-limit', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ advanceLimit: parsed }),
-      });
+      const res = await fetch('/api/hr/export', { cache: 'no-store' });
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setBulkAdvanceNotice(data.error ?? t.hr.bulkAdvanceLimitFailed);
+        setExportNotice(t.hr.historicalExportFailed);
         return;
       }
-
-      const data = (await res.json()) as { updatedEmployees?: number };
-      const applied = parsed === null ? null : parsed;
-      setEmployees((prev) => prev.map((e) => ({ ...e, advanceLimit: applied })));
-      setBulkAdvanceNotice(
-        t.hr.bulkAdvanceLimitSuccess.replace('{count}', String(data.updatedEmployees ?? employees.length))
-      );
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `drinkat-hr-archive-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportNotice(t.hr.historicalExportFailed);
     } finally {
-      setBulkAdvanceSaving(false);
+      setExporting(false);
     }
   }
 
@@ -174,7 +143,7 @@ export function HROwnerView({
 
   return (
     <div className="app-page">
-      <OwnerPushBroadcastSection />
+      {showOwnerTools ? <OwnerPushBroadcastSection /> : null}
       <section id="hr-owner-staff" className={sectionClass}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-app-primary">{t.hr.staff}</h2>
@@ -331,45 +300,16 @@ export function HROwnerView({
         <ManagerAssignmentsSection employees={employees} onEmployeeUpdated={onEmployeeUpdated} />
       </section>
 
-      <section id="hr-owner-leave" className={sectionClass}>
-        <h2 className="text-lg font-semibold text-app-primary mb-4">{t.hr.leaveRequests}</h2>
-        <LeaveRequestsSection initialLeaves={initialLeaveRequests} branches={branches} />
+      {showOwnerTools ? (
+      <section id="hr-owner-export" className={sectionClass}>
+        <h2 className="text-lg font-semibold text-app-primary mb-2">{t.hr.historicalExport}</h2>
+        <p className="text-sm text-app-secondary mb-3">{t.hr.historicalExportHint}</p>
+        <button type="button" className="app-btn-primary" disabled={exporting} onClick={() => void downloadHrExport()}>
+          {exporting ? t.common.loading : t.hr.historicalExportButton}
+        </button>
+        {exportNotice ? <p className="mt-2 text-sm text-app-secondary">{exportNotice}</p> : null}
       </section>
-
-      <section id="hr-owner-advances" className={sectionClass}>
-        <h2 className="text-lg font-semibold text-app-primary mb-4">{t.hr.advances}</h2>
-        <div className="rounded-ios-lg border border-gray-200 dark:border-ios-dark-separator bg-white dark:bg-ios-dark-elevated p-4 mb-4">
-          <p className="text-sm font-semibold text-app-primary">{t.hr.bulkAdvanceLimitTitle}</p>
-          <p className="text-xs text-app-secondary mt-1">{t.hr.bulkAdvanceLimitHint}</p>
-          <div className="mt-3 flex flex-col sm:flex-row gap-2">
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={bulkAdvanceLimit}
-              onChange={(e) => setBulkAdvanceLimit(e.target.value)}
-              placeholder={t.hr.bulkAdvanceLimitPlaceholder}
-              className="app-input flex-1 min-w-0"
-              disabled={bulkAdvanceSaving}
-            />
-            <button
-              type="button"
-              onClick={() => void applyBulkAdvanceLimit()}
-              disabled={bulkAdvanceSaving}
-              className="app-btn-primary disabled:opacity-50"
-            >
-              {bulkAdvanceSaving ? t.common.loading : t.hr.bulkAdvanceLimitApply}
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-app-muted">{t.hr.bulkAdvanceLimitClearHint}</p>
-          {bulkAdvanceNotice ? <p className="mt-2 text-sm text-app-secondary">{bulkAdvanceNotice}</p> : null}
-        </div>
-        <AdvancesList advances={advances} onUpdated={onAdvanceUpdated} ownerView />
-      </section>
-
-      <section id="hr-owner-salary" className={sectionClass}>
-        <SalarySection employees={employees} />
-      </section>
+      ) : null}
     </div>
   );
 }

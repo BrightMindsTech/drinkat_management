@@ -13,6 +13,8 @@ type EmployeeForQc = {
  */
 export function isQcReviewerUser(sessionUserRole: string | undefined, employee: EmployeeForQc): boolean {
   const r = normalizeUserRole(sessionUserRole);
+  // Assistant Manager is a distinct role and must not inherit QC-reviewer or manager tools.
+  if (r === 'assistant_manager') return false;
   if (r === 'owner' || r === 'qc') return true;
   if (!employee) return false;
   if (employee.role === 'qc') return true;

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChecklistAssignment, Checklist, ChecklistItem, QcSubmission, SubmissionPhoto } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { formatAppDateTime } from '@/lib/format-datetime';
+import { formatAppClockTimeLabel, formatAppDate, formatAppDateTime } from '@/lib/format-datetime';
 
 type AssignmentWithChecklist = ChecklistAssignment & {
   checklist: Checklist & { items: ChecklistItem[] };
@@ -134,6 +134,24 @@ export function QCStaffView({
               >
                 <h3 className="font-semibold text-app-primary">{a.checklist.name}</h3>
                 <p className="text-sm text-app-secondary">{a.branch.name}</p>
+                <p className="mt-1 inline-flex flex-wrap items-center gap-1.5 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 px-2 py-1 text-xs font-medium text-amber-800 dark:text-amber-300">
+                  <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="8" cy="8" r="6.25" />
+                    <path d="M8 4.5V8l2.5 1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  {a.checklist.repeatsDaily ? (
+                    <span>
+                      {t.qc.deadlineLabel}: {formatAppClockTimeLabel(a.checklist.deadlineTime, locale)} ·{' '}
+                      {t.qc.dueTodayEvery}
+                    </span>
+                  ) : (
+                    <span>
+                      {t.qc.deadlineLabel}:{' '}
+                      {a.dueDate ? `${formatAppDate(a.dueDate, locale)} · ` : ''}
+                      {formatAppClockTimeLabel(a.checklist.deadlineTime, locale)}
+                    </span>
+                  )}
+                </p>
                 {a.checklist.items.length > 0 && (
                   <ul className="text-sm text-app-muted mt-2 list-disc list-inside">
                     {a.checklist.items.map((item) => (

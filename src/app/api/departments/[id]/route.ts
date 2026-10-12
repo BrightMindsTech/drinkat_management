@@ -1,8 +1,9 @@
 import { prisma } from '@/lib/prisma';
-import { requireOwner } from '@/lib/session';
+import { requireHrStaffAdmin } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
 
-export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
-  await requireOwner();
+export const DELETE = withApiErrors(async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  await requireHrStaffAdmin();
   const { id } = await params;
 
   try {
@@ -13,5 +14,5 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   } catch {
     return Response.json({ error: 'Failed to delete department' }, { status: 400 });
   }
-}
+});
 

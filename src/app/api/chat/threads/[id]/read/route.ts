@@ -3,10 +3,12 @@ import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { roleMayUseChat } from '@/lib/chat-policy';
 import { userParticipatesInThread } from '@/lib/chat-thread';
+import { qcChatForbiddenResponse } from '@/lib/qc-chat-freeze';
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
 export async function POST(_req: Request, ctx: RouteCtx) {
+  return qcChatForbiddenResponse();
   try {
     const session = await requireSession();
     const role = normalizeUserRole(session.user.role);

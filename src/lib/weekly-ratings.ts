@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { addDays, endOfMonth, parse, startOfMonth } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import type { AppUserRole } from '@/lib/formVisibility';
+import { hasCapability, isStaffLevelRole } from '@/lib/permissions';
 import { DEFAULT_APP_TIMEZONE } from '@/lib/shifts';
 
 const TZ = DEFAULT_APP_TIMEZONE;
@@ -38,7 +39,8 @@ export function isWeekendSubmissionEmphasis(now: Date = new Date(), tz: string =
 }
 
 export function rolesSubjectToWeeklyRating(role: AppUserRole): boolean {
-  return role === 'manager' || role === 'staff' || role === 'qc' || role === 'marketing';
+  // Centralized: staff, assistant_manager, qc, marketing, manager are rated.
+  return hasCapability(role, 'ratings:subject');
 }
 
 /** All Monday keys (YYYY-MM-DD) whose Mon–Sun range intersects the calendar month of `ref` in TZ. */
@@ -121,7 +123,7 @@ export async function assertTargetAllowedForRater(
     const expected = await getExpectedRatingTargetIds(prisma, raterEmployeeId, role);
     return expected.includes(targetEmployeeId);
   }
-  if (role !== 'staff' && role !== 'qc' && role !== 'marketing') return false;
+  if (!isStaffLevelRole(role) && role !== 'qc' && role !== 'marketing') return false;
 
   const existingThisWeek = await prisma.weeklyRating.findUnique({
     where: {

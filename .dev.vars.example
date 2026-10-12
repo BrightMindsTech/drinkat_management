@@ -1,3 +1,11 @@
 # Copy to `.dev.vars` (gitignored) or run: npm run cf:bootstrap-cron
 # Required for GET /api/cron/time-clock auth and for the scheduled Worker patch.
 CRON_SECRET=
+
+# Real AI (staging Worker secrets — never ship to the browser)
+# OPENAI_API_KEY=
+# AI_PROVIDER=openai
+# AI_PAID_USAGE_APPROVED=1
+# AI_VISION_MODEL=gpt-4o
+# AI_TEXT_MODEL=gpt-4o-mini
+# AI_TRANSCRIBE_MODEL=whisper-1

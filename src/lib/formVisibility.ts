@@ -3,19 +3,12 @@
 import { departmentNameMatchesKitchenForm } from '@/lib/kitchen-department';
 import { isZainBadarneh } from '@/lib/named-employee-policy';
 
-export type AppUserRole = 'owner' | 'qc' | 'staff' | 'manager' | 'marketing';
-
-/** Normalize DB/session role strings so visibility checks are reliable (case, whitespace). */
-export function normalizeUserRole(role: string | undefined | null): AppUserRole {
-  const r = String(role ?? '')
-    .trim()
-    .toLowerCase();
-  if (r === 'owner') return 'owner';
-  if (r === 'qc') return 'qc';
-  if (r === 'manager') return 'manager';
-  if (r === 'marketing') return 'marketing';
-  return 'staff';
-}
+// Role types + normalization live in the centralized permission module now.
+// Re-exported here so existing imports keep working unchanged.
+export { normalizeUserRole } from '@/lib/permissions';
+export type { AppUserRole } from '@/lib/permissions';
+import { normalizeUserRole, type AppUserRole } from '@/lib/permissions';
+import { isQcInspectionDomain } from '@/lib/qc-domains';
 
 export type FormViewContext = {
   userRole: AppUserRole;
@@ -39,8 +32,17 @@ export type EmployeeForFormAccess = {
   name: string;
 };
 
+export function isScheduledInspectionCategory(category: string): boolean {
+  return (
+    category === 'opening_checklist' ||
+    category === 'closing_checklist' ||
+    category === 'opening' ||
+    category === 'closing'
+  );
+}
+
 export function isQcFormCategory(category: string): boolean {
-  return category === 'qc';
+  return category === 'qc' || isQcInspectionDomain(category) || isScheduledInspectionCategory(category);
 }
 
 export function isCashFormCategory(category: string): boolean {
@@ -100,8 +102,15 @@ export function canUserFillTemplate(
   const role = normalizeUserRole(ctx.userRole);
   if (role === 'owner') return false;
 
+  // Marketing-category forms are hidden from the QC product (Phase 1). Historical rows stay.
+  if (template.category === 'marketing') return false;
+
   const employeeId = employee?.id ?? null;
   const explicit = isExplicitlyAssigned(employeeId, template);
+
+  if (isScheduledInspectionCategory(template.category)) {
+    return false;
+  }
 
   if (isQcFormCategory(template.category)) {
     // Legacy duplicate — branch-specific visit reports replace this.

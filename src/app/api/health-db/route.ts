@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner } from '@/lib/session';
+import { withApiErrors } from '@/lib/api-route-error';
 
 /**
  * Owner-only D1 connectivity check (user count only, no row data).
  */
-export async function GET() {
+export const GET = withApiErrors(async function GET() {
   try {
     await requireOwner();
     const userCount = await prisma.user.count();
@@ -14,4 +15,4 @@ export async function GET() {
     if (e instanceof Response) return e;
     return NextResponse.json({ ok: false }, { status: 500 });
   }
-}
+});

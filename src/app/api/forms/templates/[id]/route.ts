@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireOwner, requireSession } from '@/lib/session';
 import { formTemplateFieldsSchema, parseTemplateFields } from '@/lib/formTemplate';
+import { ensurePublishedVersion, publishFormTemplateVersion } from '@/lib/form-template-version';
+import { hasCapability } from '@/lib/permissions';
 import {
   canManagerAssignTemplate,
   canUserFillTemplate,
@@ -10,6 +12,7 @@ import {
   type FormViewContext,
 } from '@/lib/formVisibility';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
 
 const patchSchema = z.object({
   category: z.string().min(1).optional(),
@@ -22,7 +25,7 @@ const patchSchema = z.object({
   employeeIds: z.array(z.string()).optional(),
 });
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = withApiErrors(async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
   const { id } = await params;
@@ -73,12 +76,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     departmentIds: t.departmentAssignments.map((a) => a.departmentId),
     employeeIds: t.employeeAssignments.map((a) => a.employeeId),
   });
-}
+});
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = withApiErrors(async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const role = normalizeUserRole(session.user.role);
-  if (role !== 'owner' && role !== 'manager') {
+  if (!hasCapability(role, 'forms:manageTemplates') && !hasCapability(role, 'forms:assignCash')) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
   const { id } = await params;
@@ -125,6 +128,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     fieldsJson = JSON.stringify(fieldsParsed.data);
   }
 
+  const contentChanging =
+    parsed.data.category !== undefined ||
+    parsed.data.title !== undefined ||
+    parsed.data.description !== undefined ||
+    parsed.data.fields !== undefined;
+
+  if (contentChanging && hasCapability(role, 'forms:manageTemplates')) {
+    await ensurePublishedVersion(prisma, existing, session.user.id);
+  }
+
   const t = await prisma.managementFormTemplate.update({
     where: { id },
     data: {
@@ -137,6 +150,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
     include: { departmentAssignments: true, employeeAssignments: true },
   });
+
+  if (contentChanging && hasCapability(role, 'forms:manageTemplates')) {
+    await publishFormTemplateVersion(prisma, {
+      templateId: t.id,
+      category: t.category,
+      title: t.title,
+      description: t.description,
+      fieldsJson: t.fieldsJson,
+      publishedById: session.user.id,
+    });
+  }
 
   if (parsed.data.departmentIds !== undefined) {
     if (role !== 'owner') return Response.json({ error: 'Forbidden' }, { status: 403 });
@@ -203,11 +227,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     departmentIds: updated.departmentAssignments.map((a) => a.departmentId),
     employeeIds: updated.employeeAssignments.map((a) => a.employeeId),
   });
-}
+});
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = withApiErrors(async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireOwner();
   const { id } = await params;
   await prisma.managementFormTemplate.delete({ where: { id } });
   return new Response(null, { status: 204 });
-}
+});

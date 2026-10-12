@@ -10,15 +10,12 @@ import { PushConnectionNotice } from '@/components/PushConnectionNotice';
 import { PendingReviewNotice } from '@/components/PendingReviewNotice';
 import { WeeklyRatingNotice } from '@/components/WeeklyRatingNotice';
 import { InAppNotificationStack } from '@/components/in-app/InAppNotificationStack';
-import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
-import { isAppForeground, setForegroundInterval } from '@/lib/app-foreground';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DashboardNavLinks } from './DashboardNavLinks';
 import { DashboardPageSectionNav } from './DashboardPageSectionNav';
 import { DashboardScrollMain } from './DashboardScrollMain';
 import { DashboardSearchOverlay } from './DashboardSearchOverlay';
-import { usePathname, useRouter } from 'next/navigation';
-import { roleMayUseChat } from '@/lib/chat-policy';
+import { usePathname } from 'next/navigation';
 import { clearDashboardAutoRetry } from '@/lib/dashboard-auto-retry';
 import { releaseStuckModalViewport } from '@/lib/modal-present';
 
@@ -44,20 +41,27 @@ export function DashboardLayoutClient({
   role,
   email,
   headcountSummary,
+  photoRequired = false,
+  photoOpsAdmin = false,
+  qcReportsInbox = false,
+  hrKpiReviewer = false,
   children,
 }: {
   role: string;
   email: string;
   headcountSummary: string | null;
+  photoRequired?: boolean;
+  photoOpsAdmin?: boolean;
+  qcReportsInbox?: boolean;
+  hrKpiReviewer?: boolean;
   children: React.ReactNode;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const swipeStartXRef = useRef<number | null>(null);
   const swipeStartYRef = useRef<number | null>(null);
   const swipeActiveRef = useRef(false);
-  const router = useRouter();
+  const shellRef = useRef<HTMLDivElement | null>(null);
   const pathname = usePathname();
   const { dir } = useLanguage();
 
@@ -79,101 +83,110 @@ export function DashboardLayoutClient({
     };
   }, [drawerOpen]);
 
-  useEffect(() => {
-    if (!roleMayUseChat(role)) {
-      setChatUnreadCount(0);
-      return;
-    }
-
-    let cancelled = false;
-    async function refreshChatUnreadCount() {
-      try {
-        const res = await fetch('/api/chat/unread', { cache: 'no-store', credentials: 'include' });
-        if (!res.ok) return;
-        const data = (await res.json().catch(() => ({}))) as { total?: number };
-        if (cancelled) return;
-        setChatUnreadCount(typeof data.total === 'number' ? data.total : 0);
-      } catch {
-        // optional UI enhancement; keep silent on fetch failures
-      }
-    }
-
-    const onWake = () => {
-      if (!isAppForeground()) return;
-      void refreshChatUnreadCount();
-    };
-
-    const stop = setForegroundInterval(onWake, 15000);
-
-    document.addEventListener('visibilitychange', onWake);
-    window.addEventListener(APP_RESUME_EVENT, onWake);
-    void refreshChatUnreadCount();
-    return () => {
-      cancelled = true;
-      stop();
-      document.removeEventListener('visibilitychange', onWake);
-      window.removeEventListener(APP_RESUME_EVENT, onWake);
-    };
-  }, [role]);
-
+  const navFlags = { photoRequired, photoOpsAdmin, qcReportsInbox, hrKpiReviewer };
   const menuOpenDirection = dir === 'rtl' ? -1 : 1;
   const menuEdge = dir === 'rtl' ? 'right' : 'left';
   const path = pathname ?? '';
-  const isDashboardHome = path === '/dashboard';
   const isMessagesPage = path.startsWith('/dashboard/messages');
+  const drawerOpenRef = useRef(drawerOpen);
+  drawerOpenRef.current = drawerOpen;
 
-  function onTouchStart(e: React.TouchEvent<HTMLDivElement>) {
-    const t = e.touches[0];
-    if (!t) return;
-    swipeStartXRef.current = t.clientX;
-    swipeStartYRef.current = t.clientY;
-    swipeActiveRef.current = true;
-  }
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return;
 
-  function onTouchEnd(e: React.TouchEvent<HTMLDivElement>) {
-    if (!swipeActiveRef.current) return;
-    swipeActiveRef.current = false;
-    const startX = swipeStartXRef.current;
-    const startY = swipeStartYRef.current;
-    swipeStartXRef.current = null;
-    swipeStartYRef.current = null;
-    const t = e.changedTouches[0];
-    if (!t || startX == null || startY == null) return;
-
-    const dx = t.clientX - startX;
-    const dy = t.clientY - startY;
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
-    const width = window.innerWidth || 390;
-    const edgeThreshold = Math.min(28, width * 0.08);
-    const startsAtMenuEdge = menuEdge === 'left' ? startX <= edgeThreshold : startX >= width - edgeThreshold;
-    const startsAtBackEdge = startsAtMenuEdge;
-    const opensMenu = dx * menuOpenDirection > 90;
-    const closesMenu = dx * menuOpenDirection < -70;
-    const goesBack = dx * menuOpenDirection > 90;
-
-    if (absDx < 60 || absDx < absDy * 1.3) return;
-
-    if (drawerOpen && closesMenu) {
-      setDrawerOpen(false);
-      return;
+    function isDesktop() {
+      return window.matchMedia('(min-width: 768px)').matches;
     }
 
-    if (!drawerOpen && startsAtMenuEdge && opensMenu && isDashboardHome) {
-      setDrawerOpen(true);
-      return;
+    function edgePx() {
+      return Math.max(36, Math.min(48, (window.innerWidth || 390) * 0.12));
     }
 
-    if (!drawerOpen && startsAtBackEdge && goesBack && !isDashboardHome) {
-      router.back();
+    function atMenuEdge(x: number) {
+      const width = window.innerWidth || 390;
+      return menuEdge === 'left' ? x <= edgePx() : x >= width - edgePx();
     }
-  }
+
+    function isInteractiveTarget(target: EventTarget | null): boolean {
+      if (!(target instanceof Element)) return false;
+      return Boolean(
+        target.closest('button, a, input, textarea, select, label, [role="button"], [role="link"]')
+      );
+    }
+
+    function onStart(e: TouchEvent) {
+      if (isDesktop()) return;
+      const t = e.touches[0];
+      if (!t) return;
+      if (isInteractiveTarget(e.target)) {
+        swipeActiveRef.current = false;
+        swipeStartXRef.current = null;
+        swipeStartYRef.current = null;
+        return;
+      }
+      swipeStartXRef.current = t.clientX;
+      swipeStartYRef.current = t.clientY;
+      swipeActiveRef.current = true;
+    }
+
+    function onMove(e: TouchEvent) {
+      if (!swipeActiveRef.current) return;
+      const startX = swipeStartXRef.current;
+      const startY = swipeStartYRef.current;
+      const t = e.touches[0];
+      if (!t || startX == null || startY == null) return;
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      if (atMenuEdge(startX) && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
+        e.preventDefault();
+      }
+    }
+
+    function onEnd(e: TouchEvent) {
+      if (!swipeActiveRef.current) return;
+      swipeActiveRef.current = false;
+      const startX = swipeStartXRef.current;
+      const startY = swipeStartYRef.current;
+      swipeStartXRef.current = null;
+      swipeStartYRef.current = null;
+      const t = e.changedTouches[0];
+      if (isDesktop() || !t || startX == null || startY == null) return;
+
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+      if (absDx < 48 || absDx < absDy * 1.2) return;
+
+      const opensMenu = dx * menuOpenDirection > 48;
+      const closesMenu = dx * menuOpenDirection < -48;
+
+      if (drawerOpenRef.current && closesMenu) {
+        setDrawerOpen(false);
+        return;
+      }
+      if (!drawerOpenRef.current && atMenuEdge(startX) && opensMenu) {
+        setDrawerOpen(true);
+      }
+    }
+
+    el.addEventListener('touchstart', onStart, { passive: false });
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd);
+    el.addEventListener('touchcancel', onEnd);
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+  }, [dir, menuEdge, menuOpenDirection]);
 
   return (
     <div
+      ref={shellRef}
       className="flex h-[100dvh] min-h-0 w-full min-w-0 flex-col overflow-hidden bg-ios-gray dark:bg-ios-gray-dark md:flex-row"
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
     >
       {/* Desktop sidebar */}
       <aside
@@ -186,7 +199,7 @@ export function DashboardLayoutClient({
           </Link>
         </div>
         <div className="min-w-0 shrink-0 overflow-hidden">
-          <DashboardNavLinks role={role} layout="sidebar" />
+          <DashboardNavLinks role={role} flags={navFlags} layout="sidebar" />
         </div>
         <SidebarAccountBlock email={email} />
       </aside>
@@ -204,7 +217,8 @@ export function DashboardLayoutClient({
             <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-wrap items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5">
             <button
               type="button"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-app-primary md:hidden dark:border-ios-dark-separator dark:bg-ios-dark-fill"
+              id="dashboard-open-menu"
+              className="relative z-[20] inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-app-primary md:hidden dark:border-ios-dark-separator dark:bg-ios-dark-fill"
               aria-label="Open menu"
               onClick={() => setDrawerOpen(true)}
             >
@@ -256,26 +270,6 @@ export function DashboardLayoutClient({
         {!isMessagesPage ? <DashboardPageSectionNav role={role} /> : null}
       </div>
 
-      {!isMessagesPage ? (
-        <Link
-          href="/dashboard/messages"
-          className="fixed bottom-[max(5.25rem,calc(env(safe-area-inset-bottom)+4.5rem))] right-4 z-[120] inline-flex h-14 w-14 items-center justify-center rounded-full bg-ios-blue text-white shadow-xl ring-2 ring-white/70 transition hover:scale-[1.03] active:scale-95 dark:ring-ios-dark-elevated"
-          aria-label="Open messages"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6" aria-hidden>
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-          {chatUnreadCount > 0 ? (
-            <span
-              suppressHydrationWarning
-              className="absolute -top-1 -right-1 min-w-[1.25rem] rounded-full bg-red-600 px-1.5 text-center text-[11px] font-bold leading-5 text-white shadow"
-            >
-              {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-            </span>
-          ) : null}
-        </Link>
-      ) : null}
-
       {/* Mobile drawer: viewport-fixed panel (not nested absolute) + shell safe-area padding = full-bleed bg, no black letterboxing */}
       <div
         className={`fixed inset-0 z-[125] overscroll-none md:hidden ${drawerOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
@@ -321,12 +315,12 @@ export function DashboardLayoutClient({
           </div>
         </div>
         <div className="min-w-0 shrink-0 overflow-hidden">
-          <DashboardNavLinks role={role} layout="drawer" onNavigate={() => setDrawerOpen(false)} />
+          <DashboardNavLinks role={role} flags={navFlags} layout="drawer" onNavigate={() => setDrawerOpen(false)} />
         </div>
         <SidebarAccountBlock email={email} bottomSafeArea={false} />
       </div>
 
-      <DashboardSearchOverlay role={role} open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <DashboardSearchOverlay role={role} flags={navFlags} open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }

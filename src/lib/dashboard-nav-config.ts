@@ -3,76 +3,112 @@ import { normalizeUserRole, type AppUserRole } from '@/lib/formVisibility';
 /** Keys must exist on `LocaleMessages['nav']`. */
 export type DashboardNavLabelKey =
   | 'home'
-  | 'messages'
-  | 'hr'
+  | 'teamAccess'
   | 'qc'
   | 'forms'
   | 'reports'
-  | 'managerReports'
   | 'ratings'
-  | 'myInfoAdvances'
   | 'qcSubmissions'
-  | 'technicalSupport';
+  | 'myTasks'
+  | 'issues'
+  | 'kpi'
+  | 'qcOverview'
+  | 'sopLibrary'
+  | 'technicalSupport'
+  | 'photoCheck'
+  | 'photoReview'
+  | 'photoOps'
+  | 'qcReports'
+  | 'broadcast'
+  | 'hrNotes';
 
 export type DashboardNavItem = { href: string; labelKey: DashboardNavLabelKey };
+
+export type DashboardNavFlags = {
+  photoRequired?: boolean;
+  photoOpsAdmin?: boolean;
+  qcReportsInbox?: boolean;
+  hrKpiReviewer?: boolean;
+};
 
 const base = '/dashboard';
 
 const supportItem: DashboardNavItem = { href: `${base}/support`, labelKey: 'technicalSupport' };
 
-const ownerItems: DashboardNavItem[] = [
-  { href: base, labelKey: 'home' },
-  { href: `${base}/messages`, labelKey: 'messages' },
-  { href: `${base}/hr`, labelKey: 'hr' },
-  { href: `${base}/qc`, labelKey: 'qc' },
-  { href: `${base}/forms`, labelKey: 'forms' },
-  { href: `${base}/reports`, labelKey: 'reports' },
-  { href: `${base}/manager-reports`, labelKey: 'managerReports' },
-  supportItem,
-];
-
-const staffItems: DashboardNavItem[] = [
-  { href: base, labelKey: 'home' },
-  { href: `${base}/ratings`, labelKey: 'ratings' },
-  { href: `${base}/messages`, labelKey: 'messages' },
-  { href: `${base}/hr`, labelKey: 'myInfoAdvances' },
-  { href: `${base}/qc`, labelKey: 'qcSubmissions' },
-  { href: `${base}/forms`, labelKey: 'forms' },
-  supportItem,
-];
-
-const managerItems: DashboardNavItem[] = [
-  { href: base, labelKey: 'home' },
-  { href: `${base}/ratings`, labelKey: 'ratings' },
-  { href: `${base}/messages`, labelKey: 'messages' },
-  { href: `${base}/hr`, labelKey: 'hr' },
-  { href: `${base}/qc`, labelKey: 'qc' },
-  { href: `${base}/forms`, labelKey: 'forms' },
-  supportItem,
-];
-
-const marketingItems: DashboardNavItem[] = [
-  { href: base, labelKey: 'home' },
-  { href: `${base}/ratings`, labelKey: 'ratings' },
-  { href: `${base}/messages`, labelKey: 'messages' },
-  { href: `${base}/hr`, labelKey: 'myInfoAdvances' },
-  { href: `${base}/forms`, labelKey: 'forms' },
-  supportItem,
-];
-
-export function getDashboardNavItems(role: string | undefined | null): DashboardNavItem[] {
+export function getDashboardNavItems(
+  role: string | undefined | null,
+  flags: DashboardNavFlags = {}
+): DashboardNavItem[] {
   const r = normalizeUserRole(role);
-  if (r === 'owner') return ownerItems;
-  /** QC: same destinations as managers (HR, QC ops, etc.) while checklist APIs treat QC like owner for branch scope. */
-  if (r === 'qc') return managerItems;
-  if (r === 'manager') return managerItems;
-  if (r === 'marketing') return marketingItems;
-  return staffItems;
+  const items: DashboardNavItem[] = [{ href: base, labelKey: 'home' }];
+
+  if (r === 'owner') {
+    items.push(
+      { href: `${base}/photo-review`, labelKey: 'photoReview' },
+      { href: `${base}/photo-ops`, labelKey: 'photoOps' },
+      { href: `${base}/qc-reports`, labelKey: 'qcReports' },
+      { href: `${base}/hr`, labelKey: 'teamAccess' },
+      { href: `${base}/kpi`, labelKey: 'kpi' },
+      supportItem
+    );
+    return items;
+  }
+
+  if (r === 'qc') {
+    items.push(
+      { href: `${base}/photo-review`, labelKey: 'photoReview' },
+      { href: `${base}/qc-reports`, labelKey: 'qcReports' },
+      { href: `${base}/kpi`, labelKey: 'kpi' },
+      { href: `${base}/broadcast`, labelKey: 'broadcast' },
+      supportItem
+    );
+    return items;
+  }
+
+  if (r === 'manager') {
+    items.push(
+      { href: `${base}/photo-review`, labelKey: 'photoReview' },
+      { href: `${base}/qc-reports`, labelKey: 'qcReports' },
+      { href: `${base}/kpi`, labelKey: 'kpi' },
+      supportItem
+    );
+    return items;
+  }
+
+  if (r === 'marketing') {
+    items.push(supportItem);
+    return items;
+  }
+
+  if (flags.photoRequired) {
+    items.push({ href: `${base}/photo`, labelKey: 'photoCheck' });
+  }
+  if (flags.photoOpsAdmin) {
+    items.push({ href: `${base}/photo-ops`, labelKey: 'photoOps' });
+  }
+  if (flags.qcReportsInbox) {
+    items.push({ href: `${base}/qc-reports`, labelKey: 'qcReports' });
+  }
+  if (r === 'assistant_manager') {
+    items.push({ href: `${base}/issues`, labelKey: 'issues' });
+  }
+  if (flags.hrKpiReviewer) {
+    items.push({ href: `${base}/hr`, labelKey: 'teamAccess' });
+    items.push({ href: `${base}/hr-notes`, labelKey: 'hrNotes' });
+  }
+  items.push(
+    { href: `${base}/kpi`, labelKey: 'kpi' },
+    { href: `${base}/broadcast`, labelKey: 'broadcast' },
+    supportItem
+  );
+  return items;
 }
 
-/** Nav destinations excluding the home route (for dashboard shortcut grid). */
-export function getDashboardShortcutDestinations(role: string | undefined | null): DashboardNavItem[] {
-  return getDashboardNavItems(role).filter((x) => x.href !== base);
+export function getDashboardShortcutDestinations(
+  role: string | undefined | null,
+  flags: DashboardNavFlags = {}
+): DashboardNavItem[] {
+  return getDashboardNavItems(role, flags).filter((x) => x.href !== base);
 }
 
 export function isNavActive(pathname: string, href: string): boolean {

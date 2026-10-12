@@ -4,10 +4,12 @@ import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { listChatEligiblePeers, listGroupChatEligibleUsers, roleMayUseChat } from '@/lib/chat-policy';
 import { apiErrorResponse } from '@/lib/api-route-error';
+import { qcChatForbiddenResponse } from '@/lib/qc-chat-freeze';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  return qcChatForbiddenResponse();
   try {
     const session = await requireSession();
     const role = normalizeUserRole(session.user.role);

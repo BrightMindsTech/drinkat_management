@@ -3,11 +3,13 @@ import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { roleMayUseChat } from '@/lib/chat-policy';
 import { getChatUnreadTotal } from '@/lib/chat-thread';
+import { qcChatForbiddenResponse } from '@/lib/qc-chat-freeze';
 
 export const dynamic = 'force-dynamic';
 
 /** Lightweight unread badge for dashboard nav (avoids full thread list + side jobs). */
 export async function GET() {
+  return qcChatForbiddenResponse();
   try {
     const session = await requireSession();
     const role = normalizeUserRole(session.user.role);

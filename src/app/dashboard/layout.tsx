@@ -35,7 +35,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   try {
     userForNav = await prisma.user.findUnique({
       where: { id: userId },
-      include: { employee: { include: { department: true } } },
+      include: { employee: { include: { department: true, photoCheckSetting: true } } },
     });
 
     if (navRole === 'owner') {
@@ -74,7 +74,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <SessionKeepalive />
       <AppReconnectingNotice />
       <AppResumeSync />
-      <DashboardLayoutClient role={uiRole} email={session.user.email ?? ''} headcountSummary={headcountSummary}>
+      <DashboardLayoutClient
+        role={uiRole}
+        email={session.user.email ?? ''}
+        headcountSummary={headcountSummary}
+        photoRequired={userForNav?.employee?.photoCheckSetting?.required === true}
+        photoOpsAdmin={navRole === 'owner' || userForNav?.photoOpsAdmin === true}
+        hrKpiReviewer={navRole === 'owner' || userForNav?.hrKpiReviewer === true}
+        qcReportsInbox={
+          navRole === 'owner' || navRole === 'qc' || navRole === 'manager' || userForNav?.qcReportsInbox === true
+        }
+      >
         {children}
       </DashboardLayoutClient>
     </InAppNotificationProvider>

@@ -2,10 +2,11 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireQc } from '@/lib/session';
 import { z } from 'zod';
+import { withApiErrors } from '@/lib/api-route-error';
 
 const addItemSchema = z.object({ title: z.string().min(1), sortOrder: z.number().optional() });
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const POST = withApiErrors(async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireQc();
   const { id: checklistId } = await params;
   const body = await req.json();
@@ -20,4 +21,4 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
   });
   return Response.json(item);
-}
+});

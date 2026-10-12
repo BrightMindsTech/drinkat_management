@@ -12,8 +12,8 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DrinkatHR',
-  description: 'HR, QC & reports for DrinkatHR',
+  title: 'Drinkat QC',
+  description: 'Quality control & KPI for Drinkat QC',
 };
 
 export const viewport: Viewport = {

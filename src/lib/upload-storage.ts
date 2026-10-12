@@ -68,7 +68,7 @@ export async function saveUploadedFile(file: File): Promise<{ filePath: string }
     await mkdir(LOCAL_UPLOAD_DIR, { recursive: true });
     const filepath = path.join(LOCAL_UPLOAD_DIR, filename);
     await writeFile(filepath, buf);
-    return { filePath: `/uploads/${filename}` };
+    return { filePath: `/api/uploads/${filename}` };
   }
 
   if (isCloudflareWorkerLike()) {
@@ -80,7 +80,7 @@ export async function saveUploadedFile(file: File): Promise<{ filePath: string }
   await mkdir(LOCAL_UPLOAD_DIR, { recursive: true });
   const filepath = path.join(LOCAL_UPLOAD_DIR, filename);
   await writeFile(filepath, buf);
-  return { filePath: `/uploads/${filename}` };
+  return { filePath: `/api/uploads/${filename}` };
 }
 
 function keyFromFilePath(filePath: string): string | null {

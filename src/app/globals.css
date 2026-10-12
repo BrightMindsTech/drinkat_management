@@ -6,10 +6,12 @@
   html {
     overflow-x: hidden;
     -webkit-text-size-adjust: 100%;
+    overscroll-behavior-x: none;
   }
   body {
     min-width: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+    overscroll-behavior-x: none;
   }
   * {
     -webkit-tap-highlight-color: transparent;
@@ -136,6 +138,10 @@
     animation: section-jump-highlight 1200ms ease-out both;
   }
 
+  .photo-task-highlight {
+    animation: photo-task-highlight 3s ease-out both;
+  }
+
   .notif-fly-away {
     animation: notif-fly-away 220ms ease-in forwards;
   }
@@ -186,6 +192,18 @@
   }
 }
 
+@keyframes photo-task-highlight {
+  0%,
+  25% {
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.55);
+    background-color: rgba(0, 122, 255, 0.16);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 122, 255, 0);
+    background-color: transparent;
+  }
+}
+
 @keyframes notif-fly-away {
   from {
     opacity: 1;
@@ -203,6 +221,40 @@
   }
   to {
     transform: scaleX(0);
+  }
+}
+
+@keyframes bell-vibrate {
+  0%,
+  78%,
+  100% {
+    transform: rotate(0deg);
+  }
+  82% {
+    transform: rotate(14deg);
+  }
+  86% {
+    transform: rotate(-12deg);
+  }
+  90% {
+    transform: rotate(10deg);
+  }
+  94% {
+    transform: rotate(-6deg);
+  }
+  97% {
+    transform: rotate(3deg);
+  }
+}
+
+.bell-vibrate {
+  transform-origin: top center;
+  animation: bell-vibrate 5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bell-vibrate {
+    animation: none;
   }
 }
 
