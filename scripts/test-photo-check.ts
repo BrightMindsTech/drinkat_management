@@ -32,7 +32,9 @@ import {
 import { isPhotoWindowOpenNow } from '../src/lib/photo-time';
 import {
   ACTIVE_PHOTO_REMINDER_MINUTES,
+  PHOTO_REMINDER_PUSH_TTL_SEC,
   isPhotoTaskActiveForReminder,
+  latestPhotoReminderAt,
   shouldSendActivePhotoReminder,
 } from '../src/lib/photo-reminders';
 import { PHOTO_360_OFFICIAL_WINDOWS } from '../src/lib/photo-official-windows';
@@ -288,8 +290,19 @@ assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /win
 assert.equal(shouldSendActivePhotoReminder(null, new Date()), true);
 assert.equal(shouldSendActivePhotoReminder(new Date(Date.now() - 29 * 60_000), new Date()), false);
 assert.equal(shouldSendActivePhotoReminder(new Date(Date.now() - 30 * 60_000), new Date()), true);
+assert.equal(PHOTO_REMINDER_PUSH_TTL_SEC, 28 * 60);
+assert.equal(latestPhotoReminderAt([null, new Date('2026-10-13T10:00:00Z'), new Date('2026-10-13T10:20:00Z')])?.toISOString(), '2026-10-13T10:20:00.000Z');
+assert.equal(latestPhotoReminderAt([null, null]), null);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /dashboard\/photo\?task=/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /byUser/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /ttlSec: PHOTO_REMINDER_PUSH_TTL_SEC/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /lastReminderKind === kind/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/push.ts'), 'utf8'), /ttlSec \?\? 30 \* 60/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/push.ts'), 'utf8'), /TTL: 300/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskReminderPulse.tsx'), 'utf8'), /30 \* 60 \* 1000/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/layout.tsx'), 'utf8'), /PhotoTaskReminderPulse/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/PushForegroundBridge.tsx'), 'utf8'), /reminderAt/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /repeats every 30 minutes/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/ai/page.tsx'), 'utf8'), /redirect\('\/dashboard'\)/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/ai-provider.ts'), 'utf8'), /extractChatContent/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/ai-provider.ts'), 'utf8'), /max_tokens: 1600/);

@@ -16,6 +16,10 @@ function detailId(detail: PushReceivedDetail): string {
     detail.threadId ??
     detail.weekStartKey ??
     detail.taskId;
+  const reminderAt = typeof detail.reminderAt === 'string' ? detail.reminderAt : '';
+  if (type === 'photo_check_due' || type === 'photo_check_overdue') {
+    return `push-${type}-${entity ?? 'photo'}-${reminderAt || Date.now()}`;
+  }
   return `push-${type}-${entity ?? Date.now()}`;
 }
 

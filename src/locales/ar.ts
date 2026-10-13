@@ -1162,6 +1162,8 @@ export const ar: LocaleMessages = {
     noTasksToday: 'لا توجد مهام صور لهذا اليوم.',
     openTask: 'فتح المهمة',
     closeTask: 'إغلاق المهمة',
+    reminderTitle: 'ما زال فحص الصورة مطلوباً',
+    reminderBody: 'التقط صورة الجودة الآن. يتكرر هذا التذكير كل 30 دقيقة حتى ترسلها.',
     completed: 'مكتمل',
     dueNow: 'مستحق الآن',
     upcoming: 'قادم',

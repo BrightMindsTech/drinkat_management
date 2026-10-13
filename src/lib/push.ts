@@ -6,6 +6,10 @@ export type PushPayload = {
   title: string;
   body: string;
   data?: Record<string, string>;
+  /** Web Push topic. Unique per send so repeats are not collapsed. */
+  topic?: string;
+  /** Seconds to keep the push if the device is offline. Default 30 minutes. */
+  ttlSec?: number;
 };
 
 function normalizeApnsDeviceToken(token: string): string {
@@ -182,7 +186,8 @@ async function sendApnsAlert(deviceToken: string, payload: PushPayload): Promise
   const primaryHost = useSandbox ? 'api.sandbox.push.apple.com' : 'api.push.apple.com';
   const fallbackHost = useSandbox ? 'api.push.apple.com' : 'api.sandbox.push.apple.com';
   const tok = normalizeApnsDeviceToken(deviceToken);
-  const expiresAt = Math.floor(Date.now() / 1000) + 300;
+  const ttlSec = Math.max(60, Math.min(24 * 60 * 60, payload.ttlSec ?? 30 * 60));
+  const expiresAt = Math.floor(Date.now() / 1000) + ttlSec;
   const body: Record<string, unknown> = {
     aps: {
       alert: { title: payload.title, body: payload.body },
@@ -354,9 +359,7 @@ export async function sendPushToSubscription(
     if (!ensureVapid()) return 'failed';
     try {
       const keys = JSON.parse(sub.keysJson) as { auth: string; p256dh: string };
-      const topic =
-        enriched.data?.type?.slice(0, 32) ??
-        enriched.title.slice(0, 32).replace(/\s+/g, '_');
+      const topic = (enriched.topic ?? `${enriched.data?.type ?? ''}-${Date.now()}`).slice(0, 32);
       await webpush.sendNotification(
         {
           endpoint: sub.endpoint,
@@ -368,7 +371,7 @@ export async function sendPushToSubscription(
           data: enriched.data ?? {},
         }),
         {
-          TTL: 300,
+          TTL: Math.max(60, Math.min(24 * 60 * 60, enriched.ttlSec ?? 30 * 60)),
           urgency: 'high',
           topic,
         }

@@ -11,6 +11,7 @@ import { SessionKeepalive } from '@/components/SessionKeepalive';
 import { SessionStabilityGuard } from '@/components/SessionStabilityGuard';
 import { DashboardLayoutClient } from '@/components/dashboard/DashboardLayoutClient';
 import { PushForegroundBridge } from '@/components/PushForegroundBridge';
+import { PhotoTaskReminderPulse } from '@/components/photo-check/PhotoTaskReminderPulse';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,6 +71,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <InAppNotificationProvider>
       <PushForegroundBridge />
+      <PhotoTaskReminderPulse />
       <SessionStabilityGuard />
       <SessionKeepalive />
       <AppReconnectingNotice />

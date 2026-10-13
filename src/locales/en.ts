@@ -1163,6 +1163,8 @@ export const en = {
     noTasksToday: 'No photo tasks for today.',
     openTask: 'Open task',
     closeTask: 'Close task',
+    reminderTitle: 'Photo check still needed',
+    reminderBody: 'Take your QC photo now. This reminder repeats every 30 minutes until you send it.',
     completed: 'Completed',
     dueNow: 'Due now',
     upcoming: 'Upcoming',
