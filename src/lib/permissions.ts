@@ -338,6 +338,7 @@ export const API_ROUTE_POLICIES: Record<string, RouteAccess> = {
   'photo-checks': 'session',
   'photo-checks/queue': 'qcReview',
   'photo-checks/[id]/review': 'qcReview',
+  'photo-checks/archive': 'session',
   'photo-checks/tasks': 'session',
   'photo-ops/employees': 'session',
   'photo-ops/types': 'session',

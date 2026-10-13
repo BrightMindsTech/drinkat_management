@@ -36,9 +36,9 @@ export function submissionUploadPaths(row: {
   const fromRows = [...(row.images ?? [])]
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((i) => i.uploadPath)
-    .filter(Boolean);
+    .filter((p) => p && p !== 'purged');
   if (fromRows.length) return fromRows;
-  return row.uploadPath ? [row.uploadPath] : [];
+  return row.uploadPath && row.uploadPath !== 'purged' ? [row.uploadPath] : [];
 }
 
 /** Client draft slots: replace overwrites, remove shrinks, add never exceeds max (3). */

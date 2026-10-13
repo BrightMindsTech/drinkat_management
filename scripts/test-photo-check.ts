@@ -158,6 +158,7 @@ assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /You
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /مؤشر أدائك:/);
 assert.match(home, /PhotoSwipeReview/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/dashboard-home-tiles.ts'), 'utf8'), /homePhotoReview/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/dashboard-home-tiles.ts'), 'utf8'), /homePhotoArchive/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/dashboard-home-tiles.ts'), 'utf8'), /homeHrNotes/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/dashboard-home-tiles.ts'), 'utf8'), /homeTeam/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/session.ts'), 'utf8'), /requireHrStaffAdmin/);
@@ -420,6 +421,8 @@ assert.match(board, /photo-task-active-/);
 assert.match(board, /isOpen \? closeTask\(\) : openTask\(row\)/);
 assert.match(board, /isOpen \? t\.photoCheck\.closeTask : t\.photoCheck\.openTask/);
 assert.match(board, /isOpen && active/);
+assert.match(board, /sentToQc/);
+assert.match(board, /dark:text-emerald-100/);
 assert.match(board, /scrollIntoView/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /Close task/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /closeTask/);
@@ -563,6 +566,14 @@ assert.doesNotMatch(fs.readFileSync(path.join(root, 'scripts/grant-sara-producti
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-upload-discard.ts'), 'utf8'), /usedChild/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /lookFor/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /lookFor/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /Photo archive/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /أرشيف الصور/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/session.ts'), 'utf8'), /requirePhotoArchiveViewer/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/archive/route.ts'), 'utf8'), /requirePhotoArchiveViewer/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/cron/time-clock/route.ts'), 'utf8'), /purgeExpiredPhotoArchive/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-archive.ts'), 'utf8'), /PHOTO_ARCHIVE_RETENTION_DAYS = 30/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-multi.ts'), 'utf8'), /purged/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/upload-access.ts'), 'utf8'), /hrKpiReviewer/);
 
 const pendingKpi = staffKpi(
   {

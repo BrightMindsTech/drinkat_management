@@ -381,9 +381,21 @@ export function PhotoTaskBoard() {
   return (
     <div className="space-y-5">
       <h2 className="text-xl font-bold text-app-primary">{t.photoCheck.todayTitle}</h2>
-      {error ? <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
-      {progress ? <p className="rounded-2xl border border-ios-blue/30 bg-ios-blue/5 px-4 py-3 text-sm">{progress}</p> : null}
-      {result ? <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">{t.photoCheck.sentToQc}</p> : null}
+      {error ? (
+        <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 dark:border-red-500/40 dark:bg-red-950/50 dark:text-red-200">
+          {error}
+        </p>
+      ) : null}
+      {progress ? (
+        <p className="rounded-2xl border border-ios-blue/30 bg-ios-blue/5 px-4 py-3 text-sm text-app-primary dark:border-ios-blue/50 dark:bg-ios-blue/15 dark:text-white">
+          {progress}
+        </p>
+      ) : null}
+      {result ? (
+        <p className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900 dark:border-emerald-400/50 dark:bg-emerald-500/20 dark:text-emerald-100">
+          {t.photoCheck.sentToQc}
+        </p>
+      ) : null}
 
       {groups.map(([title, rows]) => (
         <section key={title} className="rounded-3xl border border-gray-200 bg-white p-4 dark:border-ios-dark-separator dark:bg-ios-dark-elevated">

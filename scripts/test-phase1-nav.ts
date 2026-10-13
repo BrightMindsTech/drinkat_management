@@ -18,11 +18,16 @@ assert(hrefs('staff', { qcReportsInbox: true }).includes('/dashboard/qc-reports'
 assert(!hrefs('staff').includes('/dashboard/tasks'));
 assert(!hrefs('assistant_manager').includes('/dashboard/tasks'));
 assert(hrefs('qc').includes('/dashboard/photo-review'));
+assert(hrefs('qc').includes('/dashboard/photo-archive'));
 assert(hrefs('qc').includes('/dashboard/qc-reports'));
 assert(hrefs('qc').includes('/dashboard/broadcast'));
 assert(!hrefs('qc').includes('/dashboard/hr-notes'));
 assert(hrefs('owner').includes('/dashboard/photo-review'));
+assert(hrefs('owner').includes('/dashboard/photo-archive'));
 assert(hrefs('owner').includes('/dashboard/photo-ops'));
+assert(!hrefs('manager').includes('/dashboard/photo-archive'));
+assert(!hrefs('staff').includes('/dashboard/photo-archive'));
+assert(hrefs('staff', { hrKpiReviewer: true }).includes('/dashboard/photo-archive'));
 assert(!hrefs('staff').some((h) => h.includes('/hr') || h.includes('/messages')));
 assert(!hrefs('assistant_manager').some((h) => h.includes('/hr') || h.includes('/messages')));
 assert(!hrefs('manager').some((h) => h.includes('/hr') || h.includes('/messages')));
@@ -46,6 +51,7 @@ const qcHomeHrefs = getDashboardHomeTiles({ role: 'qc' }).map((t) => t.href);
 assert.deepEqual(qcHomeHrefs, [
   '/dashboard/photo',
   '/dashboard/photo-review',
+  '/dashboard/photo-archive',
   '/dashboard/kpi',
   '/dashboard/qc-reports',
   '/dashboard/broadcast',
@@ -62,6 +68,7 @@ assert.deepEqual(
     '/dashboard/photo',
     '/dashboard/hr-notes',
     '/dashboard/hr',
+    '/dashboard/photo-archive',
     '/dashboard/kpi',
     '/dashboard/broadcast',
     '/dashboard/support',
@@ -94,7 +101,9 @@ assert(!home.includes('PhotoTaskBoard'));
 assert(home.includes("role === 'owner' || role === 'manager'"));
 const navLinks = fs.readFileSync(path.join(root, 'src/components/dashboard/DashboardNavLinks.tsx'), 'utf8');
 assert(navLinks.includes('IconMegaphone'));
+assert(navLinks.includes('IconArchive'));
 assert(navLinks.includes("href.includes('/broadcast')"));
+assert(navLinks.includes("href.includes('/photo-archive')"));
 assert(navLinks.includes('m3 11 19-7v16L3 13v-2z'));
 
 console.log('phase1-nav: ok');

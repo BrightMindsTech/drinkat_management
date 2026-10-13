@@ -40,6 +40,7 @@ const PAGE_PATHS = [
   '/dashboard/sop',
   '/dashboard/photo',
   '/dashboard/photo-review',
+  '/dashboard/photo-archive',
   '/dashboard/broadcast',
   '/dashboard/hr-notes',
 ] as const;
@@ -60,6 +61,7 @@ const STATIC_KEYWORDS: Record<string, string[]> = {
   '/dashboard/sop': ['sop', 'fda', 'draft', 'food code', 'إجراء', 'مسودة'],
   '/dashboard/photo': ['photo', 'camera', 'qc', 'صورة'],
   '/dashboard/photo-review': ['photo', 'swipe', 'review', 'qc', 'مراجعة'],
+  '/dashboard/photo-archive': ['photo', 'archive', 'history', 'qc', 'أرشيف', 'صور'],
   '/dashboard/broadcast': ['broadcast', 'notes', 'notify', 'hr', 'تعميم'],
   '/dashboard/hr-notes': ['hr', 'notes', 'score', 'kpi', 'موارد'],
   'hr-owner-advances': ['advance', 'loan', 'salary advance', 'team advance'],

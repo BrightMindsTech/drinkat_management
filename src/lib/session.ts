@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from './auth';
 import { prisma } from './prisma';
 import { userHasQcReviewerScope } from './qc-reviewer';
+import { userCanViewPhotoArchive } from './photo-archive';
 import { normalizeUserRole } from './formVisibility';
 import { hasCapability, type Capability } from './permissions';
 
@@ -113,6 +114,13 @@ export async function requirePhotoOpsAdmin() {
     select: { photoOpsAdmin: true },
   });
   if (!user?.photoOpsAdmin) deny(403, 'Forbidden');
+  return session;
+}
+
+/** Owner, QC reviewer, or flagged HR (Sara). Temporary photo archive only. */
+export async function requirePhotoArchiveViewer() {
+  const session = await requireSession();
+  if (!(await userCanViewPhotoArchive(prisma, session))) deny(403, 'Forbidden');
   return session;
 }
 

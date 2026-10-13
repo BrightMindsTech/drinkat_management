@@ -19,6 +19,7 @@ export type DashboardNavLabelKey =
   | 'photoReview'
   | 'photoOps'
   | 'qcReports'
+  | 'photoArchive'
   | 'broadcast'
   | 'hrNotes';
 
@@ -45,6 +46,7 @@ export function getDashboardNavItems(
   if (r === 'owner') {
     items.push(
       { href: `${base}/photo-review`, labelKey: 'photoReview' },
+      { href: `${base}/photo-archive`, labelKey: 'photoArchive' },
       { href: `${base}/photo-ops`, labelKey: 'photoOps' },
       { href: `${base}/qc-reports`, labelKey: 'qcReports' },
       { href: `${base}/hr`, labelKey: 'teamAccess' },
@@ -57,6 +59,7 @@ export function getDashboardNavItems(
   if (r === 'qc') {
     items.push(
       { href: `${base}/photo-review`, labelKey: 'photoReview' },
+      { href: `${base}/photo-archive`, labelKey: 'photoArchive' },
       { href: `${base}/qc-reports`, labelKey: 'qcReports' },
       { href: `${base}/kpi`, labelKey: 'kpi' },
       { href: `${base}/broadcast`, labelKey: 'broadcast' },
@@ -95,6 +98,7 @@ export function getDashboardNavItems(
   if (flags.hrKpiReviewer) {
     items.push({ href: `${base}/hr`, labelKey: 'teamAccess' });
     items.push({ href: `${base}/hr-notes`, labelKey: 'hrNotes' });
+    items.push({ href: `${base}/photo-archive`, labelKey: 'photoArchive' });
   }
   items.push(
     { href: `${base}/kpi`, labelKey: 'kpi' },

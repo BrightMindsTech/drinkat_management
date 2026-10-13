@@ -104,6 +104,11 @@ export async function actorCanReadUpload(
   if (photo) {
     if (opts.employee?.id === photo.employeeId) return true;
     if (role === 'manager' && opts.employee?.branchId === photo.branchId) return true;
+    const hr = await prisma.user.findUnique({
+      where: { id: opts.userId },
+      select: { hrKpiReviewer: true },
+    });
+    if (hr?.hrKpiReviewer) return true;
   }
 
   return false;

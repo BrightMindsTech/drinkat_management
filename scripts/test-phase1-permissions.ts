@@ -63,6 +63,7 @@ const AUTH_PRIMITIVES = [
   'requireHrStaffAdmin',
   'requireKpiRosterViewer',
   'requirePhotoOpsAdmin',
+  'requirePhotoArchiveViewer',
   'requireQcReportsInbox',
   'getServerSession',
   'qcChatForbiddenResponse',

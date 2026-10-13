@@ -82,7 +82,7 @@
     "verify:fda-sop": "tsx scripts/test-fda-sop.ts",
     "verify:drinkat-manual": "tsx scripts/test-drinkat-manual.ts",
     "verify:jordan-kpi": "tsx scripts/test-jordan-kpi.ts",
-    "verify:photo-check": "tsx scripts/test-photo-check.ts",
+    "verify:photo-check": "tsx scripts/test-photo-check.ts && tsx scripts/test-photo-archive.ts",
     "verify": "npm run verify:prisma && npm run verify:prisma-guardrails && npm run verify:middleware && npm run verify:qc-scoring && npm run verify:phase1 && npm run verify:qc-ops && npm run verify:hardening && npm run verify:fda-sop && npm run verify:drinkat-manual && npm run verify:jordan-kpi && npm run verify:photo-check",
     "deploy": "npm run verify && opennextjs-cloudflare build && node scripts/ensure-prisma-workerd.mjs && node scripts/patch-opennext-worker-cron.mjs && opennextjs-cloudflare deploy && node scripts/post-deploy-smoke.mjs",
     "deploy:staging": "opennextjs-cloudflare build && node scripts/ensure-prisma-workerd.mjs && wrangler deploy --config wrangler.staging.jsonc",

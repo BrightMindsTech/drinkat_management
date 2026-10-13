@@ -9,6 +9,7 @@ export type HomeTileLabelKey =
   | 'homeBroadcast'
   | 'homeSupport'
   | 'homePhotoReview'
+  | 'homePhotoArchive'
   | 'homeQcReports';
 
 export type HomeTile = { href: string; labelKey: HomeTileLabelKey };
@@ -24,6 +25,7 @@ const HR_TILES: HomeTile[] = [
   { href: '/dashboard/photo', labelKey: 'homeMyTasks' },
   { href: '/dashboard/hr-notes', labelKey: 'homeHrNotes' },
   { href: '/dashboard/hr', labelKey: 'homeTeam' },
+  { href: '/dashboard/photo-archive', labelKey: 'homePhotoArchive' },
   { href: '/dashboard/kpi', labelKey: 'homeMyKpi' },
   { href: '/dashboard/broadcast', labelKey: 'homeBroadcast' },
   { href: '/dashboard/support', labelKey: 'homeSupport' },
@@ -33,6 +35,7 @@ const HR_TILES: HomeTile[] = [
 const QC_TILES: HomeTile[] = [
   { href: '/dashboard/photo', labelKey: 'homeMyTasks' },
   { href: '/dashboard/photo-review', labelKey: 'homePhotoReview' },
+  { href: '/dashboard/photo-archive', labelKey: 'homePhotoArchive' },
   { href: '/dashboard/kpi', labelKey: 'homeMyKpi' },
   { href: '/dashboard/qc-reports', labelKey: 'homeQcReports' },
   { href: '/dashboard/broadcast', labelKey: 'homeBroadcast' },
@@ -55,6 +58,7 @@ export function getDashboardHomeTiles(input: {
       { href: '/dashboard/hr-notes', labelKey: 'homeHrNotes' },
       { href: '/dashboard/hr', labelKey: 'homeTeam' },
       { href: '/dashboard/photo-review', labelKey: 'homePhotoReview' },
+      { href: '/dashboard/photo-archive', labelKey: 'homePhotoArchive' },
       { href: '/dashboard/kpi', labelKey: 'homeMyKpi' },
       { href: '/dashboard/qc-reports', labelKey: 'homeQcReports' },
       { href: '/dashboard/broadcast', labelKey: 'homeBroadcast' },

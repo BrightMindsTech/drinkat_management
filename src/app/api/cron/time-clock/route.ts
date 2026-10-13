@@ -13,6 +13,7 @@ import { sendInspectionTaskRemindersIfDue, sendIssueEscalationsIfDue } from '@/l
 import { generatePhotoCheckTasksForDay, isPhotoCheckSchedulerEnabled } from '@/lib/photo-generate';
 import { ensureOfficialPhotoProgram } from '@/lib/photo-ops-program';
 import { sendPhotoCheckRemindersIfDue } from '@/lib/photo-reminders';
+import { purgeExpiredPhotoArchive } from '@/lib/photo-archive';
 
 /**
  * Authenticated with CRON_SECRET (query `?secret=` or `Authorization: Bearer`).
@@ -105,6 +106,13 @@ export async function GET(req: Request) {
     }
   }
 
+  let photoArchivePurge: { purged: number; skipped: number } | null = null;
+  try {
+    photoArchivePurge = await purgeExpiredPhotoArchive(prisma);
+  } catch (e) {
+    console.error('[cron/maintenance] photo archive purge failed', e);
+  }
+
   let photoGeneration: { created: number; skipped: number; overdue: number } | null = null;
   let photoReminders: { sent: number; skipped: number } | null = null;
   if (isPhotoCheckSchedulerEnabled()) {
@@ -136,6 +144,7 @@ export async function GET(req: Request) {
     inspectionScheduler: isInspectionSchedulerEnabled(),
     photoGeneration,
     photoReminders,
+    photoArchivePurge,
     photoCheckScheduler: isPhotoCheckSchedulerEnabled(),
   });
 }

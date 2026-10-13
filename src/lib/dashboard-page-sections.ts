@@ -28,6 +28,9 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
   if (path === '/dashboard/photo' || path === '/dashboard/photo-review') {
     return [{ id: 'section-home-overview', labelRef: 'dashboard.title' }];
   }
+  if (path.startsWith('/dashboard/photo-archive')) {
+    return [{ id: 'section-photo-archive', labelRef: 'nav.photoArchive' }];
+  }
   if (path.startsWith('/dashboard/photo-ops')) {
     return [{ id: 'section-photo-ops', labelRef: 'nav.photoOps' }];
   }
