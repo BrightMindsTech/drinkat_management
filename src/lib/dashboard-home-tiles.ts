@@ -31,6 +31,14 @@ const HR_TILES: HomeTile[] = [
   { href: '/dashboard/support', labelKey: 'homeSupport' },
 ];
 
+const MANAGER_TILES: HomeTile[] = [
+  { href: '/dashboard/photo', labelKey: 'homeMyTasks' },
+  { href: '/dashboard/photo-review', labelKey: 'homePhotoReview' },
+  { href: '/dashboard/kpi', labelKey: 'homeMyKpi' },
+  { href: '/dashboard/qc-reports', labelKey: 'homeQcReports' },
+  { href: '/dashboard/support', labelKey: 'homeSupport' },
+];
+
 /** Staff home plus QC sidebar destinations. Never includes HR Notes. */
 const QC_TILES: HomeTile[] = [
   { href: '/dashboard/photo', labelKey: 'homeMyTasks' },
@@ -66,6 +74,7 @@ export function getDashboardHomeTiles(input: {
     ];
   }
   if (hr) return HR_TILES;
+  if (role === 'manager') return MANAGER_TILES;
   if (isStaffLevelRole(role)) return STAFF_TILES;
   return [];
 }

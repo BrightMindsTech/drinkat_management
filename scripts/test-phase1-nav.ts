@@ -25,6 +25,8 @@ assert(!hrefs('qc').includes('/dashboard/hr-notes'));
 assert(hrefs('owner').includes('/dashboard/photo-review'));
 assert(hrefs('owner').includes('/dashboard/photo-archive'));
 assert(hrefs('owner').includes('/dashboard/photo-ops'));
+assert(hrefs('manager').includes('/dashboard/photo'));
+assert(hrefs('manager').includes('/dashboard/photo-review'));
 assert(!hrefs('manager').includes('/dashboard/photo-archive'));
 assert(!hrefs('staff').includes('/dashboard/photo-archive'));
 assert(hrefs('staff', { hrKpiReviewer: true }).includes('/dashboard/photo-archive'));
@@ -71,6 +73,16 @@ assert.deepEqual(
     '/dashboard/photo-archive',
     '/dashboard/kpi',
     '/dashboard/broadcast',
+    '/dashboard/support',
+  ]
+);
+assert.deepEqual(
+  getDashboardHomeTiles({ role: 'manager' }).map((t) => t.href),
+  [
+    '/dashboard/photo',
+    '/dashboard/photo-review',
+    '/dashboard/kpi',
+    '/dashboard/qc-reports',
     '/dashboard/support',
   ]
 );

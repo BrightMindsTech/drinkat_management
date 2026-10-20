@@ -1,4 +1,18 @@
 import type { PrismaClient } from '@prisma/client';
+import { normalizeUserRole } from '@/lib/permissions';
+
+const PHOTO_OPS_ROLES = new Set(['staff', 'assistant_manager', 'manager', 'qc']);
+
+/** Full-time branch staff, including managers. Part-time stays off unless turned on by hand. */
+export function employeeEligibleForDefaultPhotoOps(emp: {
+  status: string;
+  role: string;
+  employmentType: string;
+}): boolean {
+  if (emp.status === 'terminated') return false;
+  if (emp.employmentType === 'part_time') return false;
+  return PHOTO_OPS_ROLES.has(normalizeUserRole(emp.role));
+}
 
 export async function employeePhotoRequired(
   prisma: PrismaClient,

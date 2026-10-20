@@ -3,7 +3,11 @@ import { requireSession } from '@/lib/session';
 import { withApiErrors } from '@/lib/api-route-error';
 import { employeePhotoRequired } from '@/lib/photo-eligibility';
 import { generatePhotoTasksForEmployee } from '@/lib/photo-generate';
-import { assignApprovedPhotoTypes, ensureOfficialPhotoProgram } from '@/lib/photo-ops-program';
+import {
+  assignApprovedPhotoTypes,
+  ensureEmployeePhotoEligibility,
+  ensureOfficialPhotoProgram,
+} from '@/lib/photo-ops-program';
 import { photoPeriodKey, shiftPhotoPeriodKey } from '@/lib/photo-time';
 import { listUpcomingPhotoWindows, nextPhotoWave } from '@/lib/photo-upcoming';
 import { hideClaimedPhotoTasksForEmployee } from '@/lib/photo-branch-claim';
@@ -27,7 +31,14 @@ export const GET = withApiErrors(async function GET() {
     include: { employee: true },
   });
   if (!user?.employee) return Response.json({ required: false, items: [], upcoming: [] });
-  const required = await employeePhotoRequired(prisma, user.employee.id);
+  const empRow = user.employee;
+  const eligible = await ensureEmployeePhotoEligibility(prisma, {
+    id: empRow.id,
+    status: empRow.status,
+    role: empRow.role,
+    employmentType: empRow.employmentType,
+  });
+  const required = eligible || (await employeePhotoRequired(prisma, empRow.id));
   if (!required) return Response.json({ required: false, items: [], upcoming: [] });
 
   const now = new Date();

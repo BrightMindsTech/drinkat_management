@@ -29,7 +29,7 @@ import {
   photoWindowInstants,
   shouldCreatePhotoOccurrence,
 } from '../src/lib/photo-generate';
-import { isPhotoWindowOpenNow } from '../src/lib/photo-time';
+import { isPhotoWindowOpenNow, photoWeekday } from '../src/lib/photo-time';
 import {
   ACTIVE_PHOTO_REMINDER_MINUTES,
   PHOTO_REMINDER_PUSH_TTL_SEC,
@@ -37,7 +37,15 @@ import {
   latestPhotoReminderAt,
   shouldSendActivePhotoReminder,
 } from '../src/lib/photo-reminders';
-import { PHOTO_360_OFFICIAL_WINDOWS } from '../src/lib/photo-official-windows';
+import {
+  PHOTO_360_OFFICIAL_WINDOWS,
+  PHOTO_SATURDAY_DAYS_JSON,
+  PHOTO_SATURDAY_ONLY_CODES,
+  PHOTO_SATURDAY_WEEKDAY,
+  isSaturdayOnlyPhotoCode,
+  photoScheduleDaysJson,
+} from '../src/lib/photo-official-windows';
+import { employeeEligibleForDefaultPhotoOps } from '../src/lib/photo-eligibility';
 import { formatPhotoCountdown, listUpcomingPhotoWindows, nextPhotoWave } from '../src/lib/photo-upcoming';
 import {
   BRANCH_PHOTO_CLAIMED,
@@ -321,6 +329,82 @@ assert.match(program, /slotKey: 'daily'/);
 assert.match(program, /active: false/);
 assert.match(program, /startTime: w.startTime/);
 assert.match(program, /dueTime: w.dueTime/);
+assert.match(program, /photoScheduleDaysJson/);
+assert.match(program, /weekly_saturday_only/);
+assert.match(program, /enableFullTimePhotoOps/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /ensureEmployeePhotoEligibility/);
+assert.equal(PHOTO_SATURDAY_WEEKDAY, 6);
+assert.equal(PHOTO_SATURDAY_DAYS_JSON, '[6]');
+assert.equal(photoScheduleDaysJson('slush_machine_cleaning'), '[6]');
+assert.equal(photoScheduleDaysJson('fryer_cleanliness'), '[6]');
+assert.equal(photoScheduleDaysJson('grill_cleanliness'), '[6]');
+assert.equal(photoScheduleDaysJson('preparation_refrigerator'), '[6]');
+assert.equal(photoScheduleDaysJson('branch_cleanliness_360'), '[0,1,2,3,4,5,6]');
+assert.equal(isSaturdayOnlyPhotoCode('slush_machine_cleaning'), true);
+assert.deepEqual([...PHOTO_SATURDAY_ONLY_CODES], [
+  'slush_machine_cleaning',
+  'fryer_cleanliness',
+  'grill_cleanliness',
+  'preparation_refrigerator',
+]);
+assert.equal(
+  employeeEligibleForDefaultPhotoOps({ status: 'active', role: 'manager', employmentType: 'full_time' }),
+  true
+);
+assert.equal(
+  employeeEligibleForDefaultPhotoOps({ status: 'active', role: 'staff', employmentType: 'full_time' }),
+  true
+);
+assert.equal(
+  employeeEligibleForDefaultPhotoOps({ status: 'active', role: 'manager', employmentType: 'part_time' }),
+  false
+);
+assert.equal(
+  employeeEligibleForDefaultPhotoOps({ status: 'active', role: 'staff', employmentType: 'part_time' }),
+  false
+);
+assert.equal(
+  employeeEligibleForDefaultPhotoOps({ status: 'terminated', role: 'staff', employmentType: 'full_time' }),
+  false
+);
+assert.equal(photoWeekday('2026-10-24'), PHOTO_SATURDAY_WEEKDAY);
+assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/layout.tsx'), 'utf8'), /employeeEligibleForDefaultPhotoOps/);
+const saturdayOnlyUpcoming = listUpcomingPhotoWindows(
+  [
+    {
+      scheduleId: 'slush-morning',
+      typeId: 'slush',
+      slotKey: 'morning',
+      slotLabelEn: 'Morning',
+      slotLabelAr: 'صباح',
+      startTime: '08:00',
+      dueTime: '13:00',
+      daysOfWeekJson: PHOTO_SATURDAY_DAYS_JSON,
+    },
+  ],
+  photoInstantInZone('2026-10-20', '10:00'),
+  6
+);
+assert.equal(saturdayOnlyUpcoming[0]?.periodKey, '2026-10-24');
+assert.equal(
+  listUpcomingPhotoWindows(
+    [
+      {
+        scheduleId: 'slush-morning',
+        typeId: 'slush',
+        slotKey: 'morning',
+        slotLabelEn: 'Morning',
+        slotLabelAr: 'صباح',
+        startTime: '08:00',
+        dueTime: '13:00',
+        daysOfWeekJson: PHOTO_SATURDAY_DAYS_JSON,
+      },
+    ],
+    photoInstantInZone('2026-10-20', '10:00'),
+    2
+  ).length,
+  0
+);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/cron/time-clock/route.ts'), 'utf8'), /ensureOfficialPhotoProgram/);
 assert.doesNotMatch(program, /Other approved types = one midday/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-ops/employees/route.ts'), 'utf8'), /generatePhotoTasksForEmployee/);
