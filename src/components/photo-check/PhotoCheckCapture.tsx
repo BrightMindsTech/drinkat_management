@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { openRearCameraCapture } from '@/lib/open-camera-file';
 
 type PhotoItem = {
   id: string;
@@ -22,7 +23,6 @@ type SubmitResult = {
 
 export function PhotoCheckCapture() {
   const { t } = useLanguage();
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SubmitResult | null>(null);
@@ -36,8 +36,7 @@ export function PhotoCheckCapture() {
       .catch(() => undefined);
   }, []);
 
-  async function onCapture(files: FileList | null) {
-    const file = files?.[0];
+  async function onCapture(file: File | null) {
     if (!file) return;
     setError(null);
     setResult(null);
@@ -65,7 +64,6 @@ export function PhotoCheckCapture() {
       setError(e instanceof Error ? e.message : t.photoCheck.reviewFailed);
     } finally {
       setBusy(false);
-      if (inputRef.current) inputRef.current.value = '';
     }
   }
 
@@ -79,21 +77,15 @@ export function PhotoCheckCapture() {
 
   return (
     <div className="space-y-6">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="sr-only"
-        tabIndex={-1}
-        disabled={busy}
-        onChange={(e) => void onCapture(e.target.files)}
-      />
-
       <button
         type="button"
         disabled={busy}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => {
+          if (busy) return;
+          openRearCameraCapture((file) => {
+            void onCapture(file);
+          });
+        }}
         className="flex min-h-[220px] w-full flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-ios-blue/40 bg-ios-blue/5 px-6 py-10 text-center active:scale-[0.99] disabled:opacity-60"
       >
         <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-ios-blue text-white">

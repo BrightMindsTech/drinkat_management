@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ChecklistAssignment, Checklist, ChecklistItem, QcSubmission, SubmissionPhoto } from '@prisma/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppClockTimeLabel, formatAppDate, formatAppDateTime } from '@/lib/format-datetime';
+import { openRearCameraCapture } from '@/lib/open-camera-file';
 
 type AssignmentWithChecklist = ChecklistAssignment & {
   checklist: Checklist & { items: ChecklistItem[] };
@@ -27,7 +28,6 @@ export function QCStaffView({
   const [pendingUrls, setPendingUrls] = useState<Record<string, string[]>>({});
   const [uploadingCapture, setUploadingCapture] = useState<string | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [lightbox, setLightbox] = useState<{ url: string; assignmentId: string } | null>(null);
 
   async function uploadOneFile(file: File): Promise<string | null> {
@@ -38,8 +38,7 @@ export function QCStaffView({
     return d.url ?? null;
   }
 
-  async function onCaptureChange(assignmentId: string, files: FileList | null) {
-    const file = files?.[0];
+  async function onCaptureChange(assignmentId: string, file: File | null) {
     if (!file) return;
     setUploadingCapture(assignmentId);
     try {
@@ -80,7 +79,10 @@ export function QCStaffView({
   }
 
   function triggerCapture(assignmentId: string) {
-    fileInputRefs.current[assignmentId]?.click();
+    if (submittingId || uploadingCapture) return;
+    openRearCameraCapture((file) => {
+      void onCaptureChange(assignmentId, file);
+    });
   }
 
   function removePending(assignmentId: string, url: string) {
@@ -161,22 +163,6 @@ export function QCStaffView({
                 )}
                 <div className="mt-3 space-y-2">
                   <label className="block text-sm font-medium text-app-primary mb-1">{t.qc.uploadPhotos}</label>
-                  <input
-                    ref={(el) => {
-                      fileInputRefs.current[a.id] = el;
-                    }}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="sr-only"
-                    aria-hidden
-                    tabIndex={-1}
-                    disabled={busy}
-                    onChange={(e) => {
-                      onCaptureChange(a.id, e.target.files);
-                      e.target.value = '';
-                    }}
-                  />
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"

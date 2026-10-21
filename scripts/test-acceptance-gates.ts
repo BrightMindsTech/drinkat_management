@@ -34,8 +34,8 @@ const rendered = renderSubmissionFields(live, v1) as { key: string }[];
 assert.equal(rendered[0].key, 'old_field');
 
 const formsView = fs.readFileSync(path.join(root, 'src/components/forms/ManagementFormsView.tsx'), 'utf8');
-assert(formsView.includes('capture="environment"'));
-assert(formsView.includes('accept="image/*"'));
+assert(formsView.includes('openRearCameraCapture'));
+assert(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8').includes("capture', 'environment'"));
 assert(formsView.includes("type === 'photo'"));
 
 const uploadRoute = fs.readFileSync(path.join(root, 'src/app/api/upload/route.ts'), 'utf8');

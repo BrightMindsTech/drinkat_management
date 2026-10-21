@@ -9,6 +9,7 @@ import { formatAppDateTime, isSameAmmanCalendarDay } from '@/lib/format-datetime
 import type { FormFieldDef } from '@/lib/formTemplate';
 import { isStaffLevelRole } from '@/lib/permissions';
 import { scrollIntoViewById } from '@/lib/scrollIntoViewDeferred';
+import { openRearCameraCapture } from '@/lib/open-camera-file';
 import { buildSubmissionReportTable, type SubmissionReportCsvInput } from '@/lib/formSubmissionCsv';
 import { ReportTableModal } from '@/components/ReportTableModal';
 import type { ReportTableData } from '@/lib/report-table';
@@ -99,7 +100,6 @@ export function ManagementFormsView({
   const [myList, setMyList] = useState(initialMySubmissions);
   const [openId, setOpenId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
-  const photoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [uploadingPhotoKey, setUploadingPhotoKey] = useState<string | null>(null);
   const { run, isBusy } = useGuardedAction();
   const [ownerTemplates, setOwnerTemplates] = useState<FormsTemplateRow[]>(allTemplatesForOwner ?? []);
@@ -223,8 +223,19 @@ export function ManagementFormsView({
     return d.url ?? null;
   }
 
-  function triggerPhotoCapture(fieldKey: string) {
-    photoInputRefs.current[fieldKey]?.click();
+  function triggerPhotoCapture(fieldKey: string, apply: (url: string) => void) {
+    if (uploadingPhotoKey === fieldKey) return;
+    openRearCameraCapture((file) => {
+      void (async () => {
+        setUploadingPhotoKey(fieldKey);
+        try {
+          const url = await uploadPhoto(file);
+          if (url) apply(url);
+        } finally {
+          setUploadingPhotoKey(null);
+        }
+      })();
+    });
   }
 
   function handleSubmit(template: FormsTemplateRow) {
@@ -523,35 +534,11 @@ export function ManagementFormsView({
               {f.label}
               {f.required ? ' *' : ''}
             </span>
-            <input
-              ref={(el) => {
-                photoInputRefs.current[f.key] = el;
-              }}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="sr-only"
-              aria-hidden
-              tabIndex={-1}
-              disabled={photoBusy}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setUploadingPhotoKey(f.key);
-                try {
-                  const url = await uploadPhoto(file);
-                  if (url) setVal(url);
-                } finally {
-                  setUploadingPhotoKey(null);
-                  e.target.value = '';
-                }
-              }}
-            />
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 disabled={photoBusy}
-                onClick={() => triggerPhotoCapture(f.key)}
+                onClick={() => triggerPhotoCapture(f.key, (url) => setVal(url))}
                 className="text-sm px-3 py-2 rounded-ios bg-ios-blue text-white disabled:opacity-50"
               >
                 {typeof v === 'string' && v ? t.forms.retakePhoto : t.forms.takePhoto}

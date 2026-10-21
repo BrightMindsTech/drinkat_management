@@ -25,6 +25,10 @@
   html.dark {
     color-scheme: dark;
   }
+  /* iOS WKWebView camera sheet is black while color-scheme is dark. */
+  html.camera-capture-active {
+    color-scheme: light !important;
+  }
   html.dark body {
     background-color: #1C1C1E;
   }

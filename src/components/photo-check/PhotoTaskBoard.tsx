@@ -12,6 +12,7 @@ import {
 } from '@/lib/photo-multi';
 import { parseCriteriaJson } from '@/lib/photo-score';
 import { formatPhotoCountdown, nextPhotoWave } from '@/lib/photo-upcoming';
+import { openRearCameraCapture } from '@/lib/open-camera-file';
 
 type Task = {
   id: string;
@@ -78,7 +79,6 @@ export function PhotoTaskBoard() {
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
-  const cameraRef = useRef<HTMLInputElement | null>(null);
   const draftsRef = useRef<Draft[]>([]);
   const submittingRef = useRef(false);
   const submitGenRef = useRef(0);
@@ -217,13 +217,14 @@ export function PhotoTaskBoard() {
     return { file, preview: URL.createObjectURL(file) };
   }
 
-  function addFiles(files: FileList | null) {
+  function addFiles(files: ArrayLike<File> | null) {
     if (!active || submittingRef.current || !files?.length) return;
+    const list = Array.from(files);
     const max = Math.min(PHOTO_DEFAULT_MAX_PHOTOS, Math.max(1, active.type.maxPhotos || PHOTO_DEFAULT_MAX_PHOTOS));
     const replaceAt = replaceIndexRef.current;
     replaceIndexRef.current = null;
     if (replaceAt != null && replaceAt >= 0 && replaceAt < drafts.length) {
-      const chosen = files.item(0);
+      const chosen = list[0];
       if (!chosen) return;
       const next = toDraft(chosen);
       if (!next) return;
@@ -237,7 +238,7 @@ export function PhotoTaskBoard() {
     } else {
       const room = Math.max(0, max - drafts.length);
       const next: Draft[] = [];
-      for (const file of Array.from(files).slice(0, room)) {
+      for (const file of list.slice(0, room)) {
         const d = toDraft(file);
         if (d) next.push(d);
       }
@@ -250,7 +251,11 @@ export function PhotoTaskBoard() {
         });
       }
     }
-    if (cameraRef.current) cameraRef.current.value = '';
+  }
+
+  function openCamera() {
+    if (busy || submittingRef.current) return;
+    openRearCameraCapture((file) => addFiles([file]));
   }
 
   function removeDraft(index: number) {
@@ -485,7 +490,7 @@ export function PhotoTaskBoard() {
                                   onClick={() => {
                                     if (busy || submittingRef.current) return;
                                     replaceIndexRef.current = i;
-                                    cameraRef.current?.click();
+                                    openCamera();
                                   }}
                                 >
                                   {t.photoCheck.replacePhoto}
@@ -503,21 +508,13 @@ export function PhotoTaskBoard() {
                           ))}
                         </ul>
                       ) : null}
-                      <input
-                        ref={cameraRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="sr-only"
-                        onChange={(e) => addFiles(e.target.files)}
-                      />
                       <button
                         type="button"
                         disabled={!canAdd}
                         className="min-h-12 w-full rounded-full border border-ios-blue font-bold text-ios-blue disabled:opacity-50"
                         onClick={() => {
                           replaceIndexRef.current = null;
-                          cameraRef.current?.click();
+                          openCamera();
                         }}
                       >
                         {drafts.length ? t.photoCheck.addAnotherPhoto : t.photoCheck.takePhoto}

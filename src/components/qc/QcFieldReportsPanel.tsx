@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { AppModal } from '@/components/AppModal';
+import { openRearCameraCapture } from '@/lib/open-camera-file';
 
 type Report = {
   id: string;
@@ -45,7 +46,6 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
   const [filterBranch, setFilterBranch] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch('/api/qc-reports', { credentials: 'include', cache: 'no-store' });
@@ -224,18 +224,6 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
             />
           </label>
 
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="sr-only"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void upload(f);
-              e.target.value = '';
-            }}
-          />
           {photos.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {photos.map((url) => (
@@ -259,7 +247,12 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
             type="button"
             disabled={busy !== null || photos.length >= MAX_PHOTOS}
             className="min-h-12 w-full rounded-2xl border border-gray-200 text-sm font-semibold disabled:opacity-50 dark:border-ios-dark-separator"
-            onClick={() => fileRef.current?.click()}
+            onClick={() => {
+              if (busy !== null || photos.length >= MAX_PHOTOS) return;
+              openRearCameraCapture((file) => {
+                void upload(file);
+              });
+            }}
           >
             {busy === 'upload' ? t.qcOps.qcReportsUploading : t.qcOps.qcReportsAddPhoto}
           </button>
