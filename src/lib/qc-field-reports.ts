@@ -9,6 +9,7 @@ export type QcNotifyPerson = {
   role: string;
   hrKpiReviewer: boolean;
   name: string;
+  branchId: string;
   branchName: string;
 };
 
@@ -70,7 +71,7 @@ export async function listQcNotifyPeople(prisma: PrismaClient): Promise<QcNotify
       email: true,
       role: true,
       hrKpiReviewer: true,
-      employee: { select: { name: true, status: true, branch: { select: { name: true } } } },
+      employee: { select: { name: true, status: true, branchId: true, branch: { select: { name: true } } } },
     },
   });
   return users
@@ -81,6 +82,7 @@ export async function listQcNotifyPeople(prisma: PrismaClient): Promise<QcNotify
       role: u.role,
       hrKpiReviewer: u.hrKpiReviewer,
       name: u.employee?.name || u.email,
+      branchId: u.employee?.branchId || '',
       branchName: u.employee?.branch?.name || '',
     }));
 }
@@ -105,4 +107,31 @@ export async function resolveQcReportRecipients(
 ): Promise<string[]> {
   const people = await listQcNotifyPeople(prisma);
   return pickQcReportRecipientIds(people, senderUserId, target);
+}
+
+/** Branch inspection always goes to Sara, the owner, and managers of that branch. */
+export function pickBranchInspectionRecipientIds(
+  people: QcNotifyPerson[],
+  senderUserId: string,
+  branchId: string
+): string[] {
+  const ids = new Set<string>();
+  const add = (id: string) => {
+    if (id && id !== senderUserId) ids.add(id);
+  };
+  for (const p of people) {
+    const role = normalizeUserRole(p.role);
+    if (role === 'owner' || isSaraNotifyUser(p)) add(p.userId);
+    if (role === 'manager' && p.branchId === branchId) add(p.userId);
+  }
+  return [...ids];
+}
+
+export async function resolveBranchInspectionRecipients(
+  prisma: PrismaClient,
+  senderUserId: string,
+  branchId: string
+): Promise<string[]> {
+  const people = await listQcNotifyPeople(prisma);
+  return pickBranchInspectionRecipientIds(people, senderUserId, branchId);
 }

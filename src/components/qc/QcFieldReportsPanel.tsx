@@ -1,11 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { AppModal } from '@/components/AppModal';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
-import { interpolate } from '@/contexts/LanguageContext';
+import { QcBranchInspectionForm } from '@/components/qc/QcBranchInspectionForm';
+import {
+  BRANCH_INSPECTION_SECTIONS,
+  countInspectionResults,
+  isBranchInspectionReport,
+  parseInspectionPayload,
+  parseQcReportPhotos,
+} from '@/lib/qc-branch-inspection';
 
 type Report = {
   id: string;
@@ -19,25 +26,17 @@ type Report = {
 };
 type Branch = { id: string; name: string };
 type NotifyOption = { value: string; label: string };
+type ComposeMode = 'note' | 'inspection' | null;
+type KindFilter = 'all' | 'note' | 'inspection';
 
 const MAX_PHOTOS = 3;
-
-function parsePhotos(raw: string): string[] {
-  try {
-    const v = JSON.parse(raw) as unknown;
-    if (!Array.isArray(v)) return [];
-    return v.map((item) => String(item ?? '').trim()).filter((s) => s.length > 3);
-  } catch {
-    return [];
-  }
-}
 
 export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
   const { t, locale } = useLanguage();
   const [items, setItems] = useState<Report[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
-  const [compose, setCompose] = useState(false);
+  const [compose, setCompose] = useState<ComposeMode>(null);
   const [comments, setComments] = useState('');
   const [branchId, setBranchId] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
@@ -46,6 +45,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
   const [busy, setBusy] = useState<'upload' | 'submit' | null>(null);
   const [q, setQ] = useState('');
   const [filterBranch, setFilterBranch] = useState('');
+  const [filterKind, setFilterKind] = useState<KindFilter>('all');
   const [openId, setOpenId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [notifyTo, setNotifyTo] = useState('all');
@@ -89,6 +89,9 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return items.filter((item) => {
+      const inspection = isBranchInspectionReport(item);
+      if (filterKind === 'inspection' && !inspection) return false;
+      if (filterKind === 'note' && inspection) return false;
       if (filterBranch) {
         const named = branches.find((b) => b.id === filterBranch)?.name;
         if (item.branch.id !== filterBranch && item.branch.name !== named) return false;
@@ -97,7 +100,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
       const author = item.createdBy.employee?.name ?? item.createdBy.email;
       return `${item.comments} ${item.branch.name} ${author}`.toLowerCase().includes(needle);
     });
-  }, [items, q, filterBranch, branches]);
+  }, [items, q, filterBranch, filterKind, branches]);
 
   async function upload(file: File) {
     if (photos.length >= MAX_PHOTOS) return;
@@ -143,7 +146,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
       setComments('');
       setPhotos([]);
       setNotifyTo('all');
-      setCompose(false);
+      setCompose(null);
       setMsg(t.qcOps.qcReportsSubmitted);
       await load();
     } catch {
@@ -151,6 +154,26 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
     } finally {
       setBusy(null);
     }
+  }
+
+  if (canCreate && compose === 'inspection') {
+    return (
+      <div id="section-qc-reports" className="mx-auto max-w-xl">
+        <QcBranchInspectionForm
+          branches={branches}
+          initialBranchId={branchId}
+          onCancel={() => {
+            setCompose(null);
+            setErr(null);
+          }}
+          onSubmitted={async () => {
+            setCompose(null);
+            setMsg(t.qcOps.qcInspectSubmitted);
+            await load();
+          }}
+        />
+      </div>
+    );
   }
 
   return (
@@ -161,28 +184,40 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
       </div>
 
       {canCreate ? (
-        <button
-          type="button"
-          onClick={() => {
-            setErr(null);
-            setCompose(true);
-          }}
-          className="min-h-12 w-full rounded-2xl bg-ios-blue text-base font-semibold text-white touch-manipulation active:opacity-90"
-        >
-          {t.qcOps.qcReportsNew}
-        </button>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => {
+              setErr(null);
+              setCompose('note');
+            }}
+            className="min-h-12 w-full rounded-2xl bg-ios-blue text-base font-semibold text-white touch-manipulation active:opacity-90"
+          >
+            {t.qcOps.qcReportsNew}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setErr(null);
+              setCompose('inspection');
+            }}
+            className="min-h-12 w-full rounded-2xl border border-gray-200 text-base font-semibold text-app-primary touch-manipulation active:opacity-90 dark:border-ios-dark-separator"
+          >
+            {t.qcOps.qcInspectNew}
+          </button>
+        </div>
       ) : null}
 
       {msg ? <p className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</p> : null}
-      {!compose && err ? (
+      {compose !== 'note' && err ? (
         <p className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-medium text-red-600">{err}</p>
       ) : null}
 
       <AppModal
-        open={canCreate && compose}
+        open={canCreate && compose === 'note'}
         onClose={() => {
           if (busy) return;
-          setCompose(false);
+          setCompose(null);
           setErr(null);
         }}
         aria-label={t.qcOps.qcReportsNew}
@@ -196,7 +231,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
               type="button"
               disabled={busy !== null}
               onClick={() => {
-                setCompose(false);
+                setCompose(null);
                 setErr(null);
               }}
               className="flex h-10 w-10 items-center justify-center rounded-full text-xl text-app-muted disabled:opacity-50"
@@ -324,6 +359,26 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
           ))}
         </select>
       </div>
+      <div className="flex gap-2">
+        {(['all', 'inspection', 'note'] as const).map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            onClick={() => setFilterKind(kind)}
+            className={`min-h-10 rounded-full px-3 text-xs font-semibold ${
+              filterKind === kind
+                ? 'bg-ios-blue text-white'
+                : 'border border-gray-200 text-app-muted dark:border-ios-dark-separator'
+            }`}
+          >
+            {kind === 'all'
+              ? t.qcOps.qcInspectFilterAll
+              : kind === 'inspection'
+                ? t.qcOps.qcInspectFilterForms
+                : t.qcOps.qcInspectFilterNotes}
+          </button>
+        ))}
+      </div>
 
       <p className="text-xs font-medium text-app-muted">
         {loading ? t.qcOps.qcReportsLoading : `${visible.length}`}
@@ -331,10 +386,12 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
 
       <ul className="space-y-3">
         {visible.map((item) => {
-          const photosList = parsePhotos(item.photosJson);
+          const inspection = parseInspectionPayload(item.photosJson);
+          const photosList = parseQcReportPhotos(item.photosJson);
           const author = item.createdBy.employee?.name ?? item.createdBy.email;
           const open = openId === item.id;
           const highlight = highlightId === item.id;
+          const counts = inspection ? countInspectionResults(inspection.answers) : null;
           return (
             <li
               key={item.id}
@@ -350,14 +407,64 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
                 onClick={() => setOpenId(open ? null : item.id)}
                 className="w-full px-4 py-3.5 text-start touch-manipulation"
               >
-                <p className={`${open ? '' : 'line-clamp-3'} text-sm leading-relaxed text-app-primary`}>
-                  {item.comments}
-                </p>
+                {inspection ? (
+                  <>
+                    <p className="text-xs font-bold uppercase tracking-wide text-teal-700">{t.qcOps.qcInspectNew}</p>
+                    <p className="mt-1 text-sm font-semibold text-app-primary">
+                      {interpolate(t.qcOps.qcInspectSummary, {
+                        fail: counts?.fail ?? 0,
+                        pass: counts?.pass ?? 0,
+                      })}
+                    </p>
+                    {inspection.notes ? (
+                      <p className={`${open ? '' : 'line-clamp-2'} mt-1 text-sm leading-relaxed text-app-primary`}>
+                        {inspection.notes}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className={`${open ? '' : 'line-clamp-3'} text-sm leading-relaxed text-app-primary`}>
+                    {item.comments}
+                  </p>
+                )}
                 <p className="mt-1.5 text-xs text-app-muted">
                   {item.branch.name} · {author} · {formatAppDateTime(item.createdAt, locale)}
                 </p>
               </button>
-              {open && photosList.length > 0 ? (
+              {open && inspection ? (
+                <div className="space-y-3 px-4 pb-4">
+                  {BRANCH_INSPECTION_SECTIONS.map((section) => (
+                    <div key={section.id}>
+                      <p className="text-xs font-bold text-teal-700">
+                        {section.id} · {locale === 'ar' ? section.titleAr : section.titleEn}
+                      </p>
+                      <ul className="mt-1 space-y-1">
+                        {section.items.map((row) => {
+                          const ans = inspection.answers[row.id];
+                          const title = locale === 'ar' ? row.titleAr : row.titleEn;
+                          const failed = ans?.result === 'fail';
+                          return (
+                            <li key={row.id} className="flex items-start gap-2 text-sm">
+                              <span className={`mt-0.5 font-bold ${failed ? 'text-red-600' : 'text-emerald-600'}`}>
+                                {failed ? '×' : '✓'}
+                              </span>
+                              <span className="flex-1 text-app-primary">
+                                {row.n}. {title}
+                              </span>
+                              {ans?.photoUrl ? (
+                                <a href={ans.photoUrl} target="_blank" rel="noopener noreferrer">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={ans.photoUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />
+                                </a>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : open && photosList.length > 0 ? (
                 <div className="flex flex-wrap gap-2 px-4 pb-4">
                   {photosList.map((url) => (
                     <a key={url} href={url} target="_blank" rel="noopener noreferrer">
