@@ -4,7 +4,11 @@ import { requireCapability, requireQcReportsInbox } from '@/lib/session';
 import { withApiErrors } from '@/lib/api-route-error';
 import { dataScopeForRole, normalizeUserRole } from '@/lib/permissions';
 import { notifyUsers } from '@/lib/user-notify';
-import { resolveQcReportRecipients } from '@/lib/qc-field-reports';
+import {
+  listQcNotifyPeople,
+  qcReportNotifyOptions,
+  resolveQcReportRecipients,
+} from '@/lib/qc-field-reports';
 import { z } from 'zod';
 
 const postSchema = z.object({
@@ -13,6 +17,7 @@ const postSchema = z.object({
   photoUrls: z.array(z.string()).max(3).default([]),
   category: z.string().min(1).optional(),
   severity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  notifyTo: z.string().min(1).max(80).optional(),
 });
 
 export const GET = withApiErrors(async function GET() {
@@ -39,7 +44,8 @@ export const GET = withApiErrors(async function GET() {
     take: 80,
   });
   const branches = await prisma.branch.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
-  return Response.json({ items, branches });
+  const notifyPeople = await listQcNotifyPeople(prisma);
+  return Response.json({ items, branches, notifyOptions: qcReportNotifyOptions(notifyPeople) });
 });
 
 export const POST = withApiErrors(async function POST(req: NextRequest) {
@@ -63,19 +69,21 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
     },
   });
 
-  const ids = await resolveQcReportRecipients(prisma, session.user.id);
+  const ids = await resolveQcReportRecipients(prisma, session.user.id, parsed.data.notifyTo ?? 'all');
   const pushTitle = `QC report · ${branch.name}`;
   const pushBody = parsed.data.comments.slice(0, 140);
-  await notifyUsers(prisma, ids, {
-    category: 'qc_field_report',
-    title: pushTitle,
-    body: pushBody,
-    dataJson: JSON.stringify({ type: 'qc_field_report', reportId: item.id, url: '/dashboard/qc-reports' }),
-    push: {
+  if (ids.length) {
+    await notifyUsers(prisma, ids, {
+      category: 'qc_field_report',
       title: pushTitle,
       body: pushBody,
-      data: { type: 'qc_field_report', url: '/dashboard/qc-reports', reportId: item.id },
-    },
-  });
+      dataJson: JSON.stringify({ type: 'qc_field_report', reportId: item.id, url: '/dashboard/qc-reports' }),
+      push: {
+        title: pushTitle,
+        body: pushBody,
+        data: { type: 'qc_field_report', url: '/dashboard/qc-reports', reportId: item.id },
+      },
+    });
+  }
   return Response.json({ item });
 });

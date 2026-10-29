@@ -35,10 +35,10 @@ export async function listClaimedPhotoWindows(
   return new Set(rows.map((r) => photoBranchWindowKey(r.branchId, r.scheduleId)));
 }
 
-export async function hideClaimedPhotoTasksForEmployee(
+export async function listClaimedScheduleIdsForEmployee(
   prisma: PrismaClient,
   opts: { employeeId: string; branchId: string; periodKey: string }
-): Promise<{ claimedScheduleIds: string[]; cancelled: number }> {
+): Promise<string[]> {
   const claimed = await prisma.photoCheckTask.findMany({
     where: {
       branchId: opts.branchId,
@@ -48,7 +48,14 @@ export async function hideClaimedPhotoTasksForEmployee(
     },
     select: { scheduleId: true },
   });
-  const claimedScheduleIds = [...new Set(claimed.map((c) => c.scheduleId))];
+  return [...new Set(claimed.map((c) => c.scheduleId))];
+}
+
+export async function hideClaimedPhotoTasksForEmployee(
+  prisma: PrismaClient,
+  opts: { employeeId: string; branchId: string; periodKey: string }
+): Promise<{ claimedScheduleIds: string[]; cancelled: number }> {
+  const claimedScheduleIds = await listClaimedScheduleIdsForEmployee(prisma, opts);
   if (!claimedScheduleIds.length) return { claimedScheduleIds, cancelled: 0 };
   const res = await prisma.photoCheckTask.updateMany({
     where: {

@@ -8,9 +8,13 @@ import {
   ensureEmployeePhotoEligibility,
   ensureOfficialPhotoProgram,
 } from '@/lib/photo-ops-program';
+import { PHOTO_PROGRAM_STAMP } from '@/lib/photo-official-windows';
 import { photoPeriodKey, shiftPhotoPeriodKey } from '@/lib/photo-time';
 import { listUpcomingPhotoWindows, nextPhotoWave } from '@/lib/photo-upcoming';
-import { hideClaimedPhotoTasksForEmployee } from '@/lib/photo-branch-claim';
+import {
+  hideClaimedPhotoTasksForEmployee,
+  listClaimedScheduleIdsForEmployee,
+} from '@/lib/photo-branch-claim';
 
 const typeSelect = {
   code: true,
@@ -24,46 +28,69 @@ const typeSelect = {
   maxPhotos: true,
 } as const;
 
-export const GET = withApiErrors(async function GET() {
+export const GET = withApiErrors(async function GET(req: Request) {
   const session = await requireSession();
+  const readOnly = new URL(req.url).searchParams.get('read') === '1';
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: { employee: true },
   });
   if (!user?.employee) return Response.json({ required: false, items: [], upcoming: [] });
-  const empRow = user.employee;
-  const eligible = await ensureEmployeePhotoEligibility(prisma, {
-    id: empRow.id,
-    status: empRow.status,
-    role: empRow.role,
-    employmentType: empRow.employmentType,
-  });
-  const required = eligible || (await employeePhotoRequired(prisma, empRow.id));
+  const emp = user.employee;
+  let required = await employeePhotoRequired(prisma, emp.id);
+  if (!readOnly) {
+    required =
+      (await ensureEmployeePhotoEligibility(prisma, {
+        id: emp.id,
+        status: emp.status,
+        role: emp.role,
+        employmentType: emp.employmentType,
+      })) || required;
+  }
   if (!required) return Response.json({ required: false, items: [], upcoming: [] });
 
   const now = new Date();
-  const emp = user.employee;
-  await ensureOfficialPhotoProgram(prisma);
-  const assignedCount = await prisma.photoCheckEmployeeType.count({
-    where: { employeeId: emp.id, assigned: true },
-  });
-  if (assignedCount === 0) {
-    await assignApprovedPhotoTypes(prisma, emp.id);
+  if (!readOnly) {
+    const stamped = await prisma.appCronWatermark.findUnique({
+      where: { key: PHOTO_PROGRAM_STAMP },
+      select: { key: true },
+    });
+    if (!stamped) {
+      await ensureOfficialPhotoProgram(prisma, { enableStaff: false });
+    }
+    const assignedCount = await prisma.photoCheckEmployeeType.count({
+      where: { employeeId: emp.id, assigned: true },
+    });
+    if (assignedCount === 0) {
+      await assignApprovedPhotoTypes(prisma, emp.id);
+    }
+    await generatePhotoTasksForEmployee(prisma, emp.id, now);
   }
-  await generatePhotoTasksForEmployee(prisma, emp.id, now);
 
   const periodKey = photoPeriodKey(now);
   const yesterdayKey = shiftPhotoPeriodKey(periodKey, -1);
-  const claimedToday = await hideClaimedPhotoTasksForEmployee(prisma, {
-    employeeId: emp.id,
-    branchId: emp.branchId,
-    periodKey,
-  });
-  const claimedYesterday = await hideClaimedPhotoTasksForEmployee(prisma, {
-    employeeId: emp.id,
-    branchId: emp.branchId,
-    periodKey: yesterdayKey,
-  });
+  const claimedToday = readOnly
+    ? { claimedScheduleIds: await listClaimedScheduleIdsForEmployee(prisma, {
+        employeeId: emp.id,
+        branchId: emp.branchId,
+        periodKey,
+      }) }
+    : await hideClaimedPhotoTasksForEmployee(prisma, {
+        employeeId: emp.id,
+        branchId: emp.branchId,
+        periodKey,
+      });
+  const claimedYesterday = readOnly
+    ? { claimedScheduleIds: await listClaimedScheduleIdsForEmployee(prisma, {
+        employeeId: emp.id,
+        branchId: emp.branchId,
+        periodKey: yesterdayKey,
+      }) }
+    : await hideClaimedPhotoTasksForEmployee(prisma, {
+        employeeId: emp.id,
+        branchId: emp.branchId,
+        periodKey: yesterdayKey,
+      });
   const [items, assignments, schedules] = await Promise.all([
     prisma.photoCheckTask.findMany({
       where: {
@@ -129,21 +156,23 @@ export const GET = withApiErrors(async function GET() {
   ).filter((w) => !have.has(`${w.scheduleId}:${w.periodKey}`));
 
   const typeById = new Map(relevant.map((s) => [s.typeId, s.type]));
-  const upcoming = nextPhotoWave(upcomingAll).map((w) => {
-    const type = typeById.get(w.typeId);
-    if (!type) return null;
-    return {
-      id: `upcoming:${w.scheduleId}:${w.periodKey}`,
-      kind: 'upcoming' as const,
-      status: 'scheduled',
-      dueAt: w.dueAt.toISOString(),
-      windowStartAt: w.windowStartAt.toISOString(),
-      slotKey: w.slotKey,
-      type,
-      schedule: { slotKey: w.slotKey, slotLabelEn: w.slotLabelEn, slotLabelAr: w.slotLabelAr },
-      submission: null,
-    };
-  }).filter((row): row is NonNullable<typeof row> => row != null);
+  const upcoming = nextPhotoWave(upcomingAll)
+    .map((w) => {
+      const type = typeById.get(w.typeId);
+      if (!type) return null;
+      return {
+        id: `upcoming:${w.scheduleId}:${w.periodKey}`,
+        kind: 'upcoming' as const,
+        status: 'scheduled',
+        dueAt: w.dueAt.toISOString(),
+        windowStartAt: w.windowStartAt.toISOString(),
+        slotKey: w.slotKey,
+        type,
+        schedule: { slotKey: w.slotKey, slotLabelEn: w.slotLabelEn, slotLabelAr: w.slotLabelAr },
+        submission: null,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
 
   return Response.json({ required: true, periodKey, now: now.toISOString(), items, upcoming });
 });

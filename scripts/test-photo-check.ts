@@ -39,12 +39,16 @@ import {
 } from '../src/lib/photo-reminders';
 import {
   PHOTO_360_OFFICIAL_WINDOWS,
+  PHOTO_PROGRAM_STAMP,
   PHOTO_SATURDAY_DAYS_JSON,
   PHOTO_SATURDAY_ONLY_CODES,
   PHOTO_SATURDAY_WEEKDAY,
+  PHOTO_WINDOW_HANDOFF_MINUTES,
   isSaturdayOnlyPhotoCode,
+  minutesBeforeClock,
   photoScheduleDaysJson,
 } from '../src/lib/photo-official-windows';
+import { pickQcReportRecipientIds } from '../src/lib/qc-field-reports';
 import { employeeEligibleForDefaultPhotoOps } from '../src/lib/photo-eligibility';
 import { formatPhotoCountdown, listUpcomingPhotoWindows, nextPhotoWave } from '../src/lib/photo-upcoming';
 import {
@@ -308,6 +312,10 @@ assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'
 assert.match(fs.readFileSync(path.join(root, 'src/lib/push.ts'), 'utf8'), /ttlSec \?\? 30 \* 60/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/push.ts'), 'utf8'), /TTL: 300/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskReminderPulse.tsx'), 'utf8'), /30 \* 60 \* 1000/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskReminderPulse.tsx'), 'utf8'), /photo-checks\/tasks\?read=1/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/in-app/InAppNotificationStack.tsx'), 'utf8'), /photo-checks\/tasks\?read=1/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/in-app/InAppNotificationStack.tsx'), 'utf8'), /60_000/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/rate-limit-edge.ts'), 'utf8'), /max: 900/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/layout.tsx'), 'utf8'), /PhotoTaskReminderPulse/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/PushForegroundBridge.tsx'), 'utf8'), /reminderAt/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /repeats every 30 minutes/);
@@ -318,10 +326,14 @@ assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/route.ts'
 assert.match(fs.readFileSync(path.join(root, 'src/lib/kpi-compute.ts'), 'utf8'), /PHOTO_KPI_WEIGHTS_APPROVED_KEY/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-official-windows.ts'), 'utf8'), /08:00/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-official-windows.ts'), 'utf8'), /Asia\/Amman|DEFAULT_APP_TIMEZONE/);
+assert.equal(PHOTO_WINDOW_HANDOFF_MINUTES, 30);
+assert.equal(minutesBeforeClock('12:00', 30), '11:30');
+assert.equal(minutesBeforeClock('08:00', 30), '07:30');
 assert.deepEqual(
   PHOTO_360_OFFICIAL_WINDOWS.map((w) => `${w.slotKey}:${w.startTime}-${w.dueTime}`),
-  ['morning:08:00-13:00', 'midday:14:00-18:00', 'night:20:00-02:00']
+  ['morning:08:00-13:30', 'midday:14:00-19:30', 'night:20:00-07:30']
 );
+assert.match(PHOTO_PROGRAM_STAMP, /handoff-30/);
 const program = fs.readFileSync(path.join(root, 'src/lib/photo-ops-program.ts'), 'utf8');
 assert.match(program, /provisional: false/);
 assert.match(program, /PHOTO_360_OFFICIAL_WINDOWS/);
@@ -332,6 +344,8 @@ assert.match(program, /dueTime: w.dueTime/);
 assert.match(program, /photoScheduleDaysJson/);
 assert.match(program, /weekly_saturday_only/);
 assert.match(program, /enableFullTimePhotoOps/);
+assert.match(program, /enableStaff/);
+assert.match(program, /PHOTO_PROGRAM_STAMP/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /ensureEmployeePhotoEligibility/);
 assert.equal(PHOTO_SATURDAY_WEEKDAY, 6);
 assert.equal(PHOTO_SATURDAY_DAYS_JSON, '[6]');
@@ -478,6 +492,9 @@ assert.equal(nightWindow.windowStartAt.toISOString(), '2026-10-12T17:00:00.000Z'
 assert.equal(nightWindow.dueAt.toISOString(), '2026-10-12T23:00:00.000Z');
 assert.equal(isPhotoWindowOpenNow(nightWindow, photoInstantInZone('2026-10-13', '01:00', 'Asia/Amman')), true);
 assert.equal(isPhotoWindowOpenNow(nightWindow, photoInstantInZone('2026-10-13', '02:01', 'Asia/Amman')), false);
+const officialNight = photoWindowInstants('2026-10-12', '20:00', '07:30', 'Asia/Amman');
+assert.equal(isPhotoWindowOpenNow(officialNight, photoInstantInZone('2026-10-13', '06:00', 'Asia/Amman')), true);
+assert.equal(isPhotoWindowOpenNow(officialNight, photoInstantInZone('2026-10-13', '07:31', 'Asia/Amman')), false);
 
 const emptyAi = extractChatContent({ choices: [{ message: { content: '' } }] });
 assert.equal(emptyAi, null);
@@ -546,8 +563,11 @@ assert.match(reviewSrc, /Already reviewed/);
 const reports = fs.readFileSync(path.join(root, 'src/app/api/qc-reports/route.ts'), 'utf8');
 assert.doesNotMatch(reports, /computeAndStoreEmployeeKpi/);
 assert.match(reports, /resolveQcReportRecipients/);
+assert.match(reports, /notifyTo/);
+assert.match(reports, /notifyOptions/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-field-reports.ts'), 'utf8'), /hrKpiReviewer/);
-assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-field-reports.ts'), 'utf8'), /role: \{ in: \['owner', 'manager', 'qc'\] \}/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-field-reports.ts'), 'utf8'), /pickQcReportRecipientIds/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-field-reports.ts'), 'utf8'), /sara@drinkat.com/);
 assert.doesNotMatch(reports, /employee: \{ branchId: parsed.data.branchId \}/);
 const reportsUi = fs.readFileSync(path.join(root, 'src/components/qc/QcFieldReportsPanel.tsx'), 'utf8');
 assert.match(reportsUi, /section-qc-reports/);
@@ -557,6 +577,8 @@ assert.match(reportsUi, /AppModal/);
 assert.match(reportsUi, /setCompose\(true\)/);
 assert.match(reportsUi, /qcReportsBranch/);
 assert.match(reportsUi, /openRearCameraCapture/);
+assert.match(reportsUi, /notifyTo/);
+assert.match(reportsUi, /qcReportsNotify/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8'), /color-scheme.*light/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8'), /capture', 'environment'/);
 assert.doesNotMatch(reportsUi, /CATEGORIES/);
@@ -612,7 +634,9 @@ assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/rou
 const tasksRoute = fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8');
 assert.match(tasksRoute, /listUpcomingPhotoWindows/);
 assert.match(tasksRoute, /generatePhotoTasksForEmployee/);
-assert.match(tasksRoute, /ensureOfficialPhotoProgram/);
+assert.match(tasksRoute, /searchParams.get\('read'\) === '1'/);
+assert.match(tasksRoute, /enableStaff: false/);
+assert.match(tasksRoute, /PHOTO_PROGRAM_STAMP/);
 assert.match(tasksRoute, /yesterdayKey/);
 assert.match(tasksRoute, /dueAt: \{ gte: now \}/);
 assert.match(tasksRoute, /assignApprovedPhotoTypes/);
@@ -705,5 +729,18 @@ const pendingKpi = staffKpi(
 );
 assert.equal(pendingKpi.components.find((c) => c.key === 'photo_approval')?.raw, null);
 assert.equal(pendingKpi.components.find((c) => c.key === 'photo_quality')?.raw, null);
+
+const notifyPeople = [
+  { userId: 'owner-1', email: 'owner@drinkat.com', role: 'owner', hrKpiReviewer: false, name: 'Owner', branchName: '' },
+  { userId: 'sara-1', email: 'sara@drinkat.com', role: 'hr', hrKpiReviewer: true, name: 'Sara', branchName: '' },
+  { userId: 'mgr-1', email: 'm1@drinkat.com', role: 'manager', hrKpiReviewer: false, name: 'M1', branchName: 'Airport' },
+  { userId: 'mgr-2', email: 'm2@drinkat.com', role: 'manager', hrKpiReviewer: false, name: 'M2', branchName: 'City' },
+];
+assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'sara').sort(), ['sara-1']);
+assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'owner').sort(), ['owner-1']);
+assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'managers').sort(), ['mgr-1', 'mgr-2']);
+assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'manager:mgr-2').sort(), ['mgr-2']);
+assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'all').sort(), ['mgr-1', 'mgr-2', 'owner-1', 'sara-1']);
+assert.equal(pickQcReportRecipientIds(notifyPeople, 'owner-1', 'owner').length, 0);
 
 console.log('photo-check: ok');

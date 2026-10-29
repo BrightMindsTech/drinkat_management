@@ -36,7 +36,7 @@ export function PhotoTaskReminderPulse() {
     async function tick() {
       if (document.visibilityState !== 'visible') return;
       try {
-        const res = await fetchWithRetry('/api/photo-checks/tasks', { cache: 'no-store' });
+        const res = await fetchWithRetry('/api/photo-checks/tasks?read=1', { cache: 'no-store' });
         if (!res.ok) return;
         const json = (await res.json()) as { required?: boolean; items?: PhotoTaskRow[] };
         if (!json.required || !Array.isArray(json.items)) return;

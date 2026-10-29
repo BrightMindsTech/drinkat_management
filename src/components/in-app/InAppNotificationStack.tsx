@@ -111,7 +111,7 @@ async function countUnfinishedWork(): Promise<number> {
     /* non-blocking */
   }
   try {
-    const res = await fetchWithRetry('/api/photo-checks/tasks', { cache: 'no-store' });
+    const res = await fetchWithRetry('/api/photo-checks/tasks?read=1', { cache: 'no-store' });
     if (res.ok) {
       const json = (await res.json()) as {
         required?: boolean;
@@ -161,7 +161,7 @@ export function InAppNotificationStack() {
       if (document.visibilityState === 'visible') void load();
     };
     void load();
-    const stop = setForegroundInterval(onWake, 15000);
+    const stop = setForegroundInterval(onWake, 60_000);
     document.addEventListener('visibilitychange', onWake);
     window.addEventListener(APP_RESUME_EVENT, onWake);
     return () => {

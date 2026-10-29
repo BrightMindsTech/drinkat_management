@@ -8,11 +8,11 @@ const LIMITS: Record<LimitTier, { max: number; windowMs: number }> = {
   /** Login / session — stop credential spam from taking down the Worker. */
   auth: { max: 25, windowMs: 60_000 },
   /** POST/PATCH/DELETE — forms, clock, chat send, etc. */
-  write: { max: 90, windowMs: 60_000 },
-  /** Normal reads */
-  read: { max: 240, windowMs: 60_000 },
+  write: { max: 180, windowMs: 60_000 },
+  /** Normal reads — shop Wi‑Fi shares one IP across every phone. */
+  read: { max: 900, windowMs: 60_000 },
   /** Large reports */
-  heavy: { max: 120, windowMs: 60_000 },
+  heavy: { max: 180, windowMs: 60_000 },
 };
 
 /** Never rate-limit routes that gate login — shared shop Wi‑Fi hits one IP. */

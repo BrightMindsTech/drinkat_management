@@ -5,6 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { AppModal } from '@/components/AppModal';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
+import { interpolate } from '@/contexts/LanguageContext';
 
 type Report = {
   id: string;
@@ -17,6 +18,7 @@ type Report = {
   createdBy: { email: string; employee: { name: string } | null };
 };
 type Branch = { id: string; name: string };
+type NotifyOption = { value: string; label: string };
 
 const MAX_PHOTOS = 3;
 
@@ -46,10 +48,17 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
   const [filterBranch, setFilterBranch] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [notifyTo, setNotifyTo] = useState('all');
+  const [notifyOptions, setNotifyOptions] = useState<NotifyOption[]>([{ value: 'all', label: 'all' }]);
 
   const load = useCallback(async () => {
     const res = await fetch('/api/qc-reports', { credentials: 'include', cache: 'no-store' });
-    const json = (await res.json()) as { items?: Report[]; branches?: Branch[]; error?: string };
+    const json = (await res.json()) as {
+      items?: Report[];
+      branches?: Branch[];
+      notifyOptions?: NotifyOption[];
+      error?: string;
+    };
     if (!res.ok) {
       setErr(json.error || t.qcOps.qcReportsFailed);
       setLoading(false);
@@ -59,6 +68,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
     const list = json.branches ?? [];
     setBranches(list);
     setBranchId((cur) => cur || list[0]?.id || '');
+    if (json.notifyOptions?.length) setNotifyOptions(json.notifyOptions);
     setLoading(false);
   }, [t.qcOps.qcReportsFailed]);
 
@@ -123,7 +133,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branchId, comments: comments.trim(), photoUrls: photos }),
+        body: JSON.stringify({ branchId, comments: comments.trim(), photoUrls: photos, notifyTo }),
       });
       const json = (await res.json()) as { error?: string; item?: Report };
       if (!res.ok) {
@@ -132,6 +142,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
       }
       setComments('');
       setPhotos([]);
+      setNotifyTo('all');
       setCompose(false);
       setMsg(t.qcOps.qcReportsSubmitted);
       await load();
@@ -210,6 +221,32 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
                   {b.name}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-app-muted">{t.qcOps.qcReportsNotify}</span>
+            <select
+              aria-label={t.qcOps.qcReportsNotify}
+              className="min-h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
+              value={notifyTo}
+              onChange={(e) => setNotifyTo(e.target.value)}
+            >
+              {notifyOptions.map((opt) => {
+                let label = opt.label;
+                if (opt.value === 'all') label = t.qcOps.qcReportsNotifyAll;
+                else if (opt.value === 'sara') label = t.qcOps.qcReportsNotifySara;
+                else if (opt.value === 'owner') label = t.qcOps.qcReportsNotifyOwner;
+                else if (opt.value === 'managers') label = t.qcOps.qcReportsNotifyManagers;
+                else if (opt.value.startsWith('manager:')) {
+                  label = interpolate(t.qcOps.qcReportsNotifyManager, { name: opt.label });
+                }
+                return (
+                  <option key={opt.value} value={opt.value}>
+                    {label}
+                  </option>
+                );
+              })}
             </select>
           </label>
 

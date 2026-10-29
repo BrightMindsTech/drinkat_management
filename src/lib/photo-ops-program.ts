@@ -1,6 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
 import {
   PHOTO_360_OFFICIAL_WINDOWS,
+  PHOTO_DAILY_DAYS_JSON,
+  PHOTO_PROGRAM_STAMP,
+  PHOTO_SATURDAY_DAYS_JSON,
   PHOTO_SATURDAY_WEEKDAY,
   isSaturdayOnlyPhotoCode,
   photoScheduleDaysJson,
@@ -24,8 +27,13 @@ export async function approvedPhotoTypes(prisma: PrismaClient) {
  * Idempotent: activate approved types and ensure official Asia/Amman windows exist.
  * Daily types use morning / midday / night every day.
  * Kitchen + slush deep-clean types run Saturday only.
+ * Heavy staff enablement is cron-only — never on a user GET.
  */
-export async function ensureOfficialPhotoProgram(prisma: PrismaClient): Promise<{ types: number; schedules: number }> {
+export async function ensureOfficialPhotoProgram(
+  prisma: PrismaClient,
+  opts: { enableStaff?: boolean } = {}
+): Promise<{ types: number; schedules: number; enabled: number }> {
+  const enableStaff = opts.enableStaff !== false;
   const types = await approvedPhotoTypes(prisma);
   if (types.length) {
     await prisma.photoCheckType.updateMany({
@@ -79,24 +87,37 @@ export async function ensureOfficialPhotoProgram(prisma: PrismaClient): Promise<
   if (toCreate.length) {
     await prisma.photoCheckSchedule.createMany({ data: toCreate });
   }
-  const created = toCreate.length;
 
-  if (types.length) {
-    for (const type of types) {
-      const daysOfWeekJson = photoScheduleDaysJson(type.code);
-      for (const w of PHOTO_360_OFFICIAL_WINDOWS) {
+  const stamped = await prisma.appCronWatermark.findUnique({
+    where: { key: PHOTO_PROGRAM_STAMP },
+    select: { key: true },
+  });
+  if (types.length && !stamped) {
+    const weeklyIds = types.filter((t) => isSaturdayOnlyPhotoCode(t.code)).map((t) => t.id);
+    const dailyIds = types.filter((t) => !isSaturdayOnlyPhotoCode(t.code)).map((t) => t.id);
+    for (const w of PHOTO_360_OFFICIAL_WINDOWS) {
+      if (dailyIds.length) {
         await prisma.photoCheckSchedule.updateMany({
-          where: {
-            employeeId: null,
-            typeId: type.id,
-            slotKey: w.slotKey,
-          },
+          where: { employeeId: null, typeId: { in: dailyIds }, slotKey: w.slotKey },
           data: {
             startTime: w.startTime,
             dueTime: w.dueTime,
             slotLabelEn: w.slotLabelEn,
             slotLabelAr: w.slotLabelAr,
-            daysOfWeekJson,
+            daysOfWeekJson: PHOTO_DAILY_DAYS_JSON,
+            active: true,
+          },
+        });
+      }
+      if (weeklyIds.length) {
+        await prisma.photoCheckSchedule.updateMany({
+          where: { employeeId: null, typeId: { in: weeklyIds }, slotKey: w.slotKey },
+          data: {
+            startTime: w.startTime,
+            dueTime: w.dueTime,
+            slotLabelEn: w.slotLabelEn,
+            slotLabelAr: w.slotLabelAr,
+            daysOfWeekJson: PHOTO_SATURDAY_DAYS_JSON,
             active: true,
           },
         });
@@ -107,11 +128,15 @@ export async function ensureOfficialPhotoProgram(prisma: PrismaClient): Promise<
       data: { active: false },
     });
     await cancelOffSaturdayWeeklyPhotoTasks(prisma, types);
+    await prisma.appCronWatermark.upsert({
+      where: { key: PHOTO_PROGRAM_STAMP },
+      create: { key: PHOTO_PROGRAM_STAMP, lastRunAt: new Date() },
+      update: { lastRunAt: new Date() },
+    });
   }
 
-  await enableFullTimePhotoOps(prisma);
-
-  return { types: types.length, schedules: existing.length + created };
+  const enabled = enableStaff ? (await enableFullTimePhotoOps(prisma)).enabled : 0;
+  return { types: types.length, schedules: existing.length + toCreate.length, enabled };
 }
 
 async function cancelOffSaturdayWeeklyPhotoTasks(
