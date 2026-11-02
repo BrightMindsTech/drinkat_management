@@ -538,7 +538,7 @@ assert.doesNotMatch(postSrc, /employeeOutcome: 'approved'/);
 
 const board = fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskBoard.tsx'), 'utf8');
 assert.ok(
-  board.indexOf('{groups.map') < board.indexOf('t.photoCheck.nextWindowTitle'),
+  board.indexOf('dueTasks.map') < board.indexOf('t.photoCheck.nextWindowTitle'),
   'current required tasks must render above the next photo window'
 );
 assert.match(board, /photo-task-highlight/);
@@ -546,14 +546,16 @@ assert.match(board, /3000/);
 assert.match(board, /useSearchParams/);
 assert.match(board, /closeTask/);
 assert.match(board, /photo-task-active-/);
-assert.match(board, /isOpen \? closeTask\(\) : openTask\(row\)/);
-assert.match(board, /isOpen \? t\.photoCheck\.closeTask : t\.photoCheck\.openTask/);
-assert.match(board, /isOpen && active/);
+assert.match(board, /openTask\(row\)/);
+assert.match(board, /staffHowTo/);
 assert.match(board, /sentToQc/);
 assert.match(board, /dark:text-emerald-100/);
 assert.match(board, /scrollIntoView/);
-assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /Close task/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /closeTask: 'Back'/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /closeTask/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /staffHowTo/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/page.tsx'), 'utf8'), /staffLandsOnPhotoChecks/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/dashboard-nav-config.ts'), 'utf8'), /staffLandsOnPhotoChecks/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/globals.css'), 'utf8'), /photo-task-highlight 3s/);
 assert.match(board, /submittingRef/);
 assert.doesNotMatch(board, /chooseFromLibrary/);
@@ -663,7 +665,7 @@ assert.doesNotMatch(tasksRoute, /official-\$\{w\.slotKey\}/);
 assert.doesNotMatch(tasksRoute, /360° branch cleanliness/);
 assert.match(board, /nextWindowTitle/);
 assert.match(board, /formatPhotoCountdown/);
-assert.match(board, /lockedUntil/);
+assert.match(board, /staffHowTo/);
 assert.match(board, /loadingTasks/);
 assert.match(board, /loadFailed/);
 assert.match(board, /if \(!res\.ok\)/);

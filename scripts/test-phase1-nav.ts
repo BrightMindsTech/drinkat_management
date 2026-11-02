@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'node:url';
-import { getDashboardNavItems } from '../src/lib/dashboard-nav-config';
+import { getDashboardNavItems, staffLandsOnPhotoChecks } from '../src/lib/dashboard-nav-config';
 import { getDashboardHomeTiles } from '../src/lib/dashboard-home-tiles';
 
 function hrefs(role: string, flags?: Parameters<typeof getDashboardNavItems>[1]) {
@@ -11,7 +11,16 @@ function hrefs(role: string, flags?: Parameters<typeof getDashboardNavItems>[1])
 
 assert(!hrefs('staff').includes('/dashboard/issues'));
 assert(hrefs('assistant_manager').includes('/dashboard/issues'));
-assert(!hrefs('staff').includes('/dashboard/photo'));
+assert(hrefs('staff').includes('/dashboard/photo'));
+assert(hrefs('staff')[0] === '/dashboard/photo' || hrefs('staff').includes('/dashboard/photo'));
+assert.equal(getDashboardNavItems('staff')[0]?.href, '/dashboard/photo');
+assert.equal(getDashboardNavItems('assistant_manager')[0]?.href, '/dashboard/photo');
+assert.equal(staffLandsOnPhotoChecks('staff'), true);
+assert.equal(staffLandsOnPhotoChecks('assistant_manager'), true);
+assert.equal(staffLandsOnPhotoChecks('staff', { hrKpiReviewer: true }), false);
+assert.equal(staffLandsOnPhotoChecks('staff', { qcHome: true }), false);
+assert.equal(staffLandsOnPhotoChecks('qc'), false);
+assert.equal(staffLandsOnPhotoChecks('manager'), false);
 assert(hrefs('staff', { photoRequired: true }).includes('/dashboard/photo'));
 assert(hrefs('staff', { photoOpsAdmin: true }).includes('/dashboard/photo-ops'));
 assert(hrefs('staff', { qcReportsInbox: true }).includes('/dashboard/qc-reports'));

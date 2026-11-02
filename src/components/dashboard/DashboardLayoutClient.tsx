@@ -18,6 +18,7 @@ import { DashboardSearchOverlay } from './DashboardSearchOverlay';
 import { usePathname } from 'next/navigation';
 import { clearDashboardAutoRetry } from '@/lib/dashboard-auto-retry';
 import { releaseStuckModalViewport } from '@/lib/modal-present';
+import { staffLandsOnPhotoChecks } from '@/lib/dashboard-nav-config';
 
 function SidebarAccountBlock({ email, bottomSafeArea = true }: { email: string; bottomSafeArea?: boolean }) {
   return (
@@ -64,6 +65,7 @@ export function DashboardLayoutClient({
   const shellRef = useRef<HTMLDivElement | null>(null);
   const pathname = usePathname();
   const { dir } = useLanguage();
+  const homeHref = staffLandsOnPhotoChecks(role, { hrKpiReviewer }) ? '/dashboard/photo' : '/dashboard';
 
   useEffect(() => {
     clearDashboardAutoRetry();
@@ -194,7 +196,7 @@ export function DashboardLayoutClient({
         aria-label="Main navigation"
       >
         <div className="shrink-0 border-b border-gray-200/80 px-3 py-3 dark:border-ios-dark-separator">
-          <Link href="/dashboard" className="flex items-center gap-2 min-w-0">
+          <Link href={homeHref} className="flex items-center gap-2 min-w-0">
             <Logo size={18} showPoweredBy={false} compact />
           </Link>
         </div>
@@ -226,7 +228,7 @@ export function DashboardLayoutClient({
                 <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
               </svg>
             </button>
-            <Link href="/dashboard" className="flex min-w-0 items-center gap-2 md:hidden">
+            <Link href={homeHref} className="flex min-w-0 items-center gap-2 md:hidden">
               <Logo size={18} showPoweredBy={false} compact />
             </Link>
             <div className="ms-auto flex flex-wrap items-center justify-end gap-2 sm:gap-3">
@@ -298,7 +300,7 @@ export function DashboardLayoutClient({
       >
         <div className="shrink-0 border-b border-gray-100 bg-white px-3 dark:border-ios-dark-separator dark:bg-ios-dark-elevated">
           <div className="flex items-center justify-between py-3">
-            <Link href="/dashboard" onClick={() => setDrawerOpen(false)} className="min-w-0">
+            <Link href={homeHref} onClick={() => setDrawerOpen(false)} className="min-w-0">
               <Logo size={18} showPoweredBy={false} compact />
             </Link>
             <button

@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export default function PhotoCheckPage() {
   return (
-    <div className="app-page space-y-6">
+    <div className="app-page">
       <Suspense fallback={null}>
         <PhotoTaskBoard />
       </Suspense>

@@ -160,15 +160,18 @@ export function PhotoTaskBoard() {
 
   const lockedIds = useMemo(() => new Set(lockedWave.map((row) => row.id)), [lockedWave]);
 
-  const groups = useMemo(() => {
-    const map = new Map<string, Task[]>();
-    for (const item of items) {
-      if (isWindowClosed(item, nowTick) || lockedIds.has(item.id) || isLockedTask(item, nowTick)) continue;
-      const key = locale === 'ar' ? item.type.titleAr : item.type.titleEn;
-      map.set(key, [...(map.get(key) ?? []), item]);
-    }
-    return [...map.entries()];
-  }, [items, locale, lockedIds, nowTick]);
+  const dueTasks = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          item.status !== 'completed' &&
+          item.status !== 'excused' &&
+          !isWindowClosed(item, nowTick) &&
+          !lockedIds.has(item.id) &&
+          !isLockedTask(item, nowTick)
+      ),
+    [items, lockedIds, nowTick]
+  );
 
   const nextOpenAt = lockedWave[0]?.windowStartAt ? new Date(lockedWave[0].windowStartAt).getTime() : 0;
   const remainingMs = nextOpenAt > 0 ? nextOpenAt - nowTick : 0;
@@ -408,19 +411,155 @@ export function PhotoTaskBoard() {
   );
   const canAdd = Boolean(active) && drafts.length < max && !busy;
   const canSend = Boolean(active) && drafts.length >= min && drafts.length <= max && !busy;
-  const criteria = parseCriteriaJson(active?.type.criteriaJson);
+  const criteria = parseCriteriaJson(active?.type.criteriaJson).slice(0, 3);
+
+  if (active) {
+    const title = locale === 'ar' ? active.type.titleAr : active.type.titleEn;
+    const slot = locale === 'ar' ? active.schedule.slotLabelAr : active.schedule.slotLabelEn;
+    return (
+      <div className="space-y-4">
+        <button
+          type="button"
+          className="text-sm font-semibold text-ios-blue"
+          onClick={() => closeTask()}
+        >
+          ← {t.photoCheck.closeTask}
+        </button>
+        <div
+          id={`photo-task-active-${active.id}`}
+          className={`space-y-4${highlightId === active.id ? ' photo-task-highlight' : ''}`}
+        >
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-app-primary">{title}</h2>
+            <p className="mt-1 text-sm text-app-muted">{slot}</p>
+          </div>
+          {error ? (
+            <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 dark:border-red-500/40 dark:bg-red-950/50 dark:text-red-200">
+              {error}
+            </p>
+          ) : null}
+          {progress ? (
+            <p className="rounded-2xl border border-ios-blue/30 bg-ios-blue/5 px-4 py-3 text-sm text-app-primary dark:border-ios-blue/50 dark:bg-ios-blue/15 dark:text-white">
+              {progress}
+            </p>
+          ) : null}
+          {active.type.code === PHOTO_360_CODE ? (
+            <p className="text-sm text-app-muted">{t.photoCheck.cornersHint}</p>
+          ) : null}
+          {active.type.handwrittenNote ? (
+            <p className="text-sm text-app-muted">{active.type.handwrittenNote}</p>
+          ) : null}
+          {criteria.length ? (
+            <p className="text-sm text-app-muted">
+              {t.photoCheck.lookFor}: {criteria.map((c) => (locale === 'ar' ? c.labelAr || c.labelEn : c.labelEn)).join(' · ')}
+            </p>
+          ) : null}
+          {active.type.requiresMeasurement ? (
+            <input
+              className="min-h-12 w-full rounded-2xl border px-4 text-base"
+              placeholder={active.type.measurementUnit ? `${active.type.measurementUnit}` : ''}
+              value={measured}
+              onChange={(e) => setMeasured(e.target.value)}
+            />
+          ) : null}
+          {drafts.length ? (
+            <ul className="grid grid-cols-3 gap-2">
+              {drafts.map((d, i) => (
+                <li key={d.preview} className="relative">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="block w-full"
+                    aria-label={t.photoCheck.replacePhoto}
+                    onClick={() => {
+                      if (busy || submittingRef.current) return;
+                      replaceIndexRef.current = i;
+                      openCamera();
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={d.preview} alt="" className="h-24 w-full rounded-2xl object-cover" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="absolute end-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-sm font-bold text-white disabled:opacity-50"
+                    onClick={() => removeDraft(i)}
+                    aria-label={t.photoCheck.removePhoto}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-base text-app-muted">{t.photoCheck.staffHowTo}</p>
+          )}
+          {canSend ? (
+            <>
+              <button
+                type="button"
+                disabled={!canSend}
+                className="min-h-16 w-full rounded-2xl bg-ios-blue text-xl font-bold text-white disabled:opacity-40"
+                onClick={() => void submit()}
+              >
+                {busy ? t.photoCheck.reviewing : t.photoCheck.sendToQc}
+              </button>
+              {canAdd ? (
+                <button
+                  type="button"
+                  disabled={!canAdd}
+                  className="min-h-12 w-full rounded-2xl border-2 border-ios-blue text-base font-semibold text-ios-blue disabled:opacity-50"
+                  onClick={() => {
+                    replaceIndexRef.current = null;
+                    openCamera();
+                  }}
+                >
+                  {t.photoCheck.addAnotherPhoto}
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={!canAdd}
+              className="min-h-16 w-full rounded-2xl bg-ios-blue text-xl font-bold text-white disabled:opacity-50"
+              onClick={() => {
+                replaceIndexRef.current = null;
+                openCamera();
+              }}
+            >
+              {t.photoCheck.takePhoto}
+            </button>
+          )}
+          {busy ? (
+            <button
+              type="button"
+              className="min-h-11 w-full text-sm font-semibold text-app-muted"
+              onClick={() => {
+                cancelInFlight();
+                setError(t.photoCheck.submitCancelled);
+              }}
+            >
+              {t.photoCheck.cancelSend}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-5">
-      <h2 className="text-xl font-bold text-app-primary">{t.photoCheck.todayTitle}</h2>
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight text-app-primary">{t.photoCheck.todayTitle}</h2>
+        {dueTasks.length ? (
+          <p className="mt-1 text-sm text-app-muted">{t.photoCheck.staffHowTo}</p>
+        ) : null}
+      </div>
       {error ? (
         <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 dark:border-red-500/40 dark:bg-red-950/50 dark:text-red-200">
           {error}
-        </p>
-      ) : null}
-      {progress ? (
-        <p className="rounded-2xl border border-ios-blue/30 bg-ios-blue/5 px-4 py-3 text-sm text-app-primary dark:border-ios-blue/50 dark:bg-ios-blue/15 dark:text-white">
-          {progress}
         </p>
       ) : null}
       {result ? (
@@ -429,202 +568,48 @@ export function PhotoTaskBoard() {
         </p>
       ) : null}
 
-      {groups.map(([title, rows]) => (
-        <section key={title} className="rounded-3xl border border-gray-200 bg-white p-4 dark:border-ios-dark-separator dark:bg-ios-dark-elevated">
-          <h3 className="text-lg font-bold text-app-primary">{title}</h3>
-          <ul className="mt-3 space-y-2">
-            {rows.map((row) => {
-              const label = locale === 'ar' ? row.schedule.slotLabelAr : row.schedule.slotLabelEn;
-              const done = row.status === 'completed' || row.status === 'excused';
-              const due = row.status === 'due' || row.status === 'overdue' || row.status === 'in_progress';
-              const isOpen = active?.id === row.id;
-              return (
-                <li key={row.id} id={`photo-task-${row.id}`} className="space-y-2">
-                  <div
-                    className={`flex items-center justify-between gap-3 rounded-2xl border border-gray-100 px-3 py-3 dark:border-ios-dark-separator${
-                      highlightId === row.id ? ' photo-task-highlight' : ''
-                    }`}
-                  >
-                    <div>
-                      <p className="font-medium text-app-primary">{label}</p>
-                      <p className="text-xs text-app-muted">
-                        {done ? t.photoCheck.completed : due ? t.photoCheck.dueNow : t.photoCheck.upcoming}
-                      </p>
-                    </div>
-                    {done ? null : (
-                      <button
-                        type="button"
-                        className={`min-h-11 rounded-full px-4 text-sm font-bold ${
-                          isOpen
-                            ? 'border border-gray-300 bg-white text-app-primary dark:border-ios-dark-separator dark:bg-ios-dark-elevated'
-                            : 'bg-ios-blue text-white'
-                        }`}
-                        onClick={() => (isOpen ? closeTask() : openTask(row))}
-                      >
-                        {isOpen ? t.photoCheck.closeTask : t.photoCheck.openTask}
-                      </button>
-                    )}
-                  </div>
-                  {isOpen && active ? (
-                    <div
-                      id={`photo-task-active-${active.id}`}
-                      className={`scroll-mt-24 rounded-3xl border border-ios-blue/30 bg-ios-blue/5 p-4 space-y-3${
-                        highlightId === active.id ? ' photo-task-highlight' : ''
-                      }`}
-                    >
-                      <p className="font-semibold">{locale === 'ar' ? active.type.titleAr : active.type.titleEn}</p>
-                      {active.type.code === PHOTO_360_CODE ? (
-                        <p className="text-sm text-app-muted">{t.photoCheck.cornersHint}</p>
-                      ) : null}
-                      {active.type.handwrittenNote ? (
-                        <p className="text-xs text-app-muted">{active.type.handwrittenNote}</p>
-                      ) : null}
-                      {criteria.length ? (
-                        <div>
-                          <p className="text-xs font-semibold text-app-primary">{t.photoCheck.lookFor}</p>
-                          <ul className="mt-1 list-disc ps-5 text-xs text-app-muted">
-                            {criteria.map((c) => (
-                              <li key={c.key}>{locale === 'ar' ? c.labelAr || c.labelEn : c.labelEn}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
-                      <p className="text-xs text-app-muted">
-                        {t.photoCheck.photoCount.replace('{count}', String(drafts.length)).replace('{max}', String(max))}
-                      </p>
-                      {drafts.length < min ? (
-                        <p className="text-xs text-app-muted">{t.photoCheck.needMorePhotos.replace('{min}', String(min))}</p>
-                      ) : null}
-                      {active.type.requiresMeasurement ? (
-                        <input
-                          className="min-h-11 w-full rounded-xl border px-3"
-                          placeholder={active.type.measurementUnit ? `${active.type.measurementUnit}` : ''}
-                          value={measured}
-                          onChange={(e) => setMeasured(e.target.value)}
-                        />
-                      ) : null}
-                      {drafts.length ? (
-                        <ul className="grid grid-cols-3 gap-2">
-                          {drafts.map((d, i) => (
-                            <li key={d.preview} className="relative">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={d.preview} alt="" className="h-24 w-full rounded-xl object-cover" />
-                              <div className="absolute inset-x-1 top-1 flex justify-between gap-1">
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  className="rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-bold text-white disabled:opacity-50"
-                                  onClick={() => {
-                                    if (busy || submittingRef.current) return;
-                                    replaceIndexRef.current = i;
-                                    openCamera();
-                                  }}
-                                >
-                                  {t.photoCheck.replacePhoto}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  className="rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-bold text-white disabled:opacity-50"
-                                  onClick={() => removeDraft(i)}
-                                >
-                                  {t.photoCheck.removePhoto}
-                                </button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      <button
-                        type="button"
-                        disabled={!canAdd}
-                        className="min-h-12 w-full rounded-full border border-ios-blue font-bold text-ios-blue disabled:opacity-50"
-                        onClick={() => {
-                          replaceIndexRef.current = null;
-                          openCamera();
-                        }}
-                      >
-                        {drafts.length ? t.photoCheck.addAnotherPhoto : t.photoCheck.takePhoto}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!canSend}
-                        className="min-h-12 w-full rounded-full bg-ios-blue font-bold text-white disabled:opacity-50"
-                        onClick={() => void submit()}
-                      >
-                        {busy ? t.photoCheck.reviewing : t.photoCheck.sendToQc}
-                      </button>
-                      {busy ? (
-                        <button
-                          type="button"
-                          className="min-h-11 w-full rounded-full border text-sm"
-                          onClick={() => {
-                            cancelInFlight();
-                            setError(t.photoCheck.submitCancelled);
-                          }}
-                        >
-                          {t.photoCheck.cancelSend}
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
+      {dueTasks.length ? (
+        <ul className="space-y-3">
+          {dueTasks.map((row) => {
+            const title = locale === 'ar' ? row.type.titleAr : row.type.titleEn;
+            const label = locale === 'ar' ? row.schedule.slotLabelAr : row.schedule.slotLabelEn;
+            return (
+              <li key={row.id} id={`photo-task-${row.id}`}>
+                <button
+                  type="button"
+                  className={`min-h-20 w-full rounded-3xl bg-ios-blue px-5 py-4 text-start text-white touch-manipulation active:opacity-90${
+                    highlightId === row.id ? ' photo-task-highlight' : ''
+                  }`}
+                  onClick={() => openTask(row)}
+                >
+                  <p className="text-lg font-bold leading-snug">{title}</p>
+                  <p className="mt-1 text-sm font-medium text-white/85">
+                    {label} · {t.photoCheck.openTask}
+                  </p>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
 
       {lockedWave.length ? (
-        <section className="rounded-3xl border border-dashed border-gray-300 bg-gray-50 p-4 dark:border-ios-dark-separator dark:bg-ios-dark-elevated/60">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h3 className="text-lg font-bold text-app-secondary">{t.photoCheck.nextWindowTitle}</h3>
-              <p className="text-xs text-app-muted">
-                {interpolate(t.photoCheck.opensAt, {
-                  time: formatAppDateTime(lockedWave[0].windowStartAt ?? lockedWave[0].dueAt, locale),
-                })}
-              </p>
-            </div>
-            <p className="text-2xl font-extrabold tabular-nums tracking-tight text-app-secondary">
-              {interpolate(t.photoCheck.availableIn, {
-                time: formatPhotoCountdown(remainingMs, locale === 'ar' ? 'ar' : 'en'),
-              })}
-            </p>
-          </div>
-          <ul className="mt-3 space-y-2">
-            {lockedWave.map((row) => {
-              const label = locale === 'ar' ? row.schedule.slotLabelAr : row.schedule.slotLabelEn;
-              const title = locale === 'ar' ? row.type.titleAr : row.type.titleEn;
-              return (
-                <li
-                  key={row.id}
-                  id={`photo-task-${row.id}`}
-                  className={`flex items-center justify-between gap-3 rounded-2xl border border-gray-200/80 bg-white/70 px-3 py-3 opacity-60 grayscale dark:border-ios-dark-separator dark:bg-black/20${
-                    highlightId === row.id ? ' photo-task-highlight grayscale-0 opacity-100' : ''
-                  }`}
-                >
-                  <div>
-                    <p className="font-medium text-app-primary">{title}</p>
-                    <p className="text-xs text-app-muted">
-                      {label} · {t.photoCheck.lockedUntil}
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-gray-200 px-3 py-1 text-xs font-bold text-gray-500 dark:bg-white/10">
-                    {formatPhotoCountdown(
-                      Math.max(0, new Date(row.windowStartAt ?? row.dueAt).getTime() - nowTick),
-                      locale === 'ar' ? 'ar' : 'en'
-                    )}
-                  </span>
-                </li>
-              );
+        <section className="rounded-3xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 dark:border-ios-dark-separator dark:bg-ios-dark-elevated/60">
+          <p className="text-sm font-semibold text-app-secondary">{t.photoCheck.nextWindowTitle}</p>
+          <p className="mt-0.5 text-sm text-app-muted">
+            {interpolate(t.photoCheck.opensAt, {
+              time: formatAppDateTime(lockedWave[0].windowStartAt ?? lockedWave[0].dueAt, locale),
             })}
-          </ul>
+            {' · '}
+            {interpolate(t.photoCheck.availableIn, {
+              time: formatPhotoCountdown(remainingMs, locale === 'ar' ? 'ar' : 'en'),
+            })}
+          </p>
         </section>
       ) : null}
 
-      {groups.length === 0 && lockedWave.length === 0 ? (
-        <p className="text-sm text-app-muted">{t.photoCheck.noTasksToday}</p>
+      {dueTasks.length === 0 && lockedWave.length === 0 ? (
+        <p className="text-base text-app-muted">{t.photoCheck.noTasksToday}</p>
       ) : null}
     </div>
   );

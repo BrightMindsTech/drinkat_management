@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { normalizeUserRole } from '@/lib/formVisibility';
@@ -5,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { isQcReviewerUser } from '@/lib/qc-reviewer';
 import { computeAndStoreEmployeeKpi, resolveKpiPeriod } from '@/lib/kpi-compute';
 import { DashboardHomeContent } from '@/components/dashboard/DashboardHomeContent';
+import { staffLandsOnPhotoChecks } from '@/lib/dashboard-nav-config';
 
 export default async function DashboardHome() {
   const session = await getServerSession(authOptions);
@@ -31,6 +33,9 @@ export default async function DashboardHome() {
       if (role !== 'owner' && role !== 'manager') {
         qcHome = isQcReviewerUser(session?.user?.role, row?.employee ?? null);
       }
+      if (staffLandsOnPhotoChecks(role, { hrKpiReviewer, qcHome })) {
+        redirect('/dashboard/photo');
+      }
       if (row?.employee?.id) {
         try {
           const { periodKey } = resolveKpiPeriod('day');
@@ -46,6 +51,10 @@ export default async function DashboardHome() {
     } catch {
       // Transient D1 blip — show email-derived name instead of crashing the home screen.
     }
+  }
+
+  if (staffLandsOnPhotoChecks(role, { hrKpiReviewer, qcHome })) {
+    redirect('/dashboard/photo');
   }
 
   return (
