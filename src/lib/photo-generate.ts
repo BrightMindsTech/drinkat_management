@@ -100,22 +100,24 @@ export async function generatePhotoCheckTasksForDay(
     );
   }
 
-  const healedSlots = new Set<string>();
-  for (const schedule of schedules) {
-    const stamp = `${schedule.slotKey}:${schedule.startTime}:${schedule.dueTime}`;
-    if (healedSlots.has(stamp)) continue;
-    healedSlots.add(stamp);
-    for (const periodKey of periodKeys) {
-      const { windowStartAt, dueAt } = photoWindowInstants(periodKey, schedule.startTime, schedule.dueTime);
-      await prisma.photoCheckTask.updateMany({
-        where: {
-          slotKey: schedule.slotKey,
-          periodKey,
-          status: { in: ['scheduled', 'due', 'in_progress', 'overdue'] },
-          ...(onlyEmployeeId ? { assigneeEmployeeId: onlyEmployeeId } : {}),
-        },
-        data: { windowStartAt, dueAt },
-      });
+  const healWindows = !onlyEmployeeId;
+  if (healWindows) {
+    const healedSlots = new Set<string>();
+    for (const schedule of schedules) {
+      const stamp = `${schedule.slotKey}:${schedule.startTime}:${schedule.dueTime}`;
+      if (healedSlots.has(stamp)) continue;
+      healedSlots.add(stamp);
+      for (const periodKey of periodKeys) {
+        const { windowStartAt, dueAt } = photoWindowInstants(periodKey, schedule.startTime, schedule.dueTime);
+        await prisma.photoCheckTask.updateMany({
+          where: {
+            slotKey: schedule.slotKey,
+            periodKey,
+            status: { in: ['scheduled', 'due', 'in_progress', 'overdue'] },
+          },
+          data: { windowStartAt, dueAt },
+        });
+      }
     }
   }
 
@@ -182,8 +184,10 @@ export async function generatePhotoCheckTasksForDay(
     }
   }
 
+  const scope = onlyEmployeeId ? { assigneeEmployeeId: onlyEmployeeId } : {};
   const overdue = await prisma.photoCheckTask.updateMany({
     where: {
+      ...scope,
       status: { in: ['scheduled', 'due', 'in_progress'] },
       dueAt: { lt: now },
     },
@@ -192,6 +196,7 @@ export async function generatePhotoCheckTasksForDay(
 
   await prisma.photoCheckTask.updateMany({
     where: {
+      ...scope,
       status: { in: ['scheduled', 'overdue'] },
       windowStartAt: { lte: now },
       dueAt: { gte: now },

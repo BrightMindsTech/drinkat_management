@@ -356,7 +356,8 @@ assert.match(program, /weekly_saturday_only/);
 assert.match(program, /enableFullTimePhotoOps/);
 assert.match(program, /enableStaff/);
 assert.match(program, /PHOTO_PROGRAM_STAMP/);
-assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /ensureEmployeePhotoEligibility/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /employeePhotoRequired/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /ensureEmployeePhotoEligibility/);
 assert.equal(PHOTO_SATURDAY_WEEKDAY, 6);
 assert.equal(PHOTO_SATURDAY_DAYS_JSON, '[6]');
 assert.equal(photoScheduleDaysJson('slush_machine_cleaning'), '[6]');
@@ -432,7 +433,10 @@ assert.equal(
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/cron/time-clock/route.ts'), 'utf8'), /ensureOfficialPhotoProgram/);
 assert.doesNotMatch(program, /Other approved types = one midday/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-ops/employees/route.ts'), 'utf8'), /generatePhotoTasksForEmployee/);
-assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-ops/employees/route.ts'), 'utf8'), /ensureOfficialPhotoProgram/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/app/api/photo-ops/employees/route.ts'), 'utf8'), /ensureOfficialPhotoProgram/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/cron/time-clock/route.ts'), 'utf8'), /enableStaff: true/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-ops-program.ts'), 'utf8'), /enableStaff === true/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-generate.ts'), 'utf8'), /assigneeEmployeeId: onlyEmployeeId/);
 
 const wrangler = fs.readFileSync(path.join(root, 'wrangler.jsonc'), 'utf8');
 assert.match(wrangler, /PHOTO_CHECK_SCHEDULER_ENABLED": "1"/);
@@ -651,8 +655,7 @@ const tasksRoute = fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tas
 assert.match(tasksRoute, /listUpcomingPhotoWindows/);
 assert.match(tasksRoute, /generatePhotoTasksForEmployee/);
 assert.match(tasksRoute, /searchParams.get\('read'\) === '1'/);
-assert.match(tasksRoute, /enableStaff: false/);
-assert.match(tasksRoute, /PHOTO_PROGRAM_STAMP/);
+assert.doesNotMatch(tasksRoute, /ensureOfficialPhotoProgram/);
 assert.match(tasksRoute, /yesterdayKey/);
 assert.match(tasksRoute, /dueAt: \{ gte: now \}/);
 assert.match(tasksRoute, /assignApprovedPhotoTypes/);
@@ -662,6 +665,8 @@ assert.match(board, /nextWindowTitle/);
 assert.match(board, /formatPhotoCountdown/);
 assert.match(board, /lockedUntil/);
 assert.match(board, /loadingTasks/);
+assert.match(board, /loadFailed/);
+assert.match(board, /if \(!res\.ok\)/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /availableIn/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /availableIn/);
 

@@ -1193,6 +1193,8 @@ export const ar: LocaleMessages = {
     lockedUntil: 'مقفل حتى يفتح وقت المهمة',
     nextWindowTitle: 'نافذة الصور التالية',
     loadingTasks: 'جارٍ تحميل مهام الصور…',
+    loadFailed: 'تعذّر تحميل مهام الصور. أعد المحاولة.',
+    retryLoad: 'إعادة المحاولة',
     notRequiredTitle: 'فحوص الصور غير مطلوبة لحسابك',
     notRequiredHint: 'حسابك غير مطالب بتقديم فحوص الصور الروتينية.',
     branchClaimed: 'زميل في نفس الفرع أرسل هذا الفحص بالفعل.',

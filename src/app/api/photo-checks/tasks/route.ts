@@ -3,12 +3,7 @@ import { requireSession } from '@/lib/session';
 import { withApiErrors } from '@/lib/api-route-error';
 import { employeePhotoRequired } from '@/lib/photo-eligibility';
 import { generatePhotoTasksForEmployee } from '@/lib/photo-generate';
-import {
-  assignApprovedPhotoTypes,
-  ensureEmployeePhotoEligibility,
-  ensureOfficialPhotoProgram,
-} from '@/lib/photo-ops-program';
-import { PHOTO_PROGRAM_STAMP } from '@/lib/photo-official-windows';
+import { assignApprovedPhotoTypes } from '@/lib/photo-ops-program';
 import { photoPeriodKey, shiftPhotoPeriodKey } from '@/lib/photo-time';
 import { listUpcomingPhotoWindows, nextPhotoWave } from '@/lib/photo-upcoming';
 import {
@@ -37,27 +32,11 @@ export const GET = withApiErrors(async function GET(req: Request) {
   });
   if (!user?.employee) return Response.json({ required: false, items: [], upcoming: [] });
   const emp = user.employee;
-  let required = await employeePhotoRequired(prisma, emp.id);
-  if (!readOnly) {
-    required =
-      (await ensureEmployeePhotoEligibility(prisma, {
-        id: emp.id,
-        status: emp.status,
-        role: emp.role,
-        employmentType: emp.employmentType,
-      })) || required;
-  }
+  const required = await employeePhotoRequired(prisma, emp.id);
   if (!required) return Response.json({ required: false, items: [], upcoming: [] });
 
   const now = new Date();
   if (!readOnly) {
-    const stamped = await prisma.appCronWatermark.findUnique({
-      where: { key: PHOTO_PROGRAM_STAMP },
-      select: { key: true },
-    });
-    if (!stamped) {
-      await ensureOfficialPhotoProgram(prisma, { enableStaff: false });
-    }
     const assignedCount = await prisma.photoCheckEmployeeType.count({
       where: { employeeId: emp.id, assigned: true },
     });

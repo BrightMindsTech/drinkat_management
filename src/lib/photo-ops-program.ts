@@ -27,13 +27,13 @@ export async function approvedPhotoTypes(prisma: PrismaClient) {
  * Idempotent: activate approved types and ensure official Asia/Amman windows exist.
  * Daily types use morning / midday / night every day.
  * Kitchen + slush deep-clean types run Saturday only.
- * Heavy staff enablement is cron-only — never on a user GET.
+ * Heavy staff enablement is cron-only — never on a user GET or photo-ops toggle.
  */
 export async function ensureOfficialPhotoProgram(
   prisma: PrismaClient,
   opts: { enableStaff?: boolean } = {}
 ): Promise<{ types: number; schedules: number; enabled: number }> {
-  const enableStaff = opts.enableStaff !== false;
+  const enableStaff = opts.enableStaff === true;
   const types = await approvedPhotoTypes(prisma);
   if (types.length) {
     await prisma.photoCheckType.updateMany({
@@ -217,6 +217,13 @@ export async function ensureEmployeePhotoEligibility(
 
 export async function assignApprovedPhotoTypes(prisma: PrismaClient, employeeId: string) {
   const types = await approvedPhotoTypes(prisma);
+  const existing = await prisma.photoCheckEmployeeType.findMany({
+    where: { employeeId, assigned: true },
+    select: { typeId: true },
+  });
+  const have = new Set(existing.map((row) => row.typeId));
+  const want = new Set(types.map((t) => t.id));
+  if (have.size === want.size && types.every((t) => have.has(t.id))) return types;
   await prisma.photoCheckEmployeeType.deleteMany({ where: { employeeId } });
   if (!types.length) return [];
   await prisma.photoCheckEmployeeType.createMany({

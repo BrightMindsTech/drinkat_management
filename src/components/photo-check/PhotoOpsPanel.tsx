@@ -67,6 +67,7 @@ export function PhotoOpsPanel() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employeeId: emp.id, required }),
+        cache: 'no-store',
       });
       const json = (await res.json()) as { error?: string; results?: { tasksCreated?: number }[] };
       if (!res.ok) {

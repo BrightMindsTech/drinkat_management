@@ -13,6 +13,7 @@ import {
 import { parseCriteriaJson } from '@/lib/photo-score';
 import { formatPhotoCountdown, nextPhotoWave } from '@/lib/photo-upcoming';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
+import { fetchWithRetry } from '@/lib/fetch-with-retry';
 
 type Task = {
   id: string;
@@ -78,6 +79,7 @@ export function PhotoTaskBoard() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const draftsRef = useRef<Draft[]>([]);
   const submittingRef = useRef(false);
@@ -87,12 +89,21 @@ export function PhotoTaskBoard() {
   draftsRef.current = drafts;
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/photo-checks/tasks', { credentials: 'include', cache: 'no-store' });
-    const json = (await res.json()) as { required?: boolean; items?: Task[]; upcoming?: Task[] };
-    setRequired(Boolean(json.required));
-    setItems(Array.isArray(json.items) ? json.items : []);
-    setUpcoming(Array.isArray(json.upcoming) ? json.upcoming : []);
-  }, []);
+    try {
+      const res = await fetchWithRetry('/api/photo-checks/tasks', { credentials: 'include', cache: 'no-store' });
+      const json = (await res.json()) as { required?: boolean; items?: Task[]; upcoming?: Task[]; error?: string };
+      if (!res.ok) {
+        setLoadError(json.error || t.photoCheck.loadFailed);
+        return;
+      }
+      setLoadError(null);
+      setRequired(Boolean(json.required));
+      setItems(Array.isArray(json.items) ? json.items : []);
+      setUpcoming(Array.isArray(json.upcoming) ? json.upcoming : []);
+    } catch {
+      setLoadError(t.photoCheck.loadFailed);
+    }
+  }, [t.photoCheck.loadFailed]);
 
   useEffect(() => {
     void load();
@@ -360,7 +371,23 @@ export function PhotoTaskBoard() {
     return (
       <div className="space-y-3">
         <h2 className="text-xl font-bold text-app-primary">{t.photoCheck.todayTitle}</h2>
-        <p className="text-sm text-app-muted">{t.photoCheck.loadingTasks}</p>
+        {loadError ? (
+          <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-ios-dark-separator dark:bg-ios-dark-elevated">
+            <p className="text-sm text-app-muted">{loadError}</p>
+            <button
+              type="button"
+              className="mt-3 min-h-11 rounded-2xl bg-ios-blue px-4 text-sm font-semibold text-white"
+              onClick={() => {
+                setLoadError(null);
+                void load();
+              }}
+            >
+              {t.photoCheck.retryLoad}
+            </button>
+          </div>
+        ) : (
+          <p className="text-sm text-app-muted">{t.photoCheck.loadingTasks}</p>
+        )}
       </div>
     );
   }

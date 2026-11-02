@@ -4,7 +4,7 @@ import { requirePhotoOpsAdmin } from '@/lib/session';
 import { withApiErrors } from '@/lib/api-route-error';
 import { cancelOpenPhotoTasks } from '@/lib/photo-eligibility';
 import { generatePhotoTasksForEmployee } from '@/lib/photo-generate';
-import { assignApprovedPhotoTypes, ensureOfficialPhotoProgram } from '@/lib/photo-ops-program';
+import { assignApprovedPhotoTypes } from '@/lib/photo-ops-program';
 import { z } from 'zod';
 
 export const GET = withApiErrors(async function GET(req: NextRequest) {
@@ -69,8 +69,12 @@ async function applyEmployeePhotoOps(actorUserId: string, employeeId: string, re
     await cancelOpenPhotoTasks(prisma, employeeId, 'global_photo_requirement_off');
   } else {
     await assignApprovedPhotoTypes(prisma, employeeId);
-    const gen = await generatePhotoTasksForEmployee(prisma, employeeId);
-    tasksCreated = gen.created;
+    try {
+      const gen = await generatePhotoTasksForEmployee(prisma, employeeId);
+      tasksCreated = gen.created;
+    } catch (e) {
+      console.error('[photo-ops] generate after toggle failed', employeeId, e);
+    }
   }
 
   await prisma.photoCheckAssignmentAudit.create({
@@ -93,7 +97,6 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
   if (required === undefined) return Response.json({ error: 'required true/false needed' }, { status: 400 });
   const ids = [...new Set([...(employeeIds ?? []), ...(employeeId ? [employeeId] : [])])];
   if (ids.length === 0) return Response.json({ error: 'employeeId required' }, { status: 400 });
-  if (required) await ensureOfficialPhotoProgram(prisma);
   const results = [];
   for (const id of ids) {
     results.push(await applyEmployeePhotoOps(session.user.id, id, required));

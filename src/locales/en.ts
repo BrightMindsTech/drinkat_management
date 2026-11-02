@@ -1194,6 +1194,8 @@ export const en = {
     lockedUntil: 'Locked until the window opens',
     nextWindowTitle: 'Next photo window',
     loadingTasks: 'Loading photo tasks…',
+    loadFailed: 'Could not load photo tasks. Please retry.',
+    retryLoad: 'Retry',
     notRequiredTitle: 'Photo checks are off for you',
     notRequiredHint: 'Your account is not required to submit routine photo checks.',
     branchClaimed: 'A teammate already submitted this check for your branch.',

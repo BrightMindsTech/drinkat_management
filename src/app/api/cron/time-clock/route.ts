@@ -117,7 +117,7 @@ export async function GET(req: Request) {
   let photoReminders: { sent: number; skipped: number } | null = null;
   if (isPhotoCheckSchedulerEnabled()) {
     try {
-      await ensureOfficialPhotoProgram(prisma);
+      await ensureOfficialPhotoProgram(prisma, { enableStaff: true });
       photoGeneration = await generatePhotoCheckTasksForDay(prisma);
     } catch (e) {
       console.error('[cron/maintenance] photo-check generation failed', e);
