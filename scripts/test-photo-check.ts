@@ -48,6 +48,7 @@ import {
   minutesBeforeClock,
   photoScheduleDaysJson,
 } from '../src/lib/photo-official-windows';
+import { photoSchedulesMatchOfficial } from '../src/lib/photo-ops-program';
 import { pickBranchInspectionRecipientIds, pickQcReportRecipientIds } from '../src/lib/qc-field-reports';
 import {
   BRANCH_INSPECTION_ITEM_IDS,
@@ -318,6 +319,16 @@ assert.equal(latestPhotoReminderAt([null, null]), null);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /dashboard\/photo\?task=/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /byUser/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /ttlSec: PHOTO_REMINDER_PUSH_TTL_SEC/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /windowStartAt: \{ lte: now \}/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /dueAt: \{ gte: now \}/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /PHOTO_REMINDER_OPEN_TAKE/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /take: 2500/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/cron/time-clock/route.ts'), 'utf8'), /applyPhotoWindowStatuses/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-ops-program.ts'), 'utf8'), /photoSchedulesMatchOfficial/);
+assert.doesNotMatch(
+  fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskBoard.tsx'), 'utf8'),
+  /row.status === 'scheduled'\) return true/
+);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /lastReminderKind === kind/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/push.ts'), 'utf8'), /ttlSec \?\? 30 \* 60/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/push.ts'), 'utf8'), /TTL: 300/);
@@ -344,6 +355,30 @@ assert.deepEqual(
   ['morning:08:00-13:30', 'midday:14:00-19:30', 'night:20:00-07:30']
 );
 assert.match(PHOTO_PROGRAM_STAMP, /handoff-30/);
+{
+  const types = [
+    { id: 't-daily', code: 'branch_cleanliness_360' },
+    { id: 't-sat', code: 'slush_machine_cleaning' },
+  ];
+  const schedules = PHOTO_360_OFFICIAL_WINDOWS.flatMap((w) => [
+    {
+      typeId: 't-daily',
+      slotKey: w.slotKey,
+      startTime: w.startTime,
+      dueTime: w.dueTime,
+      daysOfWeekJson: photoScheduleDaysJson('branch_cleanliness_360'),
+    },
+    {
+      typeId: 't-sat',
+      slotKey: w.slotKey,
+      startTime: w.startTime,
+      dueTime: w.dueTime,
+      daysOfWeekJson: photoScheduleDaysJson('slush_machine_cleaning'),
+    },
+  ]);
+  assert.equal(photoSchedulesMatchOfficial(types, schedules), true);
+  assert.equal(photoSchedulesMatchOfficial(types, schedules.slice(1)), false);
+}
 const program = fs.readFileSync(path.join(root, 'src/lib/photo-ops-program.ts'), 'utf8');
 assert.match(program, /provisional: false/);
 assert.match(program, /PHOTO_360_OFFICIAL_WINDOWS/);

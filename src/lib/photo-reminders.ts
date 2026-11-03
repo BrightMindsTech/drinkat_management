@@ -9,6 +9,8 @@ import { formatAppTime } from '@/lib/format-datetime';
 export const ACTIVE_PHOTO_REMINDER_MINUTES = 30;
 /** Keep the OS notification until the next 30-minute tick. */
 export const PHOTO_REMINDER_PUSH_TTL_SEC = 28 * 60;
+/** Only currently open windows — never scan thousands of historical overdue rows. */
+export const PHOTO_REMINDER_OPEN_TAKE = 800;
 
 export function isPhotoTaskActiveForReminder(
   task: { status: string; windowStartAt: Date; dueAt: Date },
@@ -86,12 +88,15 @@ export async function sendPhotoCheckRemindersIfDue(prisma: PrismaClient, now = n
   const tasks = await prisma.photoCheckTask.findMany({
     where: {
       status: { in: ['scheduled', 'due', 'in_progress', 'overdue'] },
+      windowStartAt: { lte: now },
+      dueAt: { gte: now },
     },
     include: {
       assignee: { select: { userId: true, name: true } },
       type: { select: { titleEn: true, titleAr: true } },
     },
-    take: 2500,
+    orderBy: { dueAt: 'asc' },
+    take: PHOTO_REMINDER_OPEN_TAKE,
   });
 
   const empIds = [...new Set(tasks.map((t) => t.assigneeEmployeeId))];

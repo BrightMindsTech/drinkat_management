@@ -10,7 +10,11 @@ import { sendQcSubmitRemindersIfDue } from '@/lib/qc-submit-reminders';
 import { sendDailyAppRemindersIfDue } from '@/lib/daily-app-reminders';
 import { generateInspectionTasksForDay, isInspectionSchedulerEnabled } from '@/lib/inspection-generate';
 import { sendInspectionTaskRemindersIfDue, sendIssueEscalationsIfDue } from '@/lib/inspection-reminders';
-import { generatePhotoCheckTasksForDay, isPhotoCheckSchedulerEnabled } from '@/lib/photo-generate';
+import {
+  applyPhotoWindowStatuses,
+  generatePhotoCheckTasksForDay,
+  isPhotoCheckSchedulerEnabled,
+} from '@/lib/photo-generate';
 import { ensureOfficialPhotoProgram } from '@/lib/photo-ops-program';
 import { sendPhotoCheckRemindersIfDue } from '@/lib/photo-reminders';
 import { purgeExpiredPhotoArchive } from '@/lib/photo-archive';
@@ -117,15 +121,20 @@ export async function GET(req: Request) {
   let photoReminders: { sent: number; skipped: number } | null = null;
   if (isPhotoCheckSchedulerEnabled()) {
     try {
-      await ensureOfficialPhotoProgram(prisma, { enableStaff: true });
-      photoGeneration = await generatePhotoCheckTasksForDay(prisma);
+      await applyPhotoWindowStatuses(prisma);
     } catch (e) {
-      console.error('[cron/maintenance] photo-check generation failed', e);
+      console.error('[cron/maintenance] photo window status heal failed', e);
     }
     try {
       photoReminders = await sendPhotoCheckRemindersIfDue(prisma);
     } catch (e) {
       console.error('[cron/maintenance] photo-check reminders failed', e);
+    }
+    try {
+      await ensureOfficialPhotoProgram(prisma, { enableStaff: true });
+      photoGeneration = await generatePhotoCheckTasksForDay(prisma);
+    } catch (e) {
+      console.error('[cron/maintenance] photo-check generation failed', e);
     }
   }
 

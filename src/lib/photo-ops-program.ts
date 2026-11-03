@@ -14,6 +14,29 @@ import { generatePhotoTasksForEmployee } from '@/lib/photo-generate';
 
 const FULL_TIME_PHOTO_ENABLE_BATCH = 8;
 
+export function photoSchedulesMatchOfficial(
+  types: { id: string; code: string }[],
+  schedules: Array<{
+    typeId: string;
+    slotKey: string;
+    startTime: string;
+    dueTime: string;
+    daysOfWeekJson: string;
+  }>
+): boolean {
+  if (!types.length) return false;
+  const have = new Set(
+    schedules.map((s) => `${s.typeId}:${s.slotKey}|${s.startTime}|${s.dueTime}|${s.daysOfWeekJson}`)
+  );
+  for (const type of types) {
+    const days = photoScheduleDaysJson(type.code);
+    for (const w of PHOTO_360_OFFICIAL_WINDOWS) {
+      if (!have.has(`${type.id}:${w.slotKey}|${w.startTime}|${w.dueTime}|${days}`)) return false;
+    }
+  }
+  return true;
+}
+
 /** Approved (non-provisional) catalog types become the live photo program. */
 export async function approvedPhotoTypes(prisma: PrismaClient) {
   return prisma.photoCheckType.findMany({
@@ -44,7 +67,7 @@ export async function ensureOfficialPhotoProgram(
 
   const existing = await prisma.photoCheckSchedule.findMany({
     where: { employeeId: null },
-    select: { typeId: true, slotKey: true },
+    select: { typeId: true, slotKey: true, startTime: true, dueTime: true, daysOfWeekJson: true },
   });
   const have = new Set(existing.map((s) => `${s.typeId}:${s.slotKey}`));
   const toCreate: {
@@ -93,6 +116,13 @@ export async function ensureOfficialPhotoProgram(
     select: { key: true },
   });
   if (types.length && !stamped) {
+    if (photoSchedulesMatchOfficial(types, existing)) {
+      await prisma.appCronWatermark.upsert({
+        where: { key: PHOTO_PROGRAM_STAMP },
+        create: { key: PHOTO_PROGRAM_STAMP, lastRunAt: new Date() },
+        update: { lastRunAt: new Date() },
+      });
+    } else {
     const weeklyIds = types.filter((t) => isSaturdayOnlyPhotoCode(t.code)).map((t) => t.id);
     const dailyIds = types.filter((t) => !isSaturdayOnlyPhotoCode(t.code)).map((t) => t.id);
     for (const w of PHOTO_360_OFFICIAL_WINDOWS) {
@@ -133,6 +163,7 @@ export async function ensureOfficialPhotoProgram(
       create: { key: PHOTO_PROGRAM_STAMP, lastRunAt: new Date() },
       update: { lastRunAt: new Date() },
     });
+    }
   }
 
   const enabled = enableStaff ? (await enableFullTimePhotoOps(prisma)).enabled : 0;

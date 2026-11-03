@@ -33,6 +33,33 @@ export function shouldCreatePhotoOccurrence(dueAt: Date, now: Date): boolean {
   return dueAt >= now;
 }
 
+/** Flip scheduled/due/overdue from the actual window clocks. Cheap; run even if create fails. */
+export async function applyPhotoWindowStatuses(
+  prisma: PrismaClient,
+  now = new Date(),
+  onlyEmployeeId?: string
+): Promise<{ overdue: number }> {
+  const scope = onlyEmployeeId ? { assigneeEmployeeId: onlyEmployeeId } : {};
+  const overdue = await prisma.photoCheckTask.updateMany({
+    where: {
+      ...scope,
+      status: { in: ['scheduled', 'due', 'in_progress'] },
+      dueAt: { lt: now },
+    },
+    data: { status: 'overdue' },
+  });
+  await prisma.photoCheckTask.updateMany({
+    where: {
+      ...scope,
+      status: { in: ['scheduled', 'overdue'] },
+      windowStartAt: { lte: now },
+      dueAt: { gte: now },
+    },
+    data: { status: 'due' },
+  });
+  return { overdue: overdue.count };
+}
+
 export async function generatePhotoCheckTasksForDay(
   prisma: PrismaClient,
   now = new Date(),
@@ -41,6 +68,7 @@ export async function generatePhotoCheckTasksForDay(
   const todayKey = photoPeriodKey(now);
   const yesterdayKey = shiftPhotoPeriodKey(todayKey, -1);
   const periodKeys = [yesterdayKey, todayKey];
+  await applyPhotoWindowStatuses(prisma, now, onlyEmployeeId);
   // Cancelled-but-not-claimed rows occupy the unique (schedule, assignee, period)
   // key and block recreating remaining windows after photo-ops is turned back on.
   await prisma.photoCheckTask.deleteMany({
@@ -184,27 +212,8 @@ export async function generatePhotoCheckTasksForDay(
     }
   }
 
-  const scope = onlyEmployeeId ? { assigneeEmployeeId: onlyEmployeeId } : {};
-  const overdue = await prisma.photoCheckTask.updateMany({
-    where: {
-      ...scope,
-      status: { in: ['scheduled', 'due', 'in_progress'] },
-      dueAt: { lt: now },
-    },
-    data: { status: 'overdue' },
-  });
-
-  await prisma.photoCheckTask.updateMany({
-    where: {
-      ...scope,
-      status: { in: ['scheduled', 'overdue'] },
-      windowStartAt: { lte: now },
-      dueAt: { gte: now },
-    },
-    data: { status: 'due' },
-  });
-
-  return { created: rows.length, skipped, overdue: overdue.count };
+  const statuses = await applyPhotoWindowStatuses(prisma, now, onlyEmployeeId);
+  return { created: rows.length, skipped, overdue: statuses.overdue };
 }
 
 /** Used when Owner/HR turns one person ON. Remaining windows today only; no backfill. */

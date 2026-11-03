@@ -120,7 +120,14 @@ async function countUnfinishedWork(): Promise<number> {
       if (json.required && Array.isArray(json.items)) {
         const now = Date.now();
         n += json.items.filter((row) => {
-          if (row.status !== 'due' && row.status !== 'overdue' && row.status !== 'in_progress') return false;
+          if (
+            row.status !== 'due' &&
+            row.status !== 'overdue' &&
+            row.status !== 'in_progress' &&
+            row.status !== 'scheduled'
+          ) {
+            return false;
+          }
           if (!row.windowStartAt || !row.dueAt) return false;
           const start = new Date(row.windowStartAt).getTime();
           const due = new Date(row.dueAt).getTime();

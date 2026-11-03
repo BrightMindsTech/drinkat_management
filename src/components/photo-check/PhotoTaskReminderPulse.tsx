@@ -15,7 +15,14 @@ type PhotoTaskRow = { id: string; status: string; windowStartAt?: string; dueAt?
 function openUnfinished(items: PhotoTaskRow[]): PhotoTaskRow[] {
   const now = Date.now();
   return items.filter((row) => {
-    if (row.status !== 'due' && row.status !== 'overdue' && row.status !== 'in_progress') return false;
+    if (
+      row.status !== 'due' &&
+      row.status !== 'overdue' &&
+      row.status !== 'in_progress' &&
+      row.status !== 'scheduled'
+    ) {
+      return false;
+    }
     if (!row.windowStartAt || !row.dueAt) return false;
     const start = new Date(row.windowStartAt).getTime();
     const due = new Date(row.dueAt).getTime();

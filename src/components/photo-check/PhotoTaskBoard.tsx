@@ -44,7 +44,7 @@ function isWindowClosed(row: Task, nowMs: number): boolean {
 }
 
 function isLockedTask(row: Task, nowMs: number): boolean {
-  if (row.kind === 'upcoming' || row.status === 'scheduled') return true;
+  if (row.kind === 'upcoming') return true;
   if (!row.windowStartAt) return false;
   return new Date(row.windowStartAt).getTime() > nowMs;
 }
