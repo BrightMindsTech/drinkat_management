@@ -3,7 +3,7 @@ import * as bcrypt from 'bcryptjs';
 import { DRINKAT_FORM_SEEDS } from '../src/lib/drinkatFormDefinitions';
 
 export async function seedDatabase(prisma: PrismaClient) {
-  const names = ['MEU Branch', 'HU Branch', 'Airport Street Branch'];
+  const names = ['MEU Branch', 'HU Branch', 'Airport Street Branch', 'Cloud Kitchen Branch'];
   for (const name of names) {
     await prisma.branch.upsert({
       where: { name },
