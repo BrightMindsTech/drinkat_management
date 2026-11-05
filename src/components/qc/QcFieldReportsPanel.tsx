@@ -161,6 +161,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
       <div id="section-qc-reports" className="mx-auto max-w-xl">
         <QcBranchInspectionForm
           branches={branches}
+          notifyOptions={notifyOptions}
           initialBranchId={branchId}
           onCancel={() => {
             setCompose(null);

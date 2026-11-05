@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { interpolate, useLanguage } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
 import {
@@ -12,6 +12,7 @@ import {
 } from '@/lib/qc-branch-inspection';
 
 type Branch = { id: string; name: string };
+type NotifyOption = { value: string; label: string };
 type Draft = { result: InspectionResult | null; photoUrl: string | null };
 
 function emptyDrafts(): Record<string, Draft> {
@@ -22,17 +23,20 @@ function emptyDrafts(): Record<string, Draft> {
 
 export function QcBranchInspectionForm({
   branches,
+  notifyOptions,
   initialBranchId,
   onCancel,
   onSubmitted,
 }: {
   branches: Branch[];
+  notifyOptions: NotifyOption[];
   initialBranchId: string;
   onCancel: () => void;
   onSubmitted: () => Promise<void> | void;
 }) {
   const { t, locale } = useLanguage();
   const [branchId, setBranchId] = useState(initialBranchId || branches[0]?.id || '');
+  const [notifyTo, setNotifyTo] = useState('all');
   const [drafts, setDrafts] = useState<Record<string, Draft>>(emptyDrafts);
   const [notes, setNotes] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -89,6 +93,7 @@ export function QcBranchInspectionForm({
           branchId,
           notes: notes.trim(),
           answers,
+          notifyTo,
         }),
       });
       const json = (await res.json()) as { error?: string };
@@ -142,7 +147,31 @@ export function QcBranchInspectionForm({
       <p className="text-xs text-app-muted">
         {t.qcOps.qcInspectWhen}: {nowLabel}
       </p>
-      <p className="text-xs leading-relaxed text-app-muted">{t.qcOps.qcInspectNotifyHint}</p>
+      <label className="block space-y-1">
+        <span className="text-sm font-medium text-app-muted">{t.qcOps.qcReportsNotify}</span>
+        <select
+          aria-label={t.qcOps.qcReportsNotify}
+          className="min-h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
+          value={notifyTo}
+          onChange={(e) => setNotifyTo(e.target.value)}
+        >
+          {notifyOptions.map((opt) => {
+            let label = opt.label;
+            if (opt.value === 'all') label = t.qcOps.qcReportsNotifyAll;
+            else if (opt.value === 'sara') label = t.qcOps.qcReportsNotifySara;
+            else if (opt.value === 'owner') label = t.qcOps.qcReportsNotifyOwner;
+            else if (opt.value === 'managers') label = t.qcOps.qcReportsNotifyManagers;
+            else if (opt.value.startsWith('manager:')) {
+              label = interpolate(t.qcOps.qcReportsNotifyManager, { name: opt.label });
+            }
+            return (
+              <option key={opt.value} value={opt.value}>
+                {label}
+              </option>
+            );
+          })}
+        </select>
+      </label>
 
       {BRANCH_INSPECTION_SECTIONS.map((section) => (
         <section key={section.id} className="overflow-hidden rounded-3xl border border-gray-200 dark:border-ios-dark-separator">

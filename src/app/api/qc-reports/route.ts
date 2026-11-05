@@ -7,7 +7,6 @@ import { notifyUsers } from '@/lib/user-notify';
 import {
   listQcNotifyPeople,
   qcReportNotifyOptions,
-  resolveBranchInspectionRecipients,
   resolveQcReportRecipients,
 } from '@/lib/qc-field-reports';
 import {
@@ -34,6 +33,7 @@ const inspectionSchema = z.object({
   kind: z.literal('branch_inspection'),
   branchId: z.string(),
   notes: z.string().max(4000).optional().default(''),
+  notifyTo: z.string().min(1).max(80).optional(),
   answers: z.record(
     z.object({
       result: z.enum(['pass', 'fail']),
@@ -138,7 +138,7 @@ async function postInspection(userId: string, body: unknown) {
     },
   });
 
-  const ids = await resolveBranchInspectionRecipients(prisma, userId, parsed.data.branchId);
+  const ids = await resolveQcReportRecipients(prisma, userId, parsed.data.notifyTo ?? 'all');
   const pushTitle = `Branch inspection · ${branch.name}`;
   const pushBody = `${fail} fail · ${pass} pass${notes.trim() ? ` · ${notes.trim().slice(0, 80)}` : ''}`;
   if (ids.length) {
