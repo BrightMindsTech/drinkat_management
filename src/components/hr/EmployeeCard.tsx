@@ -64,6 +64,7 @@ export function EmployeeCard({
   };
   const [draftShiftTimeFrom, setDraftShiftTimeFrom] = useState(parseShiftTime(employee.shiftTime).from);
   const [draftShiftTimeUntil, setDraftShiftTimeUntil] = useState(parseShiftTime(employee.shiftTime).until);
+  const [draftBranchId, setDraftBranchId] = useState(employee.branchId);
   const [draftDepartmentId, setDraftDepartmentId] = useState(employee.departmentId ?? '');
   const [draftRole, setDraftRole] = useState<'staff' | 'assistant_manager' | 'qc' | 'marketing' | 'manager'>(() =>
     normalizeStaffRoleForEdit(employee.role)
@@ -187,6 +188,7 @@ export function EmployeeCard({
     const st = parseShiftTime(employee.shiftTime);
     setDraftShiftTimeFrom(st.from);
     setDraftShiftTimeUntil(st.until);
+    setDraftBranchId(employee.branchId);
     setDraftDepartmentId(employee.departmentId ?? '');
     setDraftRole(normalizeStaffRoleForEdit(employee.role));
     setDraftAdvanceLimit(employee.advanceLimit != null ? String(employee.advanceLimit) : '');
@@ -283,6 +285,7 @@ export function EmployeeCard({
           residentialArea: draftResidentialArea.trim() ? draftResidentialArea.trim() : null,
           shiftTime: draftShiftTimeFrom && draftShiftTimeUntil ? `${draftShiftTimeFrom} - ${draftShiftTimeUntil}` : null,
           departmentId: draftDepartmentId || null,
+          branchId: draftBranchId || employee.branchId,
           role: draftRole,
           advanceLimit: advanceLimitValue,
           ...(newIdCardFrontPhotoPath ? { idCardFrontPhotoPath: newIdCardFrontPhotoPath } : {}),
@@ -596,6 +599,22 @@ export function EmployeeCard({
                 className="mt-1 w-full rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1 text-sm"
               />
             </label>
+            {branches.length > 0 && (
+              <label className="block text-sm text-app-label">
+                {t.registerStaff.branch}
+                <select
+                  value={draftBranchId}
+                  onChange={(e) => setDraftBranchId(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 dark:border-ios-dark-separator dark:bg-ios-dark-fill dark:text-ios-dark-label px-2 py-1 text-sm"
+                >
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="block text-sm text-app-label">
               {t.registerStaff.role}
               <select

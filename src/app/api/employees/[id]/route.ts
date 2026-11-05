@@ -32,7 +32,8 @@ const patchSchema = z.object({
   residentialArea: z.string().nullable().optional(),
   shiftTime: z.string().nullable().optional(),
   /** Must stay in sync with linked `User.role` when a login exists. */
-  role: z.enum(['staff', 'qc', 'marketing', 'manager']).optional(),
+  role: z.enum(['staff', 'assistant_manager', 'qc', 'marketing', 'manager']).optional(),
+  branchId: z.string().min(1).optional(),
   departmentId: z.string().nullable().optional(),
   // Assign this employee under a manager (direct reports only).
   reportsToEmployeeId: z.string().nullable().optional(),
@@ -45,7 +46,7 @@ const patchSchema = z.object({
 });
 
 export const PATCH = withApiErrors(async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireHrStaffAdmin();
+  const session = await requireHrStaffAdmin();
 
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);
@@ -65,6 +66,7 @@ export const PATCH = withApiErrors(async function PATCH(req: NextRequest, { para
     residentialArea,
     shiftTime,
     role,
+    branchId,
     departmentId,
     reportsToEmployeeId,
     status,
@@ -96,6 +98,25 @@ export const PATCH = withApiErrors(async function PATCH(req: NextRequest, { para
     }
   }
 
+  if (branchId && branchId !== existing.branchId) {
+    const toBranch = await prisma.branch.findUnique({ where: { id: branchId } });
+    if (!toBranch) return Response.json({ error: 'Branch not found' }, { status: 404 });
+    await prisma.employeeTransfer.create({
+      data: {
+        employeeId: id,
+        fromBranchId: existing.branchId,
+        toBranchId: branchId,
+        transferredById: session.user.id,
+      },
+    });
+    if (existing.userId) {
+      await prisma.user.update({
+        where: { id: existing.userId },
+        data: { branchId },
+      });
+    }
+  }
+
   if (role !== undefined && existing.userId) {
     await prisma.user.update({
       where: { id: existing.userId },
@@ -112,6 +133,7 @@ export const PATCH = withApiErrors(async function PATCH(req: NextRequest, { para
       ...(residentialArea !== undefined ? { residentialArea } : {}),
       ...(shiftTime !== undefined ? { shiftTime } : {}),
       ...(role !== undefined ? { role } : {}),
+      ...(branchId && branchId !== existing.branchId ? { branchId } : {}),
       ...(departmentId !== undefined ? { departmentId } : {}),
       ...(reportsToEmployeeId !== undefined ? { reportsToEmployeeId } : {}),
       ...(status !== undefined ? { status } : {}),
