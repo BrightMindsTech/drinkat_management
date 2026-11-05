@@ -805,7 +805,11 @@ assert.deepEqual(pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-city'
 assert.ok(!pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-air').includes('mgr-2'));
 
 assert.equal(BRANCH_INSPECTION_SECTIONS.length, 5);
-assert.equal(BRANCH_INSPECTION_ITEM_IDS.length, 26);
+assert.equal(BRANCH_INSPECTION_ITEM_IDS.length, 28);
+assert.ok(BRANCH_INSPECTION_ITEM_IDS.includes('b6'));
+assert.ok(BRANCH_INSPECTION_ITEM_IDS.includes('e4'));
+assert.equal(BRANCH_INSPECTION_SECTIONS[1].items.some((i) => i.titleEn === 'Vegetables & Fruits'), true);
+assert.equal(BRANCH_INSPECTION_SECTIONS[4].items.some((i) => i.titleEn === 'Vegetables & Fruits'), true);
 assert.equal(BRANCH_INSPECTION_SECTIONS[0].titleAr, 'الالتزام بالسياسات');
 assert.equal(BRANCH_INSPECTION_SECTIONS[1].titleAr, 'FIFO - FEFO نظام الاستهلاك');
 assert.equal(BRANCH_INSPECTION_SECTIONS[2].titleAr, 'التغليف والتواريخ');
@@ -819,11 +823,24 @@ allPass.a1 = { result: 'fail', photoUrl: '/uploads/x.jpg' };
 const checked = validateInspectionAnswers(allPass);
 assert.equal(checked.ok, true);
 if (checked.ok) {
-  assert.deepEqual(countInspectionResults(checked.answers), { pass: 25, fail: 1 });
+  assert.deepEqual(countInspectionResults(checked.answers), { pass: 27, fail: 1 });
   const payload = encodeInspectionPayload(checked.answers, 'hood dirty');
   assert.equal(parseInspectionPayload(JSON.stringify(payload))?.notes, 'hood dirty');
   assert.deepEqual(parseQcReportPhotos(JSON.stringify(payload)), ['/uploads/x.jpg']);
 }
 assert.deepEqual(parseQcReportPhotos(JSON.stringify(['/a.jpg', '/b.jpg'])), ['/a.jpg', '/b.jpg']);
+{
+  const legacy: Record<string, { result: 'pass' | 'fail'; photoUrl: string | null }> = {};
+  for (const id of BRANCH_INSPECTION_ITEM_IDS) {
+    if (id === 'b6' || id === 'e4') continue;
+    legacy[id] = { result: 'pass', photoUrl: null };
+  }
+  const parsedLegacy = parseInspectionPayload(
+    JSON.stringify({ kind: BRANCH_INSPECTION_KIND, v: 1, answers: legacy, notes: 'old visit' })
+  );
+  assert.equal(parsedLegacy?.notes, 'old visit');
+  assert.equal(parsedLegacy?.answers.b6, undefined);
+  assert.equal(parsedLegacy?.answers.e4, undefined);
+}
 
 console.log('photo-check: ok');

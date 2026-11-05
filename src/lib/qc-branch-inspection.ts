@@ -43,6 +43,7 @@ export const BRANCH_INSPECTION_SECTIONS: readonly BranchInspectionSection[] = [
       { id: 'b3', n: 3, titleEn: 'Sauces', titleAr: 'الصوصات' },
       { id: 'b4', n: 4, titleEn: 'Juices', titleAr: 'العصائر' },
       { id: 'b5', n: 5, titleEn: 'Prep materials', titleAr: 'مواد التحضير' },
+      { id: 'b6', n: 6, titleEn: 'Vegetables & Fruits', titleAr: 'الخضار والفواكه' },
     ],
   },
   {
@@ -78,6 +79,7 @@ export const BRANCH_INSPECTION_SECTIONS: readonly BranchInspectionSection[] = [
       { id: 'e1', n: 1, titleEn: 'Potato', titleAr: 'البطاطا' },
       { id: 'e2', n: 2, titleEn: 'Sauces', titleAr: 'الصوصات' },
       { id: 'e3', n: 3, titleEn: 'Juices', titleAr: 'العصائر' },
+      { id: 'e4', n: 4, titleEn: 'Vegetables & Fruits', titleAr: 'الخضار والفواكه' },
     ],
   },
 ] as const;
@@ -128,8 +130,9 @@ export function countInspectionResults(answers: InspectionAnswers): { pass: numb
   let pass = 0;
   let fail = 0;
   for (const id of BRANCH_INSPECTION_ITEM_IDS) {
-    if (answers[id]?.result === 'fail') fail += 1;
-    else pass += 1;
+    const result = answers[id]?.result;
+    if (result === 'fail') fail += 1;
+    else if (result === 'pass') pass += 1;
   }
   return { pass, fail };
 }
@@ -151,18 +154,37 @@ export function encodeInspectionPayload(answers: InspectionAnswers, notes: strin
   return { kind: BRANCH_INSPECTION_KIND, v: BRANCH_INSPECTION_VERSION, answers, notes: notes.trim() };
 }
 
+function parseStoredInspectionAnswers(raw: unknown): InspectionAnswers | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const rec = raw as Record<string, unknown>;
+  const answers: InspectionAnswers = {};
+  let any = false;
+  for (const id of BRANCH_INSPECTION_ITEM_IDS) {
+    const row = rec[id];
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const result = (row as { result?: unknown }).result;
+    if (!isResult(result)) continue;
+    const photoRaw = (row as { photoUrl?: unknown }).photoUrl;
+    const photoUrl =
+      typeof photoRaw === 'string' && photoRaw.trim().length > 3 ? photoRaw.trim() : null;
+    answers[id] = { result, photoUrl };
+    any = true;
+  }
+  return any ? answers : null;
+}
+
 export function parseInspectionPayload(raw: string): BranchInspectionPayload | null {
   try {
     const v = JSON.parse(raw) as unknown;
     if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
     const obj = v as { kind?: unknown; answers?: unknown; notes?: unknown; v?: unknown };
     if (obj.kind !== BRANCH_INSPECTION_KIND) return null;
-    const checked = validateInspectionAnswers(obj.answers);
-    if (!checked.ok) return null;
+    const answers = parseStoredInspectionAnswers(obj.answers);
+    if (!answers) return null;
     return {
       kind: BRANCH_INSPECTION_KIND,
       v: typeof obj.v === 'number' ? obj.v : BRANCH_INSPECTION_VERSION,
-      answers: checked.answers,
+      answers,
       notes: typeof obj.notes === 'string' ? obj.notes : '',
     };
   } catch {

@@ -441,8 +441,9 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
                       <ul className="mt-1 space-y-1">
                         {section.items.map((row) => {
                           const ans = inspection.answers[row.id];
+                          if (!ans) return null;
                           const title = locale === 'ar' ? row.titleAr : row.titleEn;
-                          const failed = ans?.result === 'fail';
+                          const failed = ans.result === 'fail';
                           return (
                             <li key={row.id} className="flex items-start gap-2 text-sm">
                               <span className={`mt-0.5 font-bold ${failed ? 'text-red-600' : 'text-emerald-600'}`}>
