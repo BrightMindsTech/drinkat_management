@@ -1,6 +1,8 @@
 import type { PrismaClient } from '@prisma/client';
 import { formatInTimeZone } from 'date-fns-tz';
 import { DEFAULT_APP_TIMEZONE } from '@/lib/shifts';
+import { addDays, parse } from 'date-fns';
+import { fromZonedTime } from 'date-fns-tz';
 import { parseTemplateFields } from '@/lib/formTemplate';
 import { photoQualityContribution, photoSubmissionCountsInQuality } from '@/lib/photo-kpi';
 import {
@@ -8,6 +10,7 @@ import {
   assistantManagerKpi,
   DEFAULT_WEIGHTS,
   managerKpi,
+  mergeApprovedPhotoWeights,
   officialKpiAllowed,
   PHOTO_KPI_WEIGHTS_APPROVED_KEY,
   photoKpiWeightsApproved,
@@ -70,6 +73,49 @@ export function kpiInstantInPeriod(iso: Date, periodKey: string, timeZone = DEFA
     return formatInTimeZone(iso, timeZone, 'yyyy-MM') === periodKey;
   }
   return false;
+}
+
+/** Calendar dates that photo `periodKey` values use for a KPI day / week / month. */
+export function photoPeriodKeysForKpi(periodKey: string, timeZone = DEFAULT_APP_TIMEZONE): string[] {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(periodKey)) return [periodKey];
+  if (/^\d{4}-\d{2}$/.test(periodKey)) {
+    const [ys, ms] = periodKey.split('-');
+    const y = Number(ys);
+    const m = Number(ms);
+    if (!Number.isFinite(y) || !Number.isFinite(m)) return [];
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return Array.from({ length: last }, (_, i) => `${periodKey}-${String(i + 1).padStart(2, '0')}`);
+  }
+  if (/^\d{4}-W\d{2}$/.test(periodKey)) {
+    const year = Number(periodKey.slice(0, 4));
+    const keys: string[] = [];
+    const start = new Date(Date.UTC(year - 1, 11, 22, 12, 0, 0));
+    for (let i = 0; i < 400; i++) {
+      const d = new Date(start.getTime() + i * 86_400_000);
+      if (formatInTimeZone(d, timeZone, "RRRR-'W'II") === periodKey) {
+        keys.push(formatInTimeZone(d, timeZone, 'yyyy-MM-dd'));
+      } else if (keys.length) {
+        break;
+      }
+    }
+    return keys;
+  }
+  return [];
+}
+
+export function kpiPeriodInstantBounds(
+  periodKey: string,
+  timeZone = DEFAULT_APP_TIMEZONE
+): { start: Date; end: Date } | null {
+  const keys = photoPeriodKeysForKpi(periodKey, timeZone);
+  const first = keys[0];
+  const last = keys[keys.length - 1];
+  if (!first || !last) return null;
+  const start = fromZonedTime(parse(`${first} 00:00:00`, 'yyyy-MM-dd HH:mm:ss', new Date(0)), timeZone);
+  const lastNoon = fromZonedTime(parse(`${last} 12:00:00`, 'yyyy-MM-dd HH:mm:ss', new Date(0)), timeZone);
+  const nextYmd = formatInTimeZone(addDays(lastNoon, 1), timeZone, 'yyyy-MM-dd');
+  const end = fromZonedTime(parse(`${nextYmd} 00:00:00`, 'yyyy-MM-dd HH:mm:ss', new Date(0)), timeZone);
+  return { start, end };
 }
 
 function inPeriod(iso: Date, periodKey: string, timeZone = DEFAULT_APP_TIMEZONE): boolean {
@@ -141,21 +187,27 @@ export async function computeAndStoreEmployeeKpi(
     select: { value: true },
   });
   const storedWeights = weightRow ? (JSON.parse(weightRow.weightsJson) as Record<string, number>) : undefined;
+  const photoApproved = photoKpiWeightsApproved(photoWeightsFlag?.value);
   const weights =
     subjectRole === 'staff'
-      ? resolveStaffWeights(storedWeights, photoKpiWeightsApproved(photoWeightsFlag?.value))
-      : storedWeights;
+      ? resolveStaffWeights(storedWeights, photoApproved)
+      : subjectRole === 'assistant_manager'
+        ? mergeApprovedPhotoWeights(DEFAULT_WEIGHTS.assistant_manager, storedWeights, photoApproved)
+        : mergeApprovedPhotoWeights(DEFAULT_WEIGHTS.manager, storedWeights, photoApproved);
 
+  const bounds = kpiPeriodInstantBounds(periodKey);
+  const dueAtFilter = bounds ? { gte: bounds.start, lt: bounds.end } : undefined;
   const tasks = await prisma.inspectionTask.findMany({
     where: {
       OR: [{ assigneeEmployeeId: employeeId }, { branchId: employee.branchId }],
+      ...(dueAtFilter ? { dueAt: dueAtFilter } : {}),
     },
     include: {
       templateVersion: { select: { fieldsJson: true, category: true, title: true } },
       schedule: { select: { window: true } },
     },
   });
-  const periodTasks = tasks.filter((t) => inPeriod(t.dueAt, periodKey));
+  const periodTasks = dueAtFilter ? tasks : tasks.filter((t) => inPeriod(t.dueAt, periodKey));
 
   const own = periodTasks.filter((t) => t.assigneeEmployeeId === employeeId);
   const eligibleDue = own.filter((t) => !['excused', 'cancelled'].includes(t.status));
@@ -204,14 +256,17 @@ export async function computeAndStoreEmployeeKpi(
   }
 
   const issues = await prisma.issue.findMany({
-    where: { branchId: employee.branchId },
+    where: {
+      branchId: employee.branchId,
+      ...(dueAtFilter ? { createdAt: dueAtFilter } : {}),
+    },
     include: {
       responsibilityDecision: true,
       inspectionTask: { select: { assigneeEmployeeId: true } },
     },
   });
   const mapped = issues.map(toIssueForKpi);
-  const periodIssues = mapped.filter((i) => inPeriod(i.createdAt, periodKey));
+  const periodIssues = dueAtFilter ? mapped : mapped.filter((i) => inPeriod(i.createdAt, periodKey));
   const assignedIssues = periodIssues.filter((i) => i.assigneeEmployeeId === employeeId);
 
   const rules = await prisma.escalationRule.findMany({ where: { active: true } });
@@ -235,14 +290,17 @@ export async function computeAndStoreEmployeeKpi(
     closedWithinSla(i, slaMsForSeverity(i.severity, rules))
   ).length;
 
+  const photoPeriodKeys = photoPeriodKeysForKpi(periodKey);
   const photoTasks = await prisma.photoCheckTask.findMany({
-    where: { assigneeEmployeeId: employeeId },
+    where: {
+      assigneeEmployeeId: employeeId,
+      ...(photoPeriodKeys.length ? { periodKey: { in: photoPeriodKeys } } : {}),
+    },
     include: { submission: { select: { status: true, aiScore: true, aiVerdict: true, submittedAt: true } } },
   });
-  const periodPhotoTasks = photoTasks.filter((t) => inPeriod(t.dueAt, periodKey));
+  const periodPhotoTasks = photoPeriodKeys.length ? photoTasks : photoTasks.filter((t) => inPeriod(t.dueAt, periodKey));
   const eligiblePhoto = periodPhotoTasks.filter((t) => !['cancelled', 'excused'].includes(t.status));
   const completedPhoto = eligiblePhoto.filter((t) => t.status === 'completed');
-  const onTimePhoto = completedPhoto.filter((t) => t.submission?.submittedAt && t.submission.submittedAt <= t.dueAt);
   const reviewedPhoto = completedPhoto.filter(
     (t) => t.submission?.status === 'approved' || t.submission?.status === 'rejected'
   );
@@ -250,6 +308,16 @@ export async function computeAndStoreEmployeeKpi(
   const qualitySum = qualityRows.reduce((s, t) => s + photoQualityContribution(t.submission), 0);
   const uniqueTaskDays = new Set(eligiblePhoto.map((t) => t.periodKey)).size;
   const uniqueCompletedDays = new Set(completedPhoto.map((t) => t.periodKey)).size;
+  const photoEv = {
+    photoSubmitted: completedPhoto.length,
+    photoExpected: eligiblePhoto.length,
+    photoUniqueDays: uniqueCompletedDays,
+    photoDaysElapsed: uniqueTaskDays,
+    photoApproved: reviewedPhoto.filter((t) => t.submission?.status === 'approved').length,
+    photoReviewed: reviewedPhoto.length,
+    photoQualitySum: qualitySum,
+    photoQualityCount: qualityRows.length,
+  };
 
   const staffEv: StaffEvidence = {
     onTimeCompleted: onTime.length,
@@ -268,14 +336,7 @@ export async function computeAndStoreEmployeeKpi(
     repeatCount: staffRepeats,
     exposureCount: completed.length,
     approvedEmployeeError: staffApprovedEe,
-    photoSubmitted: completedPhoto.length,
-    photoExpected: eligiblePhoto.length,
-    photoUniqueDays: uniqueCompletedDays,
-    photoDaysElapsed: uniqueTaskDays,
-    photoApproved: reviewedPhoto.filter((t) => t.submission?.status === 'approved').length,
-    photoReviewed: reviewedPhoto.length,
-    photoQualitySum: qualitySum,
-    photoQualityCount: qualityRows.length,
+    ...photoEv,
   };
 
   const branchDue = periodTasks.filter((t) => !['excused', 'cancelled'].includes(t.status));
@@ -302,6 +363,7 @@ export async function computeAndStoreEmployeeKpi(
     correctiveClosedOnTime: closedOnTime,
     correctiveEligible: assignedIssues.length,
     approvedEmployeeError: branchApprovedEe,
+    ...photoEv,
   };
 
   const slaHoursRow = rules.find((r) => r.severity === 'critical');
@@ -326,26 +388,30 @@ export async function computeAndStoreEmployeeKpi(
     foodSafetyWeight,
     teamImprovementDelta: null,
     approvedEmployeeError: branchApprovedEe,
+    ...photoEv,
   };
 
   const hrNoteRows = await prisma.hrNote.findMany({
-    where: { employeeId },
+    where: {
+      employeeId,
+      ...(dueAtFilter ? { createdAt: dueAtFilter } : {}),
+    },
     select: { score: true, createdAt: true },
   });
-  const hrScores = hrNoteRows.filter((n) => inPeriod(n.createdAt, periodKey)).map((n) => n.score);
+  const hrScores = (dueAtFilter ? hrNoteRows : hrNoteRows.filter((n) => inPeriod(n.createdAt, periodKey))).map(
+    (n) => n.score
+  );
 
   const base =
     subjectRole === 'manager'
-      ? managerKpi(mgrEv, (weights as unknown as typeof DEFAULT_WEIGHTS.manager) ?? DEFAULT_WEIGHTS.manager)
+      ? managerKpi(mgrEv, weights as typeof DEFAULT_WEIGHTS.manager)
       : subjectRole === 'assistant_manager'
-        ? assistantManagerKpi(
-            amEv,
-            (weights as unknown as typeof DEFAULT_WEIGHTS.assistant_manager) ?? DEFAULT_WEIGHTS.assistant_manager
-          )
-        : staffKpi(staffEv, (weights as unknown as typeof DEFAULT_WEIGHTS.staff) ?? DEFAULT_WEIGHTS.staff);
+        ? assistantManagerKpi(amEv, weights as typeof DEFAULT_WEIGHTS.assistant_manager)
+        : staffKpi(staffEv, weights as typeof DEFAULT_WEIGHTS.staff);
   const result = withHrNotesKpi(base, hrScores);
 
-  const amProvisional = subjectRole === 'assistant_manager';
+  const amHasPhotoEvidence = (photoEv.photoExpected ?? 0) > 0;
+  const amProvisional = subjectRole === 'assistant_manager' && !amHasPhotoEvidence;
   const explanation = {
     mode: effectiveStoreMode,
     purpose: 'operational_hr_review_only',
@@ -399,6 +465,68 @@ export async function computeAndStoreCurrentEmployeeKpis(
   const week = await computeAndStoreEmployeeKpi(prisma, employeeId, weekPeriodKey(now));
   const month = await computeAndStoreEmployeeKpi(prisma, employeeId, monthPeriodKey(now));
   return { day, week, month };
+}
+
+export const KPI_CRON_CURSOR_KEY = 'kpi_cron_employee_cursor';
+export const KPI_CRON_BATCH = 8;
+export const KPI_ROSTER_LIVE_FILL = 6;
+export const KPI_ROSTER_ROLES = ['staff', 'assistant_manager', 'manager'] as const;
+export const KPI_STORE_MODE = 'operational';
+
+export type StoredKpiExplanation = Awaited<ReturnType<typeof computeAndStoreEmployeeKpi>>;
+
+export function parseStoredKpiExplanation(
+  explanationJson: string,
+  total: number | null
+): StoredKpiExplanation | null {
+  try {
+    const parsed = JSON.parse(explanationJson) as StoredKpiExplanation;
+    if (!parsed || !Array.isArray(parsed.components)) return null;
+    return {
+      ...parsed,
+      total: total ?? parsed.total ?? null,
+      displayTotal: parsed.individualScorePublished === false ? parsed.displayTotal ?? null : total ?? parsed.total,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Walks the roster in small batches so cron keeps day/week/month scores current without extra taps. */
+export async function computeOperationalKpisIfDue(prisma: PrismaClient, now = new Date()) {
+  const employees = await prisma.employee.findMany({
+    where: { status: { not: 'terminated' }, role: { in: [...KPI_ROSTER_ROLES] } },
+    select: { id: true },
+    orderBy: { id: 'asc' },
+  });
+  if (!employees.length) return { computed: 0, employees: 0, cursor: '' };
+
+  const cursorRow = await prisma.qcAppConfig.findUnique({ where: { key: KPI_CRON_CURSOR_KEY } });
+  const lastId = cursorRow?.value ?? '';
+  let start = employees.findIndex((e) => e.id > lastId);
+  if (start < 0) start = 0;
+  const slice = employees.slice(start, start + KPI_CRON_BATCH);
+  const nextCursor = slice.length < KPI_CRON_BATCH || start + KPI_CRON_BATCH >= employees.length ? '' : slice[slice.length - 1]!.id;
+
+  let computed = 0;
+  let failed = 0;
+  for (const emp of slice) {
+    try {
+      await computeAndStoreCurrentEmployeeKpis(prisma, emp.id, now);
+      computed += 1;
+    } catch (e) {
+      failed += 1;
+      console.error('[kpi] automatic compute failed', emp.id, e);
+    }
+  }
+
+  await prisma.qcAppConfig.upsert({
+    where: { key: KPI_CRON_CURSOR_KEY },
+    update: { value: nextCursor },
+    create: { key: KPI_CRON_CURSOR_KEY, value: nextCursor },
+  });
+
+  return { computed, failed, employees: slice.length, cursor: nextCursor };
 }
 
 export function isInspectionCategory(category: string): boolean {

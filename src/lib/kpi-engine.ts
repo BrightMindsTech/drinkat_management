@@ -95,7 +95,25 @@ export function resolveStaffWeights(
   };
 }
 
-export type StaffEvidence = {
+export type PhotoKpiEvidence = {
+  photoSubmitted?: number;
+  photoExpected?: number;
+  photoUniqueDays?: number;
+  photoDaysElapsed?: number;
+  photoApproved?: number;
+  photoReviewed?: number;
+  photoQualitySum?: number;
+  photoQualityCount?: number;
+};
+
+export type PhotoKpiWeights = {
+  photo_submission?: number;
+  photo_consistency?: number;
+  photo_approval?: number;
+  photo_quality?: number;
+};
+
+export type StaffEvidence = PhotoKpiEvidence & {
   onTimeCompleted: number;
   eligibleDue: number;
   qualityScoreSum: number;
@@ -112,15 +130,75 @@ export type StaffEvidence = {
   repeatCount: number;
   exposureCount: number;
   approvedEmployeeError: boolean;
-  photoSubmitted?: number;
-  photoExpected?: number;
-  photoUniqueDays?: number;
-  photoDaysElapsed?: number;
-  photoApproved?: number;
-  photoReviewed?: number;
-  photoQualitySum?: number;
-  photoQualityCount?: number;
 };
+
+/** Photo checks are live operational evidence. Min sample is 1 so daily scores are not blank. */
+export function photoKpiComponents(ev: PhotoKpiEvidence, weights: PhotoKpiWeights = {}): KpiComponent[] {
+  const comps: KpiComponent[] = [];
+  if ((weights.photo_submission ?? 0) > 0) {
+    comps.push(
+      componentFromRatio('photo_submission', weights.photo_submission!, ev.photoSubmitted ?? 0, ev.photoExpected ?? 0, 1)
+    );
+  }
+  if ((weights.photo_consistency ?? 0) > 0) {
+    comps.push(
+      componentFromRatio(
+        'photo_consistency',
+        weights.photo_consistency!,
+        ev.photoUniqueDays ?? 0,
+        ev.photoDaysElapsed ?? 0,
+        1
+      )
+    );
+  }
+  if ((weights.photo_approval ?? 0) > 0) {
+    comps.push(
+      componentFromRatio('photo_approval', weights.photo_approval!, ev.photoApproved ?? 0, ev.photoReviewed ?? 0, 1)
+    );
+  }
+  if ((weights.photo_quality ?? 0) > 0) {
+    comps.push(
+      componentFromRatio(
+        'photo_quality',
+        weights.photo_quality!,
+        ev.photoQualitySum ?? 0,
+        (ev.photoQualityCount ?? 0) * 100,
+        1
+      )
+    );
+  }
+  return comps;
+}
+
+export function mergeApprovedPhotoWeights<T extends PhotoKpiWeights>(
+  base: T,
+  stored: Partial<Record<string, number>> | undefined,
+  photoApproved: boolean
+): T {
+  const w = { ...base, ...(stored ?? {}) };
+  if (!photoApproved) {
+    return {
+      ...w,
+      photo_submission: 0,
+      photo_consistency: 0,
+      photo_approval: 0,
+      photo_quality: 0,
+    };
+  }
+  return {
+    ...w,
+    photo_submission:
+      (stored?.photo_submission ?? 0) > 0 ? Number(stored?.photo_submission) : APPROVED_PHOTO_KPI_WEIGHTS.photo_submission,
+    photo_consistency:
+      (stored?.photo_consistency ?? 0) > 0
+        ? Number(stored?.photo_consistency)
+        : APPROVED_PHOTO_KPI_WEIGHTS.photo_consistency,
+    photo_approval:
+      (stored?.photo_approval ?? 0) > 0 ? Number(stored?.photo_approval) : APPROVED_PHOTO_KPI_WEIGHTS.photo_approval,
+    photo_quality:
+      (stored?.photo_quality ?? 0) > 0 ? Number(stored?.photo_quality) : APPROVED_PHOTO_KPI_WEIGHTS.photo_quality,
+  };
+}
 
 /** Checklist quality: ratio uses weights; Scored/Provisional uses answer count (spec §B). */
 export function checklistQualityComponent(
@@ -255,18 +333,7 @@ export function staffKpi(ev: StaffEvidence, weights = DEFAULT_WEIGHTS.staff) {
     mayPenalize
       ? recurringIssuesComponent(w.recurring_issues, ev.repeatCount, ev.exposureCount)
       : { key: 'recurring_issues', weight: w.recurring_issues, raw: null, status: 'not_rated', evidenceCount: 0 },
-    ...(w.photo_submission > 0
-      ? [componentFromRatio('photo_submission', w.photo_submission, ev.photoSubmitted ?? 0, ev.photoExpected ?? 0, 1)]
-      : []),
-    ...(w.photo_consistency > 0
-      ? [componentFromRatio('photo_consistency', w.photo_consistency, ev.photoUniqueDays ?? 0, ev.photoDaysElapsed ?? 0, 1)]
-      : []),
-    ...(w.photo_approval > 0
-      ? [componentFromRatio('photo_approval', w.photo_approval, ev.photoApproved ?? 0, ev.photoReviewed ?? 0, 1)]
-      : []),
-    ...(w.photo_quality > 0
-      ? [componentFromRatio('photo_quality', w.photo_quality, ev.photoQualitySum ?? 0, (ev.photoQualityCount ?? 0) * 100, 1)]
-      : []),
+    ...photoKpiComponents(ev, w),
   ];
   return combineWeighted(comps);
 }
@@ -291,7 +358,7 @@ export function answerQualityParts(
   return { scoreSum, weightSum, count };
 }
 
-export type AmEvidence = {
+export type AmEvidence = PhotoKpiEvidence & {
   branchCompleted: number;
   branchDue: number;
   issuesResolvedOnTime: number;
@@ -309,7 +376,7 @@ export type AmEvidence = {
   approvedEmployeeError: boolean;
 };
 
-export type MgrEvidence = {
+export type MgrEvidence = PhotoKpiEvidence & {
   overallQcSum: number;
   overallQcWeight: number;
   criticalResolvedWithinSla: number;
@@ -329,7 +396,7 @@ export type MgrEvidence = {
   approvedEmployeeError: boolean;
 };
 
-export function assistantManagerKpi(ev: AmEvidence, weights = DEFAULT_WEIGHTS.assistant_manager) {
+export function assistantManagerKpi(ev: AmEvidence, weights: typeof DEFAULT_WEIGHTS.assistant_manager & PhotoKpiWeights = DEFAULT_WEIGHTS.assistant_manager) {
   const mayPenalize = ev.approvedEmployeeError;
   const comps: KpiComponent[] = [
     componentFromRatio('branch_completion', weights.branch_completion, ev.branchCompleted, ev.branchDue, 10),
@@ -359,11 +426,12 @@ export function assistantManagerKpi(ev: AmEvidence, weights = DEFAULT_WEIGHTS.as
       ev.correctiveEligible,
       5
     ),
+    ...photoKpiComponents(ev, weights),
   ];
   return combineWeighted(comps);
 }
 
-export function managerKpi(ev: MgrEvidence, weights = DEFAULT_WEIGHTS.manager) {
+export function managerKpi(ev: MgrEvidence, weights: typeof DEFAULT_WEIGHTS.manager & PhotoKpiWeights = DEFAULT_WEIGHTS.manager) {
   const mayPenalize = ev.approvedEmployeeError;
   const team: KpiComponent =
     ev.teamImprovementDelta == null
@@ -403,6 +471,7 @@ export function managerKpi(ev: MgrEvidence, weights = DEFAULT_WEIGHTS.manager) {
     componentFromRatio('product_quality', weights.product_quality, ev.productQualitySum, ev.productQualityWeight, 10),
     componentFromRatio('food_safety', weights.food_safety, ev.foodSafetySum, ev.foodSafetyWeight, 10),
     team,
+    ...photoKpiComponents(ev, weights),
   ];
   return combineWeighted(comps);
 }

@@ -2,7 +2,14 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireKpiRosterViewer } from '@/lib/session';
 import { withApiErrors } from '@/lib/api-route-error';
-import { computeAndStoreEmployeeKpi, resolveKpiPeriod } from '@/lib/kpi-compute';
+import {
+  computeAndStoreEmployeeKpi,
+  KPI_ROSTER_LIVE_FILL,
+  KPI_ROSTER_ROLES,
+  KPI_STORE_MODE,
+  parseStoredKpiExplanation,
+  resolveKpiPeriod,
+} from '@/lib/kpi-compute';
 import { hasCapability, normalizeUserRole } from '@/lib/permissions';
 
 export const GET = withApiErrors(async function GET(req: NextRequest) {
@@ -34,24 +41,63 @@ export const GET = withApiErrors(async function GET(req: NextRequest) {
     where: {
       status: { not: 'terminated' },
       ...(branchId ? { branchId } : {}),
-      role: { in: ['staff', 'assistant_manager', 'manager'] },
+      role: { in: [...KPI_ROSTER_ROLES] },
     },
     select: { id: true, name: true, role: true, branchId: true, branch: { select: { name: true } } },
     orderBy: { name: 'asc' },
   });
 
-  const scores = [];
-  for (const emp of employees) {
+  const stored = await prisma.kpiPeriodScore.findMany({
+    where: {
+      periodKey,
+      mode: KPI_STORE_MODE,
+      employeeId: { in: employees.map((e) => e.id) },
+    },
+    select: { employeeId: true, total: true, explanationJson: true },
+  });
+  const storedById = new Map(stored.map((row) => [row.employeeId, row]));
+
+  const missing = employees.filter((emp) => !storedById.has(emp.id));
+  for (const emp of missing.slice(0, KPI_ROSTER_LIVE_FILL)) {
     const explanation = await computeAndStoreEmployeeKpi(prisma, emp.id, periodKey);
-    scores.push({
+    storedById.set(emp.id, {
+      employeeId: emp.id,
+      total: explanation.total,
+      explanationJson: JSON.stringify(explanation),
+    });
+  }
+
+  const scores = employees.map((emp) => {
+    const row = storedById.get(emp.id);
+    const explanation = row
+      ? parseStoredKpiExplanation(row.explanationJson, row.total)
+      : {
+          mode: KPI_STORE_MODE,
+          purpose: 'operational_hr_review_only',
+          employmentDecisionUse: false,
+          subjectRole: emp.role,
+          periodKey,
+          officialPublicationAllowed: false,
+          officialCyclesCompleted: 0,
+          officialWouldBeAllowed: false,
+          individualScorePublished: true,
+          components: [],
+          total: null,
+          displayTotal: null,
+          usedWeight: 0,
+          note: 'Score is updating automatically.',
+          aiMustNotCalculate: true,
+          storeModeUnused: KPI_STORE_MODE,
+        };
+    return {
       employeeId: emp.id,
       name: emp.name,
       role: emp.role,
       branchId: emp.branchId,
       branchName: emp.branch.name,
       ...explanation,
-    });
-  }
+    };
+  });
   return Response.json({
     range,
     periodKey,

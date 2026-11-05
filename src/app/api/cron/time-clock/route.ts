@@ -18,6 +18,7 @@ import {
 import { ensureOfficialPhotoProgram } from '@/lib/photo-ops-program';
 import { sendPhotoCheckRemindersIfDue } from '@/lib/photo-reminders';
 import { purgeExpiredPhotoArchive } from '@/lib/photo-archive';
+import { computeOperationalKpisIfDue } from '@/lib/kpi-compute';
 
 /**
  * Authenticated with CRON_SECRET (query `?secret=` or `Authorization: Bearer`).
@@ -138,6 +139,13 @@ export async function GET(req: Request) {
     }
   }
 
+  let kpi: { computed: number; failed: number; employees: number; cursor: string } | null = null;
+  try {
+    kpi = await computeOperationalKpisIfDue(prisma);
+  } catch (e) {
+    console.error('[cron/maintenance] KPI compute failed', e);
+  }
+
   return Response.json({
     ok: true,
     db: true,
@@ -155,5 +163,6 @@ export async function GET(req: Request) {
     photoReminders,
     photoArchivePurge,
     photoCheckScheduler: isPhotoCheckSchedulerEnabled(),
+    kpi,
   });
 }

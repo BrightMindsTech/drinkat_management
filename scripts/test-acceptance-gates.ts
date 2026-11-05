@@ -89,6 +89,7 @@ assert(
 assert(cronTimeClock.includes('generateInspectionTasksForDay'));
 assert(cronTimeClock.includes('generatePhotoCheckTasksForDay'));
 assert(cronTimeClock.includes('isPhotoCheckSchedulerEnabled'));
+assert(cronTimeClock.includes('computeOperationalKpisIfDue'));
 const prodWrangler = fs.readFileSync(path.join(root, 'wrangler.jsonc'), 'utf8');
 assert(
   !prodWrangler.includes('INSPECTION_SCHEDULER_ENABLED'),

@@ -2,13 +2,25 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { officialKpiAllowed, hrNotesComponent, hrNoteTone, withHrNotesKpi } from '../src/lib/kpi-engine';
+import {
+  officialKpiAllowed,
+  hrNotesComponent,
+  hrNoteTone,
+  withHrNotesKpi,
+  managerKpi,
+  assistantManagerKpi,
+  mergeApprovedPhotoWeights,
+  DEFAULT_WEIGHTS,
+  APPROVED_PHOTO_KPI_WEIGHTS,
+} from '../src/lib/kpi-engine';
 import {
   dayPeriodKey,
   weekPeriodKey,
   monthPeriodKey,
   resolveKpiPeriod,
   kpiInstantInPeriod,
+  photoPeriodKeysForKpi,
+  kpiPeriodInstantBounds,
 } from '../src/lib/kpi-compute';
 import { canAdoptSopSource, canApproveSopSource, isSyntheticSopSourceRef } from '../src/lib/drinkat-sop-drafts';
 
@@ -32,6 +44,10 @@ assert.match(compute, /resolveStaffWeights/);
 assert.match(compute, /weekPeriodKey/);
 assert.match(compute, /dayPeriodKey/);
 assert.match(compute, /computeAndStoreCurrentEmployeeKpis/);
+assert.match(compute, /computeOperationalKpisIfDue/);
+assert.match(compute, /mergeApprovedPhotoWeights/);
+assert.match(compute, /photoPeriodKeysForKpi/);
+assert.match(compute, /amHasPhotoEvidence/);
 
 const noonAmman = new Date('2026-10-12T09:00:00.000Z');
 assert.equal(dayPeriodKey(noonAmman), '2026-10-12');
@@ -40,11 +56,85 @@ assert.equal(monthPeriodKey(noonAmman), '2026-10');
 assert.equal(resolveKpiPeriod('week', noonAmman).periodKey, '2026-W42');
 assert.equal(kpiInstantInPeriod(noonAmman, '2026-W42'), true);
 assert.equal(kpiInstantInPeriod(noonAmman, '2026-10-11'), false);
+assert.deepEqual(photoPeriodKeysForKpi('2026-10-12'), ['2026-10-12']);
+assert.equal(photoPeriodKeysForKpi('2026-10').length, 31);
+assert.equal(photoPeriodKeysForKpi('2026-W42')[0], '2026-10-12');
+assert.equal(photoPeriodKeysForKpi('2026-W42').length, 7);
+const dayBounds = kpiPeriodInstantBounds('2026-10-12');
+assert.ok(dayBounds && kpiInstantInPeriod(noonAmman, '2026-10-12'));
+assert.ok(dayBounds.start.getTime() <= noonAmman.getTime() && noonAmman.getTime() < dayBounds.end.getTime());
+
+const mgrPhoto = managerKpi(
+  {
+    overallQcSum: 0,
+    overallQcWeight: 0,
+    criticalResolvedWithinSla: 0,
+    criticalResolvedInPeriod: 0,
+    criticalOverdueUnresolved: 0,
+    correctiveClosedOnTime: 0,
+    correctiveEligible: 0,
+    checklistCompleted: 0,
+    checklistDue: 0,
+    repeatCount: 0,
+    exposureCount: 0,
+    productQualitySum: 0,
+    productQualityWeight: 0,
+    foodSafetySum: 0,
+    foodSafetyWeight: 0,
+    teamImprovementDelta: null,
+    approvedEmployeeError: false,
+    photoSubmitted: 8,
+    photoExpected: 10,
+    photoUniqueDays: 1,
+    photoDaysElapsed: 1,
+    photoApproved: 0,
+    photoReviewed: 0,
+    photoQualitySum: 0,
+    photoQualityCount: 0,
+  },
+  mergeApprovedPhotoWeights(DEFAULT_WEIGHTS.manager, undefined, true)
+);
+assert.ok(mgrPhoto.total != null);
+assert.ok(mgrPhoto.components.some((c) => c.key === 'photo_submission' && c.status === 'scored'));
+
+const amPhoto = assistantManagerKpi(
+  {
+    branchCompleted: 0,
+    branchDue: 0,
+    issuesResolvedOnTime: 0,
+    issuesEligible: 0,
+    staffFollowupDone: 0,
+    staffFollowupEligible: 0,
+    openingClosingOnTime: 0,
+    openingClosingDue: 0,
+    repeatCount: 0,
+    exposureCount: 0,
+    productCleaningSum: 0,
+    productCleaningWeight: 0,
+    correctiveClosedOnTime: 0,
+    correctiveEligible: 0,
+    approvedEmployeeError: false,
+    photoSubmitted: 10,
+    photoExpected: 10,
+    photoUniqueDays: 1,
+    photoDaysElapsed: 1,
+    photoApproved: 0,
+    photoReviewed: 0,
+    photoQualitySum: 0,
+    photoQualityCount: 0,
+  },
+  mergeApprovedPhotoWeights(DEFAULT_WEIGHTS.assistant_manager, undefined, true)
+);
+assert.ok(amPhoto.total != null);
+assert.equal(mergeApprovedPhotoWeights(DEFAULT_WEIGHTS.staff, undefined, true).photo_submission, APPROVED_PHOTO_KPI_WEIGHTS.photo_submission);
 
 const branch = fs.readFileSync(path.join(root, 'src/app/api/kpi/branch/route.ts'), 'utf8');
 assert.match(branch, /requireKpiRosterViewer/);
 assert.match(branch, /hrKpiReviewer/);
 assert.match(branch, /range/);
+assert.match(branch, /kpiPeriodScore/);
+assert.match(branch, /parseStoredKpiExplanation/);
+assert.match(branch, /KPI_ROSTER_LIVE_FILL/);
 
 const panel = fs.readFileSync(path.join(root, 'src/components/qc-ops/KpiPanel.tsx'), 'utf8');
 assert.match(panel, /Daily/);
