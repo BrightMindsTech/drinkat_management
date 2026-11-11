@@ -1,23 +1,52 @@
 'use client';
 
 import { signIn } from 'next-auth/react';
-import { useState, Suspense } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
 import { useSubmitLock } from '@/lib/use-async-action-lock';
+import { safeInternalPath } from '@/lib/push-navigation';
+import { registerThisTrustedDevice, resumeTrustedDeviceSession } from '@/lib/trusted-device-client';
 
 function LoginForm() {
   const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [resuming, setResuming] = useState(true);
   const submitLock = useSubmitLock();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') ?? '/dashboard';
+  const callbackUrl = safeInternalPath(searchParams.get('callbackUrl') ?? '/dashboard');
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { fetchAuthSession } = await import('@/lib/auth-session-client');
+      const session = await fetchAuthSession();
+      if (cancelled) return;
+      if (session.hasUser) {
+        await registerThisTrustedDevice();
+        router.replace(callbackUrl);
+        router.refresh();
+        return;
+      }
+      if (await resumeTrustedDeviceSession()) {
+        await registerThisTrustedDevice();
+        if (cancelled) return;
+        router.replace(callbackUrl);
+        router.refresh();
+        return;
+      }
+      if (!cancelled) setResuming(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [callbackUrl, router]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,9 +57,14 @@ function LoginForm() {
         setError(t.login.error);
         return;
       }
+      await registerThisTrustedDevice();
       router.push(callbackUrl);
       router.refresh();
     });
+  }
+
+  if (resuming) {
+    return <LoginFallback />;
   }
 
   return (

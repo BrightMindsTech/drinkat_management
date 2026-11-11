@@ -175,7 +175,7 @@ export async function GET() {
         id: `photo-${p.id}`,
         type: 'photo_review',
         title: p.employee.name,
-        href: '/dashboard/photo-review',
+        href: `/dashboard/photo-review?submission=${encodeURIComponent(p.id)}`,
       })),
       ...pendingQcForms.map((f) => ({
         id: `qcform-${f.id}`,

@@ -6,6 +6,7 @@
 function normalizeInAppPath(url) {
   const raw = (url ?? '').trim();
   if (!raw) return null;
+  if (raw.startsWith('//')) return null;
   if (raw.startsWith('/')) return raw;
   try {
     const u = new URL(raw);
@@ -32,14 +33,10 @@ const PUSH_TYPE_ROUTES = {
       ? `/dashboard/qc#qc-review-submission-${d.submissionId}`
       : '/dashboard/qc#qc-review-submissions',
   qc_assignment_created: (d) =>
-    d.assignmentId
-      ? `/dashboard/qc#qc-assignment-${d.assignmentId}`
-      : '/dashboard/qc',
+    d.assignmentId ? `/dashboard/qc#qc-assignment-${d.assignmentId}` : '/dashboard/qc',
   qc_assignment_removed: () => '/dashboard/qc',
   staff_qc_submit: (d) =>
-    d.assignmentId
-      ? `/dashboard/qc#qc-assignment-${d.assignmentId}`
-      : '/dashboard/qc',
+    d.assignmentId ? `/dashboard/qc#qc-assignment-${d.assignmentId}` : '/dashboard/qc',
   advance_request_pending_review: () => '/dashboard/hr#hr-owner-advances',
   advance_decided: () => '/dashboard/hr',
   leave_request_pending_review: () => '/dashboard/hr#hr-owner-leave',
@@ -52,18 +49,38 @@ const PUSH_TYPE_ROUTES = {
   push_test: () => '/dashboard/messages',
   push_connected: () => '/dashboard',
   daily_app_reminder: () => '/dashboard',
+  inspection_submitted: () => '/dashboard/issues',
+  inspection_due: (d) => (d.taskId ? `/dashboard/tasks/${encodeURIComponent(d.taskId)}` : '/dashboard/tasks'),
+  inspection_overdue: (d) =>
+    d.taskId ? `/dashboard/tasks/${encodeURIComponent(d.taskId)}` : '/dashboard/tasks',
+  issue_escalation: (d) => (d.issueId ? `/dashboard/issues/${d.issueId}` : '/dashboard/issues'),
+  photo_check_due: (d) =>
+    d.taskId ? `/dashboard/photo?task=${encodeURIComponent(d.taskId)}` : '/dashboard/photo',
+  photo_check_overdue: (d) =>
+    d.taskId ? `/dashboard/photo?task=${encodeURIComponent(d.taskId)}` : '/dashboard/photo',
+  photo_check_review: (d) =>
+    d.submissionId
+      ? `/dashboard/photo-review?submission=${encodeURIComponent(d.submissionId)}`
+      : '/dashboard/photo-review',
+  staff_note: () => '/dashboard',
+  qc_field_report: (d) =>
+    d.reportId ? `/dashboard/qc-reports?report=${encodeURIComponent(d.reportId)}` : '/dashboard/qc-reports',
 };
+
+function isSpecificPath(path) {
+  return /[?#]/.test(path) || /^\/dashboard\/(?:issues|tasks)\/[^/?#]+/.test(path);
+}
 
 function resolvePushNavigationUrl(data) {
   const type = (data.type || '').trim();
   if (type === 'owner_broadcast') {
     return normalizeInAppPath(data.url);
   }
+  const fromType = type && PUSH_TYPE_ROUTES[type] ? PUSH_TYPE_ROUTES[type](data) : null;
   const explicit = normalizeInAppPath(data.url);
-  if (explicit) return explicit;
-  if (!type) return null;
-  const build = PUSH_TYPE_ROUTES[type];
-  return build ? build(data) : null;
+  if (fromType && isSpecificPath(fromType)) return fromType;
+  if (explicit && isSpecificPath(explicit)) return explicit;
+  return fromType || explicit || null;
 }
 
 function enrichPushData(data) {
@@ -73,12 +90,7 @@ function enrichPushData(data) {
     if (path) out.url = path;
     return out;
   }
-  if (!normalizeInAppPath(out.url)) {
-    const resolved = resolvePushNavigationUrl(out);
-    if (resolved) out.url = resolved;
-  } else {
-    const path = normalizeInAppPath(out.url);
-    if (path) out.url = path;
-  }
+  const resolved = resolvePushNavigationUrl(out);
+  if (resolved) out.url = resolved;
   return out;
 }

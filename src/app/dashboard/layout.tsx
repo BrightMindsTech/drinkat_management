@@ -9,6 +9,7 @@ import { AppReconnectingNotice } from '@/components/AppReconnectingNotice';
 import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery';
 import { SessionKeepalive } from '@/components/SessionKeepalive';
 import { SessionStabilityGuard } from '@/components/SessionStabilityGuard';
+import { TrustedDeviceSync } from '@/components/TrustedDeviceSync';
 import { DashboardLayoutClient } from '@/components/dashboard/DashboardLayoutClient';
 import { PushForegroundBridge } from '@/components/PushForegroundBridge';
 import { PhotoTaskReminderPulse } from '@/components/photo-check/PhotoTaskReminderPulse';
@@ -73,6 +74,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <InAppNotificationProvider>
       <PushForegroundBridge />
       <PhotoTaskReminderPulse />
+      <TrustedDeviceSync />
       <SessionStabilityGuard />
       <SessionKeepalive />
       <AppReconnectingNotice />

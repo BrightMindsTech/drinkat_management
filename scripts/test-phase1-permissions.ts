@@ -75,6 +75,7 @@ const PUBLIC_WITHOUT_SESSION = new Set([
   'auth/[...nextauth]',
   'client-error',
   'health/ready',
+  'trusted-device/resume',
 ]);
 
 const ungated: string[] = [];

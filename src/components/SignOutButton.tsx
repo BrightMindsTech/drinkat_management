@@ -14,6 +14,8 @@ export function SignOutButton() {
     if (signingOut) return;
     setSigningOut(true);
     try {
+      const { revokeThisTrustedDevice } = await import('@/lib/trusted-device-client');
+      await revokeThisTrustedDevice();
       // Explicit client navigation after session invalidation is more reliable.
       await signOut({ redirect: false });
       router.replace('/login');

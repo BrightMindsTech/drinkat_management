@@ -55,7 +55,7 @@ function tierForRequest(pathname: string, method: string): LimitTier | null {
   if (RATE_LIMIT_EXEMPT_PATHS.has(pathname)) {
     return null;
   }
-  if (pathname.startsWith('/api/auth/')) return 'auth';
+  if (pathname.startsWith('/api/auth/') || pathname === '/api/trusted-device/resume') return 'auth';
   if (pathname.startsWith('/api/ai/')) return 'write';
   if (pathname === '/api/reports' && method === 'GET') return 'heavy';
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return 'read';

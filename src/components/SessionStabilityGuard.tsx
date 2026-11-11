@@ -24,6 +24,13 @@ async function recoverSession(router: ReturnType<typeof useRouter>): Promise<boo
       }
       return true;
     }
+    if (i === 1) {
+      const { resumeTrustedDeviceSession } = await import('@/lib/trusted-device-client');
+      if (await resumeTrustedDeviceSession()) {
+        router.refresh();
+        return true;
+      }
+    }
     await new Promise((r) => setTimeout(r, RECOVER_MS));
   }
   return false;
@@ -58,7 +65,8 @@ export function SessionStabilityGuard() {
         res.status === 401 &&
         url.includes('/api/') &&
         !url.includes('/api/auth/') &&
-        !url.includes('/api/health/')
+        !url.includes('/api/health/') &&
+        !url.includes('/api/trusted-device/')
       ) {
         window.dispatchEvent(new CustomEvent(API_UNAUTHORIZED));
       }

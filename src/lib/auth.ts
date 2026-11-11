@@ -4,7 +4,7 @@ import * as bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
 
 /** Active users stay signed in until explicit sign-out (sliding refresh via updateAge). */
-const SESSION_MAX_AGE_SEC = 365 * 24 * 60 * 60;
+export const SESSION_MAX_AGE_SEC = 365 * 24 * 60 * 60;
 const SESSION_UPDATE_AGE_SEC = 24 * 60 * 60;
 
 const useSecureCookies =
@@ -13,6 +13,14 @@ const useSecureCookies =
 function isProductionWorkerHost(): boolean {
   const url = `${process.env.WORKER_PUBLIC_URL ?? ''} ${process.env.NEXTAUTH_URL ?? ''}`;
   return url.includes('drinkat-management') && !url.includes('drinkat-qc-staging') && !url.includes('localhost');
+}
+
+export function getAuthSecret(): string {
+  return resolveAuthSecret();
+}
+
+export function sessionTokenCookieName(): string {
+  return useSecureCookies ? '__Secure-next-auth.session-token' : 'next-auth.session-token';
 }
 
 function resolveAuthSecret(): string {

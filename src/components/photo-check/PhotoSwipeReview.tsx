@@ -60,7 +60,20 @@ export function PhotoSwipeReview() {
       const res = await fetch('/api/photo-checks/queue', { credentials: 'include', cache: 'no-store' });
       const json = (await res.json()) as { items?: QueueItem[]; error?: string };
       if (!res.ok) throw new Error(json.error || t.photoReview.loadFailed);
-      setItems(Array.isArray(json.items) ? json.items : []);
+      const next = Array.isArray(json.items) ? json.items : [];
+      const focus =
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('submission')
+          : null;
+      if (focus) {
+        const i = next.findIndex((x) => x.id === focus);
+        if (i > 0) {
+          const hit = next[i];
+          next.splice(i, 1);
+          next.unshift(hit);
+        }
+      }
+      setItems(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : t.photoReview.loadFailed);
     } finally {

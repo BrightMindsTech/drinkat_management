@@ -87,6 +87,22 @@ model User {
   photoCheckReferencesCreated PhotoCheckReference[] @relation("PhotoRefCreator")
   photoCheckReferencesApproved PhotoCheckReference[] @relation("PhotoRefApprover")
   qcFieldReports    QcFieldReport[]
+  trustedDevices    TrustedDevice[]
+}
+
+/// Opaque resume token for this phone after first login. Revoked on Sign out.
+model TrustedDevice {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId   String
+  tokenHash  String
+  userAgent  String   @default("")
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  @@unique([userId, deviceId])
+  @@index([tokenHash])
 }
 
 /// User-submitted app bug / technical support tickets (screenshots stored as upload paths JSON).

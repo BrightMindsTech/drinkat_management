@@ -13,6 +13,8 @@ import { employeeAssignedType } from '@/lib/photo-eligibility';
 import { photoAiContext } from '@/lib/photo-ai-context';
 import { clampPhotoLimits, normalizeSubmissionUploadPaths } from '@/lib/photo-multi';
 import { isUniqueConflictError } from '@/lib/db-errors';
+import { listPhotoReviewerUserIds } from '@/lib/photo-review-notify';
+import { notifyUsers } from '@/lib/user-notify';
 import {
   BRANCH_PHOTO_CLAIMED_CODE,
   claimPhotoWindowForBranch,
@@ -273,6 +275,24 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
     kpi = await computeAndStoreCurrentEmployeeKpis(prisma, user.employee.id);
   } catch {
     kpi = null;
+  }
+
+  try {
+    const reviewerIds = await listPhotoReviewerUserIds(prisma, session.user.id);
+    const reviewUrl = `/dashboard/photo-review?submission=${encodeURIComponent(created.id)}`;
+    await notifyUsers(prisma, reviewerIds, {
+      category: 'photo_check_review',
+      title: 'Photo check pending review',
+      body: `${user.employee.name} · ${task.type.titleEn}`,
+      dataJson: JSON.stringify({ type: 'photo_check_review', submissionId: created.id, url: reviewUrl }),
+      push: {
+        title: 'Photo check pending review',
+        body: `${user.employee.name} · ${task.type.titleEn}`,
+        data: { type: 'photo_check_review', submissionId: created.id, url: reviewUrl },
+      },
+    });
+  } catch {
+    /* inbox/push must not block a successful submit */
   }
 
   return Response.json({

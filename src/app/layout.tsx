@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { AuthFetchRetry } from '@/components/AuthFetchRetry';
+import { PushDeepLinkHost } from '@/components/PushDeepLinkHost';
 import { SessionProvider } from '@/components/SessionProvider';
 import { ModalScrollIntoViewListener } from '@/components/ModalScrollIntoViewListener';
 import { MobileZoomResetGesture } from '@/components/MobileZoomResetGesture';
@@ -50,6 +51,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <AsyncActionProvider>
             <AuthFetchRetry />
             <SessionProvider session={session}>
+              <PushDeepLinkHost />
               <ModalScrollIntoViewListener />
               <MobileZoomResetGesture />
               {children}

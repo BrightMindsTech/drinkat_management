@@ -36,6 +36,7 @@ const STEPS: Step[] = [
   { id: '0024', file: 'prisma/migrations/0024_photo_multi.sql', alreadyApplied: (c) => c.tables.has('PhotoCheckSubmissionImage') && c.photoTypeCols.has('minPhotos') },
   { id: '0025', file: 'prisma/migrations/0025_photo_limits_1_3.sql', alreadyApplied: (c) => c.tables.has('PhotoUploadDiscard') },
   { id: '0026', file: 'prisma/migrations/0026_hr_notes.sql', alreadyApplied: (c) => c.tables.has('HrNote') },
+  { id: '0027', file: 'prisma/migrations/0027_trusted_devices.sql', alreadyApplied: (c) => c.tables.has('TrustedDevice') },
 ];
 
 function splitSqlStatements(sql: string): string[] {
@@ -189,6 +190,9 @@ function main() {
   }
   if (!afterCtx.tables.has('HrNote')) {
     throw new Error('REFUSED: HrNote table missing after migrate');
+  }
+  if (!afterCtx.tables.has('TrustedDevice')) {
+    throw new Error('REFUSED: TrustedDevice table missing after migrate');
   }
   const after = counts();
   console.log(JSON.stringify({ phase: 'after', ...after, applied, skipped }));

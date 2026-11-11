@@ -111,11 +111,19 @@ async function postNote(userId: string, body: unknown) {
       category: 'qc_field_report',
       title: pushTitle,
       body: pushBody,
-      dataJson: JSON.stringify({ type: 'qc_field_report', reportId: item.id, url: '/dashboard/qc-reports' }),
+      dataJson: JSON.stringify({
+        type: 'qc_field_report',
+        reportId: item.id,
+        url: `/dashboard/qc-reports?report=${encodeURIComponent(item.id)}`,
+      }),
       push: {
         title: pushTitle,
         body: pushBody,
-        data: { type: 'qc_field_report', url: '/dashboard/qc-reports', reportId: item.id },
+        data: {
+          type: 'qc_field_report',
+          url: `/dashboard/qc-reports?report=${encodeURIComponent(item.id)}`,
+          reportId: item.id,
+        },
       },
     });
   }
@@ -150,11 +158,19 @@ async function postInspection(userId: string, body: unknown) {
       category: 'qc_field_report',
       title: pushTitle,
       body: pushBody,
-      dataJson: JSON.stringify({ type: 'qc_field_report', reportId: item.id, url: '/dashboard/qc-reports' }),
+      dataJson: JSON.stringify({
+        type: 'qc_field_report',
+        reportId: item.id,
+        url: `/dashboard/qc-reports?report=${encodeURIComponent(item.id)}`,
+      }),
       push: {
         title: pushTitle,
         body: pushBody,
-        data: { type: 'qc_field_report', url: '/dashboard/qc-reports', reportId: item.id },
+        data: {
+          type: 'qc_field_report',
+          url: `/dashboard/qc-reports?report=${encodeURIComponent(item.id)}`,
+          reportId: item.id,
+        },
       },
     });
   }

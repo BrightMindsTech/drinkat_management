@@ -35,7 +35,11 @@ export async function sendInspectionTaskRemindersIfDue(prisma: PrismaClient) {
       push: {
         title: overdue ? 'Inspection overdue' : 'Inspection due',
         body: task.templateVersion.title,
-        data: { type: overdue ? 'inspection_overdue' : 'inspection_due', url: '/dashboard/tasks', taskId: task.id },
+        data: {
+          type: overdue ? 'inspection_overdue' : 'inspection_due',
+          url: `/dashboard/tasks/${encodeURIComponent(task.id)}`,
+          taskId: task.id,
+        },
       },
     });
     await prisma.inspectionTask.update({

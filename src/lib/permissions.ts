@@ -348,4 +348,6 @@ export const API_ROUTE_POLICIES: Record<string, RouteAccess> = {
   'qc-reports': 'session',
   notes: 'session',
   'hr-notes': 'session',
+  'trusted-device': 'session',
+  'trusted-device/resume': 'public',
 };

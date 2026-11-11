@@ -37,6 +37,8 @@ import {
   latestPhotoReminderAt,
   shouldSendActivePhotoReminder,
 } from '../src/lib/photo-reminders';
+import { hashTrustedDeviceToken, trustedDeviceExpired } from '../src/lib/trusted-device';
+import { resolvePushNavigationUrl, safeInternalPath } from '../src/lib/push-navigation';
 import {
   PHOTO_360_OFFICIAL_WINDOWS,
   PHOTO_PROGRAM_STAMP,
@@ -888,5 +890,42 @@ assert.deepEqual(parseQcReportPhotos(JSON.stringify(['/a.jpg', '/b.jpg'])), ['/a
   assert.equal(parsedLegacy?.answers.e4, undefined);
   assert.equal(parsedLegacy?.answers.d8, undefined);
 }
+
+assert.equal(
+  resolvePushNavigationUrl({
+    type: 'qc_field_report',
+    url: '/dashboard/qc-reports',
+    reportId: 'rpt_1',
+  }),
+  '/dashboard/qc-reports?report=rpt_1'
+);
+assert.equal(
+  resolvePushNavigationUrl({
+    type: 'photo_check_due',
+    url: '/dashboard/photo',
+    taskId: 'task_9',
+  }),
+  '/dashboard/photo?task=task_9'
+);
+assert.equal(
+  resolvePushNavigationUrl({ type: 'photo_check_review', submissionId: 'sub_2' }),
+  '/dashboard/photo-review?submission=sub_2'
+);
+assert.equal(
+  resolvePushNavigationUrl({ type: 'inspection_due', url: '/dashboard/tasks', taskId: 'insp_3' }),
+  '/dashboard/tasks/insp_3'
+);
+assert.equal(safeInternalPath('https://evil.example/phish'), '/dashboard');
+assert.equal(safeInternalPath('/dashboard/qc-reports?report=a'), '/dashboard/qc-reports?report=a');
+assert.equal(hashTrustedDeviceToken('abc').length, 64);
+assert.equal(trustedDeviceExpired(new Date(Date.now() - 400 * 24 * 60 * 60 * 1000)), true);
+assert.equal(trustedDeviceExpired(new Date()), false);
+assert.match(fs.readFileSync(path.join(root, 'src/app/login/page.tsx'), 'utf8'), /resumeTrustedDeviceSession/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/SignOutButton.tsx'), 'utf8'), /revokeThisTrustedDevice/);
+assert.match(swipe, /submission/);
+assert.match(reportsUi, /get\('report'\)/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/route.ts'), 'utf8'), /photo_check_review/);
+assert.match(fs.readFileSync(path.join(root, 'public/push-navigation-sw.js'), 'utf8'), /qc_field_report/);
+assert.match(fs.readFileSync(path.join(root, 'public/push-navigation-sw.js'), 'utf8'), /photo_check_review/);
 
 console.log('photo-check: ok');

@@ -81,12 +81,15 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
   }, [load]);
 
   useEffect(() => {
-    const hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : '';
-    if (!hash || items.length === 0) return;
-    setOpenId(hash);
-    setHighlightId(hash);
+    if (typeof window === 'undefined' || items.length === 0) return;
+    const fromQuery = new URLSearchParams(window.location.search).get('report');
+    const hash = window.location.hash.replace(/^#/, '');
+    const focus = fromQuery || hash;
+    if (!focus) return;
+    setOpenId(focus);
+    setHighlightId(focus);
     requestAnimationFrame(() => {
-      document.getElementById(`qc-report-${hash}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById(`qc-report-${focus}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }, [items]);
 

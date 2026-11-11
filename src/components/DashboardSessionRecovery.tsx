@@ -33,6 +33,11 @@ export function DashboardSessionRecovery() {
         return true;
       }
       if (result.ok && !result.hasUser && i >= 6) {
+        const { resumeTrustedDeviceSession } = await import('@/lib/trusted-device-client');
+        if (await resumeTrustedDeviceSession()) {
+          router.refresh();
+          return true;
+        }
         setShowManualSignIn(true);
         return false;
       }
