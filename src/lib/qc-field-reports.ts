@@ -100,13 +100,41 @@ export function qcReportNotifyOptions(people: QcNotifyPerson[]): QcReportNotifyO
   return options;
 }
 
+export function normalizeNotifyTargets(raw: string | string[] | undefined | null): string[] {
+  const list = (Array.isArray(raw) ? raw : raw != null ? [raw] : [])
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+  const unique = [...new Set(list)];
+  return unique.length ? unique : ['all'];
+}
+
+export function peopleNotifyOptions<T extends { value: string }>(options: T[]): T[] {
+  return options.filter((o) => o.value !== 'all' && o.value !== 'managers');
+}
+
+export function pickQcReportRecipientIdsMany(
+  people: QcNotifyPerson[],
+  senderUserId: string,
+  targets: string | string[] | undefined
+): string[] {
+  const normalized = normalizeNotifyTargets(targets);
+  if (normalized.includes('all')) {
+    return pickQcReportRecipientIds(people, senderUserId, 'all');
+  }
+  const ids = new Set<string>();
+  for (const target of normalized) {
+    for (const id of pickQcReportRecipientIds(people, senderUserId, target)) ids.add(id);
+  }
+  return [...ids];
+}
+
 export async function resolveQcReportRecipients(
   prisma: PrismaClient,
   senderUserId: string,
-  target: string = 'all'
+  target: string | string[] = 'all'
 ): Promise<string[]> {
   const people = await listQcNotifyPeople(prisma);
-  return pickQcReportRecipientIds(people, senderUserId, target);
+  return pickQcReportRecipientIdsMany(people, senderUserId, target);
 }
 
 /** Branch inspection always goes to Sara, the owner, and managers of that branch. */

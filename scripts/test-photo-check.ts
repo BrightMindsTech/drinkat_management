@@ -49,7 +49,12 @@ import {
   photoScheduleDaysJson,
 } from '../src/lib/photo-official-windows';
 import { photoSchedulesMatchOfficial } from '../src/lib/photo-ops-program';
-import { pickBranchInspectionRecipientIds, pickQcReportRecipientIds } from '../src/lib/qc-field-reports';
+import {
+  pickBranchInspectionRecipientIds,
+  pickQcReportRecipientIds,
+  pickQcReportRecipientIdsMany,
+  peopleNotifyOptions,
+} from '../src/lib/qc-field-reports';
 import {
   BRANCH_INSPECTION_ITEM_IDS,
   BRANCH_INSPECTION_KIND,
@@ -615,6 +620,7 @@ const reports = fs.readFileSync(path.join(root, 'src/app/api/qc-reports/route.ts
 assert.doesNotMatch(reports, /computeAndStoreEmployeeKpi/);
 assert.match(reports, /resolveQcReportRecipients/);
 assert.match(reports, /notifyTo/);
+assert.match(reports, /notifyToSchema/);
 assert.match(reports, /notifyOptions/);
 assert.match(reports, /branch_inspection/);
 assert.doesNotMatch(reports, /resolveBranchInspectionRecipients/);
@@ -637,7 +643,10 @@ assert.match(reportsUi, /QcBranchInspectionForm/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openRearCameraCapture/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /BRANCH_INSPECTION_KIND/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /notifyTo/);
-assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /qcReportsNotify/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /QcNotifyPicker/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcNotifyPicker.tsx'), 'utf8'), /type="checkbox"/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcNotifyPicker.tsx'), 'utf8'), /peopleNotifyOptions/);
+assert.match(reportsUi, /QcNotifyPicker/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8'), /color-scheme.*light/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8'), /capture', 'environment'/);
 assert.doesNotMatch(reportsUi, /CATEGORIES/);
@@ -802,6 +811,18 @@ assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'managers').sort
 assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'manager:mgr-2').sort(), ['mgr-2']);
 assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'all').sort(), ['mgr-1', 'mgr-2', 'owner-1', 'sara-1']);
 assert.equal(pickQcReportRecipientIds(notifyPeople, 'owner-1', 'owner').length, 0);
+assert.deepEqual(
+  pickQcReportRecipientIdsMany(notifyPeople, 'qc-1', ['sara', 'manager:mgr-1']).sort(),
+  ['mgr-1', 'sara-1']
+);
+assert.deepEqual(
+  pickQcReportRecipientIdsMany(notifyPeople, 'qc-1', ['owner', 'managers']).sort(),
+  ['mgr-1', 'mgr-2', 'owner-1']
+);
+assert.deepEqual(peopleNotifyOptions([{ value: 'all' }, { value: 'sara' }, { value: 'managers' }, { value: 'manager:x' }]).map((o) => o.value), [
+  'sara',
+  'manager:x',
+]);
 assert.deepEqual(pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-air').sort(), ['mgr-1', 'owner-1', 'sara-1']);
 assert.deepEqual(pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-city').sort(), ['mgr-2', 'owner-1', 'sara-1']);
 assert.ok(!pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-air').includes('mgr-2'));

@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { interpolate, useLanguage } from '@/contexts/LanguageContext';
+import { useEffect, useMemo, useState } from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
 import {
@@ -10,9 +10,9 @@ import {
   BRANCH_INSPECTION_SECTIONS,
   type InspectionResult,
 } from '@/lib/qc-branch-inspection';
+import { QcNotifyPicker, defaultNotifyTargets, type QcNotifyOption } from '@/components/qc/QcNotifyPicker';
 
 type Branch = { id: string; name: string };
-type NotifyOption = { value: string; label: string };
 type Draft = { result: InspectionResult | null; photoUrl: string | null };
 
 function emptyDrafts(): Record<string, Draft> {
@@ -29,19 +29,24 @@ export function QcBranchInspectionForm({
   onSubmitted,
 }: {
   branches: Branch[];
-  notifyOptions: NotifyOption[];
+  notifyOptions: QcNotifyOption[];
   initialBranchId: string;
   onCancel: () => void;
   onSubmitted: () => Promise<void> | void;
 }) {
   const { t, locale } = useLanguage();
   const [branchId, setBranchId] = useState(initialBranchId || branches[0]?.id || '');
-  const [notifyTo, setNotifyTo] = useState('all');
+  const [notifyTo, setNotifyTo] = useState<string[]>(() => defaultNotifyTargets(notifyOptions));
   const [drafts, setDrafts] = useState<Record<string, Draft>>(emptyDrafts);
   const [notes, setNotes] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const nowLabel = useMemo(() => formatAppDateTime(new Date().toISOString(), locale), [locale]);
+
+  useEffect(() => {
+    const next = defaultNotifyTargets(notifyOptions);
+    setNotifyTo((cur) => (cur.length === 1 && cur[0] === 'all' ? next : cur));
+  }, [notifyOptions]);
 
   const answered = BRANCH_INSPECTION_ITEM_IDS.every((id) => drafts[id]?.result);
   const uploading = busy !== null && busy !== 'submit';
@@ -72,6 +77,10 @@ export function QcBranchInspectionForm({
 
   async function submit() {
     if (!branchId || !answered || busy) return;
+    if (!notifyTo.length) {
+      setErr(t.qcOps.qcReportsNotifyNeedOne);
+      return;
+    }
     setBusy('submit');
     setErr(null);
     try {
@@ -147,31 +156,12 @@ export function QcBranchInspectionForm({
       <p className="text-xs text-app-muted">
         {t.qcOps.qcInspectWhen}: {nowLabel}
       </p>
-      <label className="block space-y-1">
-        <span className="text-sm font-medium text-app-muted">{t.qcOps.qcReportsNotify}</span>
-        <select
-          aria-label={t.qcOps.qcReportsNotify}
-          className="min-h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
-          value={notifyTo}
-          onChange={(e) => setNotifyTo(e.target.value)}
-        >
-          {notifyOptions.map((opt) => {
-            let label = opt.label;
-            if (opt.value === 'all') label = t.qcOps.qcReportsNotifyAll;
-            else if (opt.value === 'sara') label = t.qcOps.qcReportsNotifySara;
-            else if (opt.value === 'owner') label = t.qcOps.qcReportsNotifyOwner;
-            else if (opt.value === 'managers') label = t.qcOps.qcReportsNotifyManagers;
-            else if (opt.value.startsWith('manager:')) {
-              label = interpolate(t.qcOps.qcReportsNotifyManager, { name: opt.label });
-            }
-            return (
-              <option key={opt.value} value={opt.value}>
-                {label}
-              </option>
-            );
-          })}
-        </select>
-      </label>
+      <QcNotifyPicker
+        options={notifyOptions}
+        selected={notifyTo}
+        onChange={setNotifyTo}
+        disabled={busy !== null}
+      />
 
       {BRANCH_INSPECTION_SECTIONS.map((section) => (
         <section key={section.id} className="overflow-hidden rounded-3xl border border-gray-200 dark:border-ios-dark-separator">
@@ -267,7 +257,7 @@ export function QcBranchInspectionForm({
 
       <button
         type="button"
-        disabled={busy !== null || uploading || !answered || !branchId}
+        disabled={busy !== null || uploading || !answered || !branchId || notifyTo.length === 0}
         className="min-h-12 w-full rounded-2xl bg-ios-blue text-base font-bold text-white disabled:opacity-50"
         onClick={() => void submit()}
       >

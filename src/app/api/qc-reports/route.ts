@@ -19,6 +19,8 @@ import {
 } from '@/lib/qc-branch-inspection';
 import { z } from 'zod';
 
+const notifyToSchema = z.union([z.string().min(1).max(80), z.array(z.string().min(1).max(80)).min(1).max(40)]).optional();
+
 const noteSchema = z.object({
   kind: z.literal('note').optional(),
   branchId: z.string(),
@@ -26,14 +28,14 @@ const noteSchema = z.object({
   photoUrls: z.array(z.string()).max(3).default([]),
   category: z.string().min(1).optional(),
   severity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
-  notifyTo: z.string().min(1).max(80).optional(),
+  notifyTo: notifyToSchema,
 });
 
 const inspectionSchema = z.object({
   kind: z.literal('branch_inspection'),
   branchId: z.string(),
   notes: z.string().max(4000).optional().default(''),
-  notifyTo: z.string().min(1).max(80).optional(),
+  notifyTo: notifyToSchema,
   answers: z.record(
     z.object({
       result: z.enum(['pass', 'fail']),
