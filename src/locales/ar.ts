@@ -1111,6 +1111,8 @@ export const ar: LocaleMessages = {
     qcInspectPass: 'نجاح',
     qcInspectFail: 'رسوب',
     qcInspectPhoto: 'صورة',
+    qcInspectPhotoCamera: 'كاميرا',
+    qcInspectPhotoLibrary: 'المعرض',
     qcInspectNotes: 'ملاحظات إضافية',
     qcInspectNotesPh: 'أي ملاحظة أخرى عن هذا الفرع',
     qcInspectNeedAll: 'أجب على كل بنود القائمة قبل الإرسال.',

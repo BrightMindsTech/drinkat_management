@@ -641,6 +641,13 @@ assert.match(reportsUi, /qcReportsNotify/);
 assert.match(reportsUi, /qcInspectNew/);
 assert.match(reportsUi, /QcBranchInspectionForm/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openRearCameraCapture/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openImageLibraryPick/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8'), /export function openImageLibraryPick/);
+assert.doesNotMatch(
+  fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8').split('export function openImageLibraryPick')[1] ?? '',
+  /capture', 'environment'/
+);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /qcInspectPhotoLibrary/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /BRANCH_INSPECTION_KIND/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /notifyTo/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /QcNotifyPicker/);

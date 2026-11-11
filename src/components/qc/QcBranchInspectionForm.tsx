@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
-import { openRearCameraCapture } from '@/lib/open-camera-file';
+import { openImageLibraryPick, openRearCameraCapture } from '@/lib/open-camera-file';
 import {
   BRANCH_INSPECTION_ITEM_IDS,
   BRANCH_INSPECTION_KIND,
@@ -215,7 +215,20 @@ export function QcBranchInspectionForm({
                         });
                       }}
                     >
-                      {busy === item.id ? t.qcOps.qcReportsUploading : t.qcOps.qcInspectPhoto}
+                      {busy === item.id ? t.qcOps.qcReportsUploading : t.qcOps.qcInspectPhotoCamera}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      className="min-h-11 rounded-xl border border-gray-200 px-3 text-xs font-semibold disabled:opacity-50 dark:border-ios-dark-separator"
+                      onClick={() => {
+                        if (busy) return;
+                        openImageLibraryPick((file) => {
+                          void uploadPhoto(item.id, file);
+                        });
+                      }}
+                    >
+                      {busy === item.id ? t.qcOps.qcReportsUploading : t.qcOps.qcInspectPhotoLibrary}
                     </button>
                   </div>
                   {draft.photoUrl ? (

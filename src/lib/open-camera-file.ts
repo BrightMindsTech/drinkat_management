@@ -8,19 +8,26 @@
  * Works on one iPhone and fails on another (theme, iOS version, Pro ultra-wide).
  *
  * Keep color-scheme light until the sheet dismisses. Restore only then.
+ *
+ * Library picks omit `capture` so iOS opens Photos instead of the camera.
  */
-export function openRearCameraCapture(onFile: (file: File) => void): void {
+type ImagePickMode = 'camera' | 'library';
+
+function openImageFilePicker(mode: ImagePickMode, onFile: (file: File) => void): void {
   if (typeof document === 'undefined') return;
 
   const html = document.documentElement;
   const prevScheme = html.style.getPropertyValue('color-scheme');
-  html.style.setProperty('color-scheme', 'light');
-  html.classList.add('camera-capture-active');
+  const lightForCamera = mode === 'camera';
+  if (lightForCamera) {
+    html.style.setProperty('color-scheme', 'light');
+    html.classList.add('camera-capture-active');
+  }
 
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
-  input.setAttribute('capture', 'environment');
+  if (mode === 'camera') input.setAttribute('capture', 'environment');
   input.setAttribute('aria-hidden', 'true');
   input.tabIndex = -1;
   input.style.cssText =
@@ -43,9 +50,11 @@ export function openRearCameraCapture(onFile: (file: File) => void): void {
     window.removeEventListener('focus', onFocus);
     window.removeEventListener('blur', onBlur);
     input.remove();
-    if (prevScheme) html.style.setProperty('color-scheme', prevScheme);
-    else html.style.removeProperty('color-scheme');
-    html.classList.remove('camera-capture-active');
+    if (lightForCamera) {
+      if (prevScheme) html.style.setProperty('color-scheme', prevScheme);
+      else html.style.removeProperty('color-scheme');
+      html.classList.remove('camera-capture-active');
+    }
     if (file) onFile(file);
   };
 
@@ -57,4 +66,12 @@ export function openRearCameraCapture(onFile: (file: File) => void): void {
   }, 800);
 
   input.click();
+}
+
+export function openRearCameraCapture(onFile: (file: File) => void): void {
+  openImageFilePicker('camera', onFile);
+}
+
+export function openImageLibraryPick(onFile: (file: File) => void): void {
+  openImageFilePicker('library', onFile);
 }

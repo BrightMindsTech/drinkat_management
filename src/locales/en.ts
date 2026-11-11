@@ -1112,6 +1112,8 @@ export const en = {
     qcInspectPass: 'Pass',
     qcInspectFail: 'Fail',
     qcInspectPhoto: 'Photo',
+    qcInspectPhotoCamera: 'Camera',
+    qcInspectPhotoLibrary: 'Library',
     qcInspectNotes: 'Additional notes',
     qcInspectNotesPh: 'Anything else you saw at this branch',
     qcInspectNeedAll: 'Answer every checklist item before submitting.',
