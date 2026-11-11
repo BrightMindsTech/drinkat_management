@@ -1107,7 +1107,7 @@ export const ar: LocaleMessages = {
     qcReportsNotifyManager: 'المدير: {name}',
     qcReportsNotifyNeedOne: 'اختر شخصاً واحداً على الأقل للإشعار.',
     qcInspectNew: 'فحص الفرع',
-    qcInspectHint: 'نجاح أو رسوب لكل بند. الصورة اختيارية. يمكن الإرسال أكثر من مرة — نموذج لكل زيارة فرع.',
+    qcInspectHint: 'نجاح أو رسوب لكل بند. أضف أي عدد من الصور على أي بند من الكاميرا أو المعرض. يمكن الإرسال أكثر من مرة — نموذج لكل زيارة فرع.',
     qcInspectPass: 'نجاح',
     qcInspectFail: 'رسوب',
     qcInspectPhoto: 'صورة',

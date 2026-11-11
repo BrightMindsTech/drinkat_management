@@ -13,7 +13,7 @@
  */
 type ImagePickMode = 'camera' | 'library';
 
-function openImageFilePicker(mode: ImagePickMode, onFile: (file: File) => void): void {
+function openImageFilePicker(mode: ImagePickMode, onFiles: (files: File[]) => void, multiple = false): void {
   if (typeof document === 'undefined') return;
 
   const html = document.documentElement;
@@ -27,6 +27,7 @@ function openImageFilePicker(mode: ImagePickMode, onFile: (file: File) => void):
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
+  if (multiple) input.multiple = true;
   if (mode === 'camera') input.setAttribute('capture', 'environment');
   input.setAttribute('aria-hidden', 'true');
   input.tabIndex = -1;
@@ -35,16 +36,17 @@ function openImageFilePicker(mode: ImagePickMode, onFile: (file: File) => void):
   document.body.appendChild(input);
 
   let finished = false;
-  let finish: (file?: File) => void = () => {};
+  let finish: (files?: File[]) => void = () => {};
+  const readFiles = () => (input.files ? Array.from(input.files) : []);
   const onFocus = () => {
     window.setTimeout(() => {
-      if (!finished) finish(input.files?.[0]);
+      if (!finished) finish(readFiles());
     }, 250);
   };
   const onBlur = () => {
     window.addEventListener('focus', onFocus, { once: true });
   };
-  finish = (file?: File) => {
+  finish = (files?: File[]) => {
     if (finished) return;
     finished = true;
     window.removeEventListener('focus', onFocus);
@@ -55,10 +57,10 @@ function openImageFilePicker(mode: ImagePickMode, onFile: (file: File) => void):
       else html.style.removeProperty('color-scheme');
       html.classList.remove('camera-capture-active');
     }
-    if (file) onFile(file);
+    if (files?.length) onFiles(files);
   };
 
-  input.addEventListener('change', () => finish(input.files?.[0]));
+  input.addEventListener('change', () => finish(readFiles()));
   input.addEventListener('cancel', () => finish());
   window.addEventListener('blur', onBlur, { once: true });
   window.setTimeout(() => {
@@ -69,9 +71,12 @@ function openImageFilePicker(mode: ImagePickMode, onFile: (file: File) => void):
 }
 
 export function openRearCameraCapture(onFile: (file: File) => void): void {
-  openImageFilePicker('camera', onFile);
+  openImageFilePicker('camera', (files) => {
+    const file = files[0];
+    if (file) onFile(file);
+  });
 }
 
-export function openImageLibraryPick(onFile: (file: File) => void): void {
-  openImageFilePicker('library', onFile);
+export function openImageLibraryPick(onFiles: (files: File[]) => void): void {
+  openImageFilePicker('library', onFiles, true);
 }

@@ -1108,7 +1108,7 @@ export const en = {
     qcReportsNotifyManager: 'Manager: {name}',
     qcReportsNotifyNeedOne: 'Choose at least one person to notify.',
     qcInspectNew: 'Branch inspection',
-    qcInspectHint: 'Pass or fail each item. A photo on any item is optional. Submit as often as you need — one form per branch visit.',
+    qcInspectHint: 'Pass or fail each item. Add as many photos as you need on any item, from the camera or the library. Submit as often as you need — one form per branch visit.',
     qcInspectPass: 'Pass',
     qcInspectFail: 'Fail',
     qcInspectPhoto: 'Photo',

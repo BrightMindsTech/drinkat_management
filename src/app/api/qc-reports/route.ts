@@ -13,6 +13,7 @@ import {
   BRANCH_INSPECTION_KIND,
   countInspectionResults,
   encodeInspectionPayload,
+  INSPECTION_PHOTOS_PER_ITEM_MAX,
   inspectionComments,
   inspectionSeverity,
   validateInspectionAnswers,
@@ -40,6 +41,7 @@ const inspectionSchema = z.object({
     z.object({
       result: z.enum(['pass', 'fail']),
       photoUrl: z.string().max(2000).optional().nullable(),
+      photoUrls: z.array(z.string().max(2000)).max(INSPECTION_PHOTOS_PER_ITEM_MAX).optional(),
     })
   ),
 });

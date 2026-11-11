@@ -642,6 +642,9 @@ assert.match(reportsUi, /qcInspectNew/);
 assert.match(reportsUi, /QcBranchInspectionForm/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openRearCameraCapture/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openImageLibraryPick/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /photoUrls/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8'), /input.multiple = true/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-branch-inspection.ts'), 'utf8'), /INSPECTION_PHOTOS_PER_ITEM_MAX/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8'), /export function openImageLibraryPick/);
 assert.doesNotMatch(
   fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8').split('export function openImageLibraryPick')[1] ?? '',
@@ -847,16 +850,26 @@ assert.equal(BRANCH_INSPECTION_SECTIONS[3].titleAr, 'النظافة');
 assert.equal(BRANCH_INSPECTION_SECTIONS[4].titleAr, 'الفحص الحسي');
 assert.equal(BRANCH_INSPECTION_KIND, 'branch_inspection');
 assert.equal(validateInspectionAnswers({}).ok, false);
-const allPass: Record<string, { result: 'pass' | 'fail'; photoUrl: string | null }> = {};
+const allPass: Record<string, { result: 'pass' | 'fail'; photoUrl: string | null; photoUrls?: string[] }> = {};
 for (const id of BRANCH_INSPECTION_ITEM_IDS) allPass[id] = { result: 'pass', photoUrl: null };
-allPass.a1 = { result: 'fail', photoUrl: '/uploads/x.jpg' };
+allPass.a1 = { result: 'fail', photoUrl: '/uploads/x.jpg', photoUrls: ['/uploads/x.jpg', '/uploads/y.jpg'] };
 const checked = validateInspectionAnswers(allPass);
 assert.equal(checked.ok, true);
 if (checked.ok) {
   assert.deepEqual(countInspectionResults(checked.answers), { pass: 27, fail: 1 });
+  assert.deepEqual(checked.answers.a1?.photoUrls, ['/uploads/x.jpg', '/uploads/y.jpg']);
   const payload = encodeInspectionPayload(checked.answers, 'hood dirty');
   assert.equal(parseInspectionPayload(JSON.stringify(payload))?.notes, 'hood dirty');
-  assert.deepEqual(parseQcReportPhotos(JSON.stringify(payload)), ['/uploads/x.jpg']);
+  assert.deepEqual(parseQcReportPhotos(JSON.stringify(payload)), ['/uploads/x.jpg', '/uploads/y.jpg']);
+}
+{
+  const onlyLegacyPhoto = validateInspectionAnswers(
+    Object.fromEntries(BRANCH_INSPECTION_ITEM_IDS.map((id) => [id, { result: 'pass', photoUrl: id === 'a1' ? '/uploads/old.jpg' : null }]))
+  );
+  assert.equal(onlyLegacyPhoto.ok, true);
+  if (onlyLegacyPhoto.ok) {
+    assert.deepEqual(onlyLegacyPhoto.answers.a1?.photoUrls, ['/uploads/old.jpg']);
+  }
 }
 assert.deepEqual(parseQcReportPhotos(JSON.stringify(['/a.jpg', '/b.jpg'])), ['/a.jpg', '/b.jpg']);
 {

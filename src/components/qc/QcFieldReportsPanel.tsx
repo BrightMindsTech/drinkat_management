@@ -10,6 +10,7 @@ import { QcNotifyPicker, defaultNotifyTargets, type QcNotifyOption } from '@/com
 import {
   BRANCH_INSPECTION_SECTIONS,
   countInspectionResults,
+  inspectionAnswerPhotos,
   isBranchInspectionReport,
   parseInspectionPayload,
   parseQcReportPhotos,
@@ -433,6 +434,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
                           if (!ans) return null;
                           const title = locale === 'ar' ? row.titleAr : row.titleEn;
                           const failed = ans.result === 'fail';
+                          const itemPhotos = inspectionAnswerPhotos(ans);
                           return (
                             <li key={row.id} className="flex items-start gap-2 text-sm">
                               <span className={`mt-0.5 font-bold ${failed ? 'text-red-600' : 'text-emerald-600'}`}>
@@ -441,11 +443,15 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
                               <span className="flex-1 text-app-primary">
                                 {row.n}. {title}
                               </span>
-                              {ans?.photoUrl ? (
-                                <a href={ans.photoUrl} target="_blank" rel="noopener noreferrer">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={ans.photoUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />
-                                </a>
+                              {itemPhotos.length ? (
+                                <span className="flex flex-wrap justify-end gap-1">
+                                  {itemPhotos.map((url) => (
+                                    <a key={url} href={url} target="_blank" rel="noopener noreferrer">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={url} alt="" className="h-12 w-12 rounded-lg object-cover" />
+                                    </a>
+                                  ))}
+                                </span>
                               ) : null}
                             </li>
                           );

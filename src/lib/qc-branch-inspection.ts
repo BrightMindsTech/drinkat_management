@@ -1,5 +1,7 @@
 export const BRANCH_INSPECTION_KIND = 'branch_inspection';
 export const BRANCH_INSPECTION_VERSION = 1;
+/** High enough for a real visit; still bounds upload/API size. */
+export const INSPECTION_PHOTOS_PER_ITEM_MAX = 30;
 
 export type InspectionResult = 'pass' | 'fail';
 
@@ -87,8 +89,31 @@ export const BRANCH_INSPECTION_SECTIONS: readonly BranchInspectionSection[] = [
 export const BRANCH_INSPECTION_ITEMS = BRANCH_INSPECTION_SECTIONS.flatMap((s) => [...s.items]);
 export const BRANCH_INSPECTION_ITEM_IDS = BRANCH_INSPECTION_ITEMS.map((i) => i.id);
 
-export type InspectionAnswer = { result: InspectionResult; photoUrl: string | null };
+export type InspectionAnswer = { result: InspectionResult; photoUrl: string | null; photoUrls: string[] };
 export type InspectionAnswers = Record<string, InspectionAnswer>;
+
+function isPhotoUrl(v: unknown): v is string {
+  return typeof v === 'string' && v.trim().length > 3;
+}
+
+export function normalizeInspectionPhotoUrls(row: { photoUrl?: unknown; photoUrls?: unknown } | null | undefined): string[] {
+  const out: string[] = [];
+  const add = (v: unknown) => {
+    if (!isPhotoUrl(v)) return;
+    const url = v.trim();
+    if (!out.includes(url)) out.push(url);
+  };
+  if (Array.isArray(row?.photoUrls)) {
+    for (const item of row.photoUrls) add(item);
+  }
+  add(row?.photoUrl);
+  return out.slice(0, INSPECTION_PHOTOS_PER_ITEM_MAX);
+}
+
+export function inspectionAnswerPhotos(answer: InspectionAnswer | null | undefined): string[] {
+  if (!answer) return [];
+  return normalizeInspectionPhotoUrls(answer);
+}
 
 export type BranchInspectionPayload = {
   kind: typeof BRANCH_INSPECTION_KIND;
@@ -118,10 +143,8 @@ export function validateInspectionAnswers(raw: unknown): { ok: true; answers: In
     }
     const result = (row as { result?: unknown }).result;
     if (!isResult(result)) return { ok: false, error: 'Answer every checklist item' };
-    const photoRaw = (row as { photoUrl?: unknown }).photoUrl;
-    const photoUrl =
-      typeof photoRaw === 'string' && photoRaw.trim().length > 3 ? photoRaw.trim() : null;
-    answers[id] = { result, photoUrl };
+    const photoUrls = normalizeInspectionPhotoUrls(row as { photoUrl?: unknown; photoUrls?: unknown });
+    answers[id] = { result, photoUrl: photoUrls[0] ?? null, photoUrls };
   }
   return { ok: true, answers };
 }
@@ -164,10 +187,8 @@ function parseStoredInspectionAnswers(raw: unknown): InspectionAnswers | null {
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
     const result = (row as { result?: unknown }).result;
     if (!isResult(result)) continue;
-    const photoRaw = (row as { photoUrl?: unknown }).photoUrl;
-    const photoUrl =
-      typeof photoRaw === 'string' && photoRaw.trim().length > 3 ? photoRaw.trim() : null;
-    answers[id] = { result, photoUrl };
+    const photoUrls = normalizeInspectionPhotoUrls(row as { photoUrl?: unknown; photoUrls?: unknown });
+    answers[id] = { result, photoUrl: photoUrls[0] ?? null, photoUrls };
     any = true;
   }
   return any ? answers : null;
@@ -200,8 +221,9 @@ export function isBranchInspectionReport(item: { category?: string; photosJson?:
 export function listInspectionPhotos(payload: BranchInspectionPayload): string[] {
   const out: string[] = [];
   for (const id of BRANCH_INSPECTION_ITEM_IDS) {
-    const url = payload.answers[id]?.photoUrl;
-    if (url) out.push(url);
+    for (const url of inspectionAnswerPhotos(payload.answers[id])) {
+      if (!out.includes(url)) out.push(url);
+    }
   }
   return out;
 }
