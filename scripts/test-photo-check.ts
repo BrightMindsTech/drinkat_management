@@ -282,7 +282,7 @@ assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTa
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /branchClaimed/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /branchClaimed/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /employeeAssignedType/);
-assert.equal(ACTIVE_PHOTO_REMINDER_MINUTES, 30);
+assert.equal(ACTIVE_PHOTO_REMINDER_MINUTES, 180);
 {
   const now = new Date();
   const open = {
@@ -318,9 +318,9 @@ assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTa
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /windowGone/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /windowGone/);
 assert.equal(shouldSendActivePhotoReminder(null, new Date()), true);
-assert.equal(shouldSendActivePhotoReminder(new Date(Date.now() - 29 * 60_000), new Date()), false);
-assert.equal(shouldSendActivePhotoReminder(new Date(Date.now() - 30 * 60_000), new Date()), true);
-assert.equal(PHOTO_REMINDER_PUSH_TTL_SEC, 28 * 60);
+assert.equal(shouldSendActivePhotoReminder(new Date(Date.now() - 179 * 60_000), new Date()), false);
+assert.equal(shouldSendActivePhotoReminder(new Date(Date.now() - 180 * 60_000), new Date()), true);
+assert.equal(PHOTO_REMINDER_PUSH_TTL_SEC, 170 * 60);
 assert.equal(latestPhotoReminderAt([null, new Date('2026-10-13T10:00:00Z'), new Date('2026-10-13T10:20:00Z')])?.toISOString(), '2026-10-13T10:20:00.000Z');
 assert.equal(latestPhotoReminderAt([null, null]), null);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /dashboard\/photo\?task=/);
@@ -339,14 +339,14 @@ assert.doesNotMatch(
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /lastReminderKind === kind/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/push.ts'), 'utf8'), /ttlSec \?\? 30 \* 60/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/push.ts'), 'utf8'), /TTL: 300/);
-assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskReminderPulse.tsx'), 'utf8'), /30 \* 60 \* 1000/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskReminderPulse.tsx'), 'utf8'), /180 \* 60 \* 1000/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskReminderPulse.tsx'), 'utf8'), /photo-checks\/tasks\?read=1/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/in-app/InAppNotificationStack.tsx'), 'utf8'), /photo-checks\/tasks\?read=1/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/in-app/InAppNotificationStack.tsx'), 'utf8'), /60_000/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/rate-limit-edge.ts'), 'utf8'), /max: 900/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/layout.tsx'), 'utf8'), /PhotoTaskReminderPulse/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/PushForegroundBridge.tsx'), 'utf8'), /reminderAt/);
-assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /repeats every 30 minutes/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /repeats every 3 hours/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/ai/page.tsx'), 'utf8'), /redirect\('\/dashboard'\)/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/ai-provider.ts'), 'utf8'), /extractChatContent/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/ai-provider.ts'), 'utf8'), /max_tokens: 1600/);
@@ -642,17 +642,21 @@ assert.match(reportsUi, /notifyTo/);
 assert.match(reportsUi, /qcReportsNotify/);
 assert.match(reportsUi, /qcInspectNew/);
 assert.match(reportsUi, /QcBranchInspectionForm/);
-assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openRearCameraCapture/);
-assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openImageLibraryPick/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openNativeImageSourcePick/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openRearCameraCapture/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openImageLibraryPick/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /photoUrls/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8'), /input.multiple = true/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-branch-inspection.ts'), 'utf8'), /INSPECTION_PHOTOS_PER_ITEM_MAX/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8'), /export function openImageLibraryPick/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8'), /export function openNativeImageSourcePick/);
 assert.doesNotMatch(
-  fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8').split('export function openImageLibraryPick')[1] ?? '',
+  fs.readFileSync(path.join(root, 'src/lib/open-camera-file.ts'), 'utf8').split('export function openNativeImageSourcePick')[1] ?? '',
   /capture', 'environment'/
 );
-assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /qcInspectPhotoLibrary/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /qcInspectPhoto/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /qcInspectPhotoCamera/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /qcInspectPhotoLibrary/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /BRANCH_INSPECTION_KIND/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /notifyTo/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /QcNotifyPicker/);

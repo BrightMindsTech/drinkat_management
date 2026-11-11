@@ -6,9 +6,9 @@ import { isPhotoWindowOpenNow } from '@/lib/photo-time';
 import { formatAppTime } from '@/lib/format-datetime';
 
 /** While a photo window is open, keep nudging until the employee submits. */
-export const ACTIVE_PHOTO_REMINDER_MINUTES = 30;
-/** Keep the OS notification until the next 30-minute tick. */
-export const PHOTO_REMINDER_PUSH_TTL_SEC = 28 * 60;
+export const ACTIVE_PHOTO_REMINDER_MINUTES = 180;
+/** Keep the OS notification until the next 3-hour tick. */
+export const PHOTO_REMINDER_PUSH_TTL_SEC = 170 * 60;
 /** Only currently open windows — never scan thousands of historical overdue rows. */
 export const PHOTO_REMINDER_OPEN_TAKE = 800;
 

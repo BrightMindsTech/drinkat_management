@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
-import { openImageLibraryPick, openRearCameraCapture } from '@/lib/open-camera-file';
+import { openNativeImageSourcePick } from '@/lib/open-camera-file';
 import {
   BRANCH_INSPECTION_ITEM_IDS,
   BRANCH_INSPECTION_KIND,
@@ -233,25 +233,12 @@ export function QcBranchInspectionForm({
                       className="min-h-11 rounded-xl border border-gray-200 px-3 text-xs font-semibold disabled:opacity-50 dark:border-ios-dark-separator"
                       onClick={() => {
                         if (!canAddPhoto) return;
-                        openRearCameraCapture((file) => {
-                          void uploadPhotos(item.id, [file]);
-                        });
-                      }}
-                    >
-                      {busy === item.id ? t.qcOps.qcReportsUploading : t.qcOps.qcInspectPhotoCamera}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!canAddPhoto}
-                      className="min-h-11 rounded-xl border border-gray-200 px-3 text-xs font-semibold disabled:opacity-50 dark:border-ios-dark-separator"
-                      onClick={() => {
-                        if (!canAddPhoto) return;
-                        openImageLibraryPick((files) => {
+                        openNativeImageSourcePick((files) => {
                           void uploadPhotos(item.id, files);
                         });
                       }}
                     >
-                      {busy === item.id ? t.qcOps.qcReportsUploading : t.qcOps.qcInspectPhotoLibrary}
+                      {busy === item.id ? t.qcOps.qcReportsUploading : t.qcOps.qcInspectPhoto}
                     </button>
                   </div>
                   {draft.photoUrls.length ? (

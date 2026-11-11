@@ -100,9 +100,9 @@ export async function ensureOfficialPhotoProgram(
         startTime: w.startTime,
         dueTime: w.dueTime,
         reminderMinutesBefore: 30,
-        overdueReminderMinutes: 30,
+        overdueReminderMinutes: 180,
         maxReminders: 24,
-        reminderCooldownMinutes: 30,
+        reminderCooldownMinutes: 180,
         active: true,
       });
     }

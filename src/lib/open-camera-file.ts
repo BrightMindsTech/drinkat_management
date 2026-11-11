@@ -10,15 +10,16 @@
  * Keep color-scheme light until the sheet dismisses. Restore only then.
  *
  * Library picks omit `capture` so iOS opens Photos instead of the camera.
+ * Native source omits `capture` so iOS shows Take Photo / Photo Library.
  */
-type ImagePickMode = 'camera' | 'library';
+type ImagePickMode = 'camera' | 'library' | 'native';
 
 function openImageFilePicker(mode: ImagePickMode, onFiles: (files: File[]) => void, multiple = false): void {
   if (typeof document === 'undefined') return;
 
   const html = document.documentElement;
   const prevScheme = html.style.getPropertyValue('color-scheme');
-  const lightForCamera = mode === 'camera';
+  const lightForCamera = mode !== 'library';
   if (lightForCamera) {
     html.style.setProperty('color-scheme', 'light');
     html.classList.add('camera-capture-active');
@@ -79,4 +80,9 @@ export function openRearCameraCapture(onFile: (file: File) => void): void {
 
 export function openImageLibraryPick(onFiles: (files: File[]) => void): void {
   openImageFilePicker('library', onFiles, true);
+}
+
+/** One iPhone sheet: Take Photo or Photo Library. Multiple files when they pick from Photos. */
+export function openNativeImageSourcePick(onFiles: (files: File[]) => void): void {
+  openImageFilePicker('native', onFiles, true);
 }

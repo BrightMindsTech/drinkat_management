@@ -8,7 +8,7 @@ import { setForegroundInterval } from '@/lib/app-foreground';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { fetchWithRetry } from '@/lib/fetch-with-retry';
 
-const INTERVAL_MS = 30 * 60 * 1000;
+const INTERVAL_MS = 180 * 60 * 1000;
 
 type PhotoTaskRow = { id: string; status: string; windowStartAt?: string; dueAt?: string };
 
@@ -30,7 +30,7 @@ function openUnfinished(items: PhotoTaskRow[]): PhotoTaskRow[] {
   });
 }
 
-/** While a photo window is open, surface a reminder every 30 minutes even if APNs is quiet. */
+/** While a photo window is open, surface a reminder every 3 hours even if APNs is quiet. */
 export function PhotoTaskReminderPulse() {
   const { upsert } = useInAppNotifications();
   const { t } = useLanguage();
