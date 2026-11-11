@@ -71,6 +71,7 @@ export const BRANCH_INSPECTION_SECTIONS: readonly BranchInspectionSection[] = [
       { id: 'd5', n: 5, titleEn: 'Mats / stations', titleAr: 'البسطات' },
       { id: 'd6', n: 6, titleEn: 'Dishwashing', titleAr: 'الجلي' },
       { id: 'd7', n: 7, titleEn: 'Refrigerators', titleAr: 'الثلاجات' },
+      { id: 'd8', n: 8, titleEn: 'Cleaning tools', titleAr: 'ادوات التنظيف' },
     ],
   },
   {

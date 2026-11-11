@@ -838,9 +838,11 @@ assert.deepEqual(pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-city'
 assert.ok(!pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-air').includes('mgr-2'));
 
 assert.equal(BRANCH_INSPECTION_SECTIONS.length, 5);
-assert.equal(BRANCH_INSPECTION_ITEM_IDS.length, 28);
+assert.equal(BRANCH_INSPECTION_ITEM_IDS.length, 29);
 assert.ok(BRANCH_INSPECTION_ITEM_IDS.includes('b6'));
 assert.ok(BRANCH_INSPECTION_ITEM_IDS.includes('e4'));
+assert.ok(BRANCH_INSPECTION_ITEM_IDS.includes('d8'));
+assert.equal(BRANCH_INSPECTION_SECTIONS[3].items.some((i) => i.id === 'd8' && i.titleEn === 'Cleaning tools' && i.titleAr === 'ادوات التنظيف'), true);
 assert.equal(BRANCH_INSPECTION_SECTIONS[1].items.some((i) => i.titleEn === 'Vegetables & Fruits'), true);
 assert.equal(BRANCH_INSPECTION_SECTIONS[4].items.some((i) => i.titleEn === 'Vegetables & Fruits'), true);
 assert.equal(BRANCH_INSPECTION_SECTIONS[0].titleAr, 'الالتزام بالسياسات');
@@ -856,7 +858,7 @@ allPass.a1 = { result: 'fail', photoUrl: '/uploads/x.jpg', photoUrls: ['/uploads
 const checked = validateInspectionAnswers(allPass);
 assert.equal(checked.ok, true);
 if (checked.ok) {
-  assert.deepEqual(countInspectionResults(checked.answers), { pass: 27, fail: 1 });
+  assert.deepEqual(countInspectionResults(checked.answers), { pass: 28, fail: 1 });
   assert.deepEqual(checked.answers.a1?.photoUrls, ['/uploads/x.jpg', '/uploads/y.jpg']);
   const payload = encodeInspectionPayload(checked.answers, 'hood dirty');
   assert.equal(parseInspectionPayload(JSON.stringify(payload))?.notes, 'hood dirty');
@@ -875,7 +877,7 @@ assert.deepEqual(parseQcReportPhotos(JSON.stringify(['/a.jpg', '/b.jpg'])), ['/a
 {
   const legacy: Record<string, { result: 'pass' | 'fail'; photoUrl: string | null }> = {};
   for (const id of BRANCH_INSPECTION_ITEM_IDS) {
-    if (id === 'b6' || id === 'e4') continue;
+    if (id === 'b6' || id === 'e4' || id === 'd8') continue;
     legacy[id] = { result: 'pass', photoUrl: null };
   }
   const parsedLegacy = parseInspectionPayload(
@@ -884,6 +886,7 @@ assert.deepEqual(parseQcReportPhotos(JSON.stringify(['/a.jpg', '/b.jpg'])), ['/a
   assert.equal(parsedLegacy?.notes, 'old visit');
   assert.equal(parsedLegacy?.answers.b6, undefined);
   assert.equal(parsedLegacy?.answers.e4, undefined);
+  assert.equal(parsedLegacy?.answers.d8, undefined);
 }
 
 console.log('photo-check: ok');
