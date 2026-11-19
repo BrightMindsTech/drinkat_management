@@ -19,6 +19,7 @@ import {
   BRANCH_PHOTO_CLAIMED_CODE,
   claimPhotoWindowForBranch,
 } from '@/lib/photo-branch-claim';
+import { signStoredUploadPath } from '@/lib/upload-signed-url';
 import { z } from 'zod';
 
 const postSchema = z.object({
@@ -44,7 +45,16 @@ export const GET = withApiErrors(async function GET() {
     orderBy: { submittedAt: 'desc' },
     take: 30,
   });
-  return Response.json({ items });
+  return Response.json({
+    items: items.map((item) => ({
+      ...item,
+      uploadPath: signStoredUploadPath(item.uploadPath),
+      images: item.images.map((img) => ({
+        ...img,
+        uploadPath: signStoredUploadPath(img.uploadPath),
+      })),
+    })),
+  });
 });
 
 export const POST = withApiErrors(async function POST(req: NextRequest) {

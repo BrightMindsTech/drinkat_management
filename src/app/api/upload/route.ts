@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { saveUploadedFile } from '@/lib/upload-storage';
 import { recordUploadObject } from '@/lib/upload-access';
+import { signStoredUploadPath } from '@/lib/upload-signed-url';
 import { PHOTO_UPLOAD_MAX_BYTES } from '@/lib/photo-multi';
 
 const ALLOWED = /^(image\/(jpeg|jpg|png|webp|gif|heic|heif)|application\/pdf)$/i;
@@ -24,7 +25,8 @@ export async function POST(req: NextRequest) {
   try {
     const { filePath } = await saveUploadedFile(file);
     await recordUploadObject(prisma, filePath, session.user.id);
-    return Response.json({ url: filePath, filePath });
+    const url = signStoredUploadPath(filePath);
+    return Response.json({ url, filePath });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Upload failed';
     return Response.json({ error: message }, { status: 503 });

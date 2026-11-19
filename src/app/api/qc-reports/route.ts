@@ -20,14 +20,15 @@ import {
   validateInspectionAnswers,
 } from '@/lib/qc-branch-inspection';
 import {
-  COMPLAINT_PHOTOS_MAX,
-  COMPLAINT_PHOTO_NOTE_MAX,
-  COMPLAINT_TYPES,
+  COMPLAINT_ADDITIONAL_MAX,
+  COMPLAINT_SLOT_NOTE_MAX,
   CUSTOMER_COMPLAINT_KIND,
   complaintComments,
+  complaintHasContent,
   complaintSeverity,
   encodeComplaintPayload,
 } from '@/lib/qc-complaints';
+import { signUploadUrlsInJsonString } from '@/lib/upload-signed-url';
 import { z } from 'zod';
 
 const notifyToSchema = z.union([z.string().min(1).max(80), z.array(z.string().min(1).max(80)).min(1).max(40)]).optional();
@@ -42,22 +43,17 @@ const noteSchema = z.object({
   notifyTo: notifyToSchema,
 });
 
+const complaintSlotSchema = z.object({
+  note: z.string().max(COMPLAINT_SLOT_NOTE_MAX).optional().default(''),
+  photoUrl: z.string().max(2000).nullable().optional(),
+});
+
 const complaintSchema = z.object({
   kind: z.literal(CUSTOMER_COMPLAINT_KIND),
   branchId: z.string(),
-  complainantName: z.string().max(120).optional().default(''),
-  phone: z.string().max(40).optional().default(''),
-  orderNumber: z.string().max(80).optional().default(''),
-  types: z
-    .array(z.enum(['food_quality', 'service', 'cleanliness', 'delay', 'wrong_order', 'other']))
-    .max(COMPLAINT_TYPES.length)
-    .optional()
-    .default([]),
-  description: z.string().min(1).max(4000),
-  staffInvolved: z.string().max(400).optional().default(''),
-  actionTaken: z.string().max(2000).optional().default(''),
-  photoUrls: z.array(z.string().max(2000)).max(COMPLAINT_PHOTOS_MAX).optional().default([]),
-  photoNotes: z.record(z.string().max(2000), z.string().max(COMPLAINT_PHOTO_NOTE_MAX)).optional(),
+  talabat: z.array(complaintSlotSchema).max(3).optional().default([]),
+  careem: z.array(complaintSlotSchema).max(2).optional().default([]),
+  additionalNotes: z.string().max(COMPLAINT_ADDITIONAL_MAX).optional().default(''),
   notifyTo: notifyToSchema,
 });
 
@@ -101,7 +97,14 @@ export const GET = withApiErrors(async function GET() {
   });
   const branches = await prisma.branch.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
   const notifyPeople = await listQcNotifyPeople(prisma);
-  return Response.json({ items, branches, notifyOptions: qcReportNotifyOptions(notifyPeople) });
+  return Response.json({
+    items: items.map((item) => ({
+      ...item,
+      photosJson: signUploadUrlsInJsonString(item.photosJson),
+    })),
+    branches,
+    notifyOptions: qcReportNotifyOptions(notifyPeople),
+  });
 });
 
 export const POST = withApiErrors(async function POST(req: NextRequest) {
@@ -216,7 +219,7 @@ async function postComplaint(userId: string, body: unknown) {
   const branch = await prisma.branch.findUnique({ where: { id: parsed.data.branchId } });
   if (!branch) return Response.json({ error: 'Branch not found' }, { status: 404 });
   const payload = encodeComplaintPayload(parsed.data);
-  if (!payload.description) return Response.json({ error: 'Describe the complaint' }, { status: 400 });
+  if (!complaintHasContent(payload)) return Response.json({ error: 'Add at least one complaint note or photo' }, { status: 400 });
   const item = await prisma.qcFieldReport.create({
     data: {
       createdById: userId,

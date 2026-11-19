@@ -51,6 +51,9 @@ function tierForRequest(pathname: string, method: string): LimitTier | null {
   if (pathname.startsWith('/api/health/') || pathname.startsWith('/api/cron/')) {
     return null;
   }
+  if (pathname.startsWith('/api/uploads/')) {
+    return null;
+  }
   // Session/csrf polling must never 429 — shared IPs + focus refetch caused apparent random logouts.
   if (RATE_LIMIT_EXEMPT_PATHS.has(pathname)) {
     return null;

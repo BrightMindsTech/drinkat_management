@@ -3,7 +3,10 @@ import { getR2UploadsBucket } from '@/lib/r2-env';
 import { AiUnavailableError } from '@/lib/ai-provider';
 
 export function uploadKeyFromPath(filePath: string): string | null {
-  const raw = String(filePath ?? '').trim();
+  const raw = String(filePath ?? '')
+    .trim()
+    .split('#')[0]
+    ?.split('?')[0] ?? '';
   const api = raw.match(/\/api\/uploads\/(.+)$/);
   if (api?.[1] && !api[1].includes('..')) return api[1];
   const local = raw.match(/^\/uploads\/(.+)$/);

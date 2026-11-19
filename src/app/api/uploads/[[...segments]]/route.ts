@@ -1,39 +1,19 @@
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
+import { getServerSession } from 'next-auth';
 import { contentTypeForKey } from '@/lib/upload-storage';
 import { getR2UploadsBucket } from '@/lib/r2-env';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/session';
+import { authOptions } from '@/lib/auth';
 import { withApiErrors } from '@/lib/api-route-error';
 import { actorCanReadUpload } from '@/lib/upload-access';
 import { normalizeUserRole } from '@/lib/permissions';
+import { verifyUploadSignature } from '@/lib/upload-signed-url';
 
-const PRIVATE_CACHE = 'private, no-store';
+const PRIVATE_CACHE = 'private, max-age=86400, immutable';
 
-export const GET = withApiErrors(async function GET(
-  _req: Request,
-  context: { params: Promise<{ segments?: string[] }> }
-) {
-  const session = await requireSession();
-  const { segments } = await context.params;
-  const key = segments?.join('/') ?? '';
-  if (!key || key.includes('..')) {
-    return new Response('Not found', { status: 404 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: { employee: true },
-  });
-  const allowed = await actorCanReadUpload(prisma, {
-    objectKey: key,
-    userId: session.user.id,
-    role: normalizeUserRole(session.user.role),
-    employee: user?.employee ? { id: user.employee.id, branchId: user.employee.branchId } : null,
-  });
-  if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
-
+async function serveObject(key: string): Promise<Response> {
   try {
     const { env } = getCloudflareContext({ async: false });
     const bucket = getR2UploadsBucket(env as CloudflareEnv);
@@ -65,4 +45,42 @@ export const GET = withApiErrors(async function GET(
   } catch {
     return new Response('Not found', { status: 404 });
   }
+}
+
+export const GET = withApiErrors(async function GET(
+  req: Request,
+  context: { params: Promise<{ segments?: string[] }> }
+) {
+  const { segments } = await context.params;
+  const key = segments?.join('/') ?? '';
+  if (!key || key.includes('..')) {
+    return new Response('Not found', { status: 404 });
+  }
+
+  const url = new URL(req.url);
+  if (verifyUploadSignature(key, url.searchParams.get('exp'), url.searchParams.get('sig'))) {
+    return serveObject(key);
+  }
+
+  const session = await getServerSession(authOptions);
+  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const role = normalizeUserRole(session.user.role);
+  if (role === 'owner' || role === 'qc') {
+    return serveObject(key);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    include: { employee: true },
+  });
+  const allowed = await actorCanReadUpload(prisma, {
+    objectKey: key,
+    userId: session.user.id,
+    role,
+    employee: user?.employee ? { id: user.employee.id, branchId: user.employee.branchId } : null,
+  });
+  if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
+
+  return serveObject(key);
 });

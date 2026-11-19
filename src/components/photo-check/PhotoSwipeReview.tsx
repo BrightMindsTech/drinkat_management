@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useUploadPhotoViewer } from '@/components/UploadPhotoViewer';
 import { parseCriteriaJson } from '@/lib/photo-score';
 
 function CriteriaList({ raw, defsJson, locale }: { raw: string; defsJson?: string | null; locale: string }) {
@@ -45,6 +46,7 @@ type QueueItem = {
 
 export function PhotoSwipeReview() {
   const { t, locale } = useLanguage();
+  const { openPhoto } = useUploadPhotoViewer();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -199,7 +201,16 @@ export function PhotoSwipeReview() {
             </span>
           ) : null}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={shown} alt="" className="h-80 w-full object-cover" />
+          <img
+            src={shown}
+            alt=""
+            className="h-80 w-full object-cover"
+            draggable={false}
+            onContextMenu={(e) => e.preventDefault()}
+            onClick={() => {
+              if (Math.abs(dx) < 10) openPhoto(shown, paths);
+            }}
+          />
           {paths.length > 1 ? (
             <div
               className="flex items-center justify-center gap-2 px-3 py-2"

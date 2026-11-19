@@ -152,6 +152,7 @@ assert.equal(aiLiveEnabled(), false);
 assert.equal(aiPaidUsageApproved(), false);
 assert.throws(() => assertAiLiveReady(), (e: unknown) => e instanceof AiUnavailableError && e.code === 'credentials_missing');
 assert.equal(uploadKeyFromPath('/api/uploads/abc.jpg'), 'abc.jpg');
+assert.equal(uploadKeyFromPath('/api/uploads/abc.jpg?exp=9&sig=ab'), 'abc.jpg');
 assert.equal(uploadKeyFromPath('/uploads/../secret'), null);
 const photoShape = photoQcSuggestionSchema.parse({
   unassessable: true,

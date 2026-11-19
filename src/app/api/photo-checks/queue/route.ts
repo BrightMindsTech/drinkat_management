@@ -4,6 +4,7 @@ import { withApiErrors } from '@/lib/api-route-error';
 import { dataScopeForRole, normalizeUserRole } from '@/lib/permissions';
 import { managerPhotoSubmissionWhere } from '@/lib/photo-review-notify';
 import { submissionUploadPaths } from '@/lib/photo-multi';
+import { signStoredUploadPath } from '@/lib/upload-signed-url';
 
 export const GET = withApiErrors(async function GET() {
   const session = await requireCapability('qc:review');
@@ -38,7 +39,8 @@ export const GET = withApiErrors(async function GET() {
   return Response.json({
     items: items.map((item) => ({
       ...item,
-      uploadPaths: submissionUploadPaths(item),
+      uploadPath: signStoredUploadPath(item.uploadPath),
+      uploadPaths: submissionUploadPaths(item).map(signStoredUploadPath),
     })),
     remaining: items.length,
   });

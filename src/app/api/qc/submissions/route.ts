@@ -7,7 +7,15 @@ import { runQcPhotoMonthlyCleanupIfDue } from '@/lib/qc-photo-cleanup';
 import { getOwnerUserIds } from '@/lib/notify-helpers';
 import { notifyUsers } from '@/lib/user-notify';
 import { formatAppDateTime } from '@/lib/format-datetime';
+import { signStoredUploadPath } from '@/lib/upload-signed-url';
 import { z } from 'zod';
+
+function withSignedPhotos<T extends { photos: { filePath: string }[] }>(rows: T[]): T[] {
+  return rows.map((row) => ({
+    ...row,
+    photos: row.photos.map((p) => ({ ...p, filePath: signStoredUploadPath(p.filePath) })),
+  }));
+}
 
 const createSchema = z.object({
   assignmentId: z.string(),
@@ -37,7 +45,7 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { submittedAt: 'desc' },
     });
-    return Response.json(submissions);
+    return Response.json(withSignedPhotos(submissions));
   }
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id }, include: { employee: true } });
@@ -50,7 +58,7 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { submittedAt: 'desc' },
   });
-  return Response.json(submissions);
+  return Response.json(withSignedPhotos(submissions));
 }
 
 export async function POST(req: NextRequest) {

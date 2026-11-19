@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
+import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 
 type ArchiveItem = {
   id: string;
@@ -81,8 +82,7 @@ export function PhotoArchivePanel() {
               <ul className="mt-3 grid grid-cols-3 gap-2">
                 {item.uploadPaths.map((src) => (
                   <li key={src}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={src} alt="" className="h-28 w-full rounded-xl object-cover" />
+                    <OpenUploadPhoto src={src} gallery={item.uploadPaths} className="h-28 w-full rounded-xl object-cover" />
                   </li>
                 ))}
               </ul>

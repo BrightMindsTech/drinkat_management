@@ -78,7 +78,7 @@ import {
 import {
   CUSTOMER_COMPLAINT_KIND,
   complaintComments,
-  complaintSeverity,
+  complaintHasContent,
   encodeComplaintPayload,
   isCustomerComplaintReport,
   parseComplaintPayload,
@@ -660,12 +660,15 @@ const swipe = fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoS
 assert.match(swipe, /decidingRef/);
 assert.match(swipe, /stopPropagation/);
 assert.match(swipe, /Already reviewed|409/);
+assert.match(swipe, /openPhoto/);
+assert.doesNotMatch(swipe, /location\.assign/);
 
 const reviewSrc = fs.readFileSync(path.join(root, 'src/app/api/photo-checks/[id]/review/route.ts'), 'utf8');
 assert.match(reviewSrc, /status: 'pending_qc'/);
 assert.match(reviewSrc, /Already reviewed/);
 
 const reports = fs.readFileSync(path.join(root, 'src/app/api/qc-reports/route.ts'), 'utf8');
+assert.match(reports, /signUploadUrlsInJsonString/);
 assert.doesNotMatch(reports, /computeAndStoreEmployeeKpi/);
 assert.match(reports, /resolveQcReportRecipients/);
 assert.match(reports, /notifyTo/);
@@ -823,6 +826,7 @@ assert.equal(beforeMorning[0]?.periodKey, '2026-10-12');
 assert.equal(formatPhotoCountdown(3661000, 'en'), '1h 01m');
 assert.match(formatPhotoCountdown(90_000, 'ar'), /د/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/queue/route.ts'), 'utf8'), /criteriaJson/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/queue/route.ts'), 'utf8'), /signStoredUploadPath/);
 assert.match(fs.readFileSync(path.join(root, 'scripts/grant-sara-production.ts'), 'utf8'), /d1 execute/);
 assert.match(fs.readFileSync(path.join(root, 'scripts/grant-sara-production.ts'), 'utf8'), /--remote/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'scripts/grant-sara-production.ts'), 'utf8'), /from 'wrangler'/);
@@ -1030,28 +1034,30 @@ assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /openNativeImageSourcePick/);
 {
   const encoded = encodeComplaintPayload({
-    complainantName: '  Ali  ',
-    phone: '079',
-    orderNumber: 'A12',
-    types: ['food_quality', 'food_quality', 'unknown' as never],
-    description: 'cold fries',
-    staffInvolved: 'Omar',
-    actionTaken: 'replaced',
-    photoUrls: ['/uploads/c.jpg', '/uploads/c.jpg'],
-    photoNotes: { '/uploads/c.jpg': '  soggy  ', '/uploads/gone.jpg': 'drop' },
+    talabat: [{ note: '  late order  ', photoUrl: '/uploads/t.jpg' }, {}, {}],
+    careem: [{ note: 'wrong drink', photoUrl: null }, {}],
+    additionalNotes: '  follow up  ',
   });
   assert.equal(encoded.kind, CUSTOMER_COMPLAINT_KIND);
-  assert.equal(encoded.complainantName, 'Ali');
-  assert.deepEqual(encoded.types, ['food_quality']);
-  assert.deepEqual(encoded.photoUrls, ['/uploads/c.jpg']);
-  assert.deepEqual(encoded.photoNotes, { '/uploads/c.jpg': 'soggy' });
-  assert.equal(complaintSeverity(encoded), 'high');
-  assert.match(complaintComments(encoded), /cold fries/);
+  assert.equal(encoded.talabat[0]?.note, 'late order');
+  assert.equal(encoded.talabat.length, 3);
+  assert.equal(encoded.careem.length, 2);
+  assert.equal(encoded.additionalNotes, 'follow up');
+  assert.equal(complaintHasContent(encoded), true);
+  assert.match(complaintComments(encoded), /late order/);
   const round = parseComplaintPayload(JSON.stringify(encoded));
-  assert.equal(round?.description, 'cold fries');
+  assert.equal(round?.talabat[0]?.photoUrl, '/uploads/t.jpg');
   assert.equal(isCustomerComplaintReport({ category: CUSTOMER_COMPLAINT_KIND }), true);
-  assert.deepEqual(parseQcReportPhotos(JSON.stringify(encoded)), ['/uploads/c.jpg']);
+  assert.deepEqual(parseQcReportPhotos(JSON.stringify(encoded)), ['/uploads/t.jpg']);
+  const legacy = parseComplaintPayload(
+    JSON.stringify({ kind: CUSTOMER_COMPLAINT_KIND, v: 1, description: 'old note', photoUrls: ['/uploads/c.jpg'] })
+  );
+  assert.equal(legacy?.additionalNotes, 'old note');
+  assert.equal(legacy?.talabat[0]?.photoUrl, '/uploads/c.jpg');
 }
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /Talabat|talabat/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /Careem|careem/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /qcComplaintAttach/);
 assert.equal(
   resolvePushNavigationUrl({
     type: 'qc_complaint',

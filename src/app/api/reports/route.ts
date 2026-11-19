@@ -13,6 +13,7 @@ import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-re
 import { buildCashFormReport } from '@/lib/cash-form-report';
 import { buildManagerRatingReport } from '@/lib/manager-rating-report';
 import { normalizeUserRole } from '@/lib/formVisibility';
+import { signStoredUploadPath } from '@/lib/upload-signed-url';
 
 export const GET = withApiErrors(async function GET(req: NextRequest) {
   const session = await requireOwner();
@@ -442,7 +443,7 @@ export const GET = withApiErrors(async function GET(req: NextRequest) {
       checklistName: s.assignment?.checklist?.name ?? '—',
       employee: { name: s.employee?.name ?? '—' },
       branch: { name: s.employee?.branch?.name ?? '—' },
-      photos: s.photos.map((p) => ({ id: p.id, filePath: p.filePath })),
+      photos: s.photos.map((p) => ({ id: p.id, filePath: signStoredUploadPath(p.filePath) })),
     }));
 
   const managerReports = managers.map((m) => {

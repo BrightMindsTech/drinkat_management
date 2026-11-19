@@ -23,7 +23,19 @@ export function useUploadPhotoViewer() {
   if (!ctx) {
     return {
       openPhoto: (src: string) => {
-        if (typeof window !== 'undefined') window.location.assign(src);
+        if (typeof window === 'undefined' || !src) return;
+        const wrap = document.createElement('div');
+        wrap.setAttribute(
+          'style',
+          'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center;padding:16px'
+        );
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = '';
+        img.setAttribute('style', 'max-width:100%;max-height:90vh;object-fit:contain');
+        wrap.appendChild(img);
+        wrap.addEventListener('click', () => wrap.remove());
+        document.body.appendChild(wrap);
       },
     };
   }
@@ -90,6 +102,7 @@ export function UploadPhotoViewerProvider({ children }: { children: ReactNode })
                 alt=""
                 className="max-h-[min(85vh,100%)] max-w-full object-contain"
                 onClick={(e) => e.stopPropagation()}
+                onContextMenu={(e) => e.preventDefault()}
               />
             </div>
           </>
@@ -118,7 +131,15 @@ export function OpenUploadPhoto({
       className="block overflow-hidden rounded-lg focus:outline-none focus:ring-2 focus:ring-ios-blue"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} className={className} />
+      <img
+        src={src}
+        alt={alt}
+        className={className}
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+        onContextMenu={(e) => e.preventDefault()}
+      />
     </button>
   );
 }

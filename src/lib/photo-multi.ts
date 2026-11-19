@@ -14,7 +14,10 @@ export function normalizeSubmissionUploadPaths(input: {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const item of raw) {
-    const s = String(item ?? '').trim();
+    const s = String(item ?? '')
+      .trim()
+      .split('#')[0]
+      ?.split('?')[0] ?? '';
     if (s.length < 4) continue;
     if (seen.has(s)) continue;
     seen.add(s);

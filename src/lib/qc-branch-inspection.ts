@@ -107,7 +107,7 @@ export function normalizeInspectionPhotoUrls(row: { photoUrl?: unknown; photoUrl
   const out: string[] = [];
   const add = (v: unknown) => {
     if (!isPhotoUrl(v)) return;
-    const url = v.trim();
+    const url = v.trim().split('#')[0]?.split('?')[0] ?? v.trim();
     if (!out.includes(url)) out.push(url);
   };
   if (Array.isArray(row?.photoUrls)) {
@@ -266,9 +266,19 @@ export function parseQcReportPhotos(raw: string): string[] {
   try {
     const v = JSON.parse(raw) as unknown;
     if (v && typeof v === 'object' && !Array.isArray(v)) {
-      const rec = v as { kind?: unknown; photoUrls?: unknown };
-      if (rec.kind === 'customer_complaint' && Array.isArray(rec.photoUrls)) {
-        return rec.photoUrls.map((item) => String(item ?? '').trim()).filter((s) => s.length > 3);
+      const rec = v as { kind?: unknown; photoUrls?: unknown; talabat?: unknown; careem?: unknown };
+      if (rec.kind === 'customer_complaint') {
+        const fromSlots: string[] = [];
+        for (const row of [...(Array.isArray(rec.talabat) ? rec.talabat : []), ...(Array.isArray(rec.careem) ? rec.careem : [])]) {
+          if (!row || typeof row !== 'object') continue;
+          const url = String((row as { photoUrl?: unknown }).photoUrl ?? '').trim();
+          if (url.length > 3 && !fromSlots.includes(url)) fromSlots.push(url);
+        }
+        if (fromSlots.length) return fromSlots;
+        if (Array.isArray(rec.photoUrls)) {
+          return rec.photoUrls.map((item) => String(item ?? '').trim()).filter((s) => s.length > 3);
+        }
+        return [];
       }
       return [];
     }

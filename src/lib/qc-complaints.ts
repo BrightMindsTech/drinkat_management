@@ -1,43 +1,27 @@
 export const CUSTOMER_COMPLAINT_KIND = 'customer_complaint';
-export const CUSTOMER_COMPLAINT_VERSION = 1;
-export const COMPLAINT_PHOTOS_MAX = 12;
-export const COMPLAINT_PHOTO_NOTE_MAX = 280;
+export const CUSTOMER_COMPLAINT_VERSION = 2;
+export const COMPLAINT_SLOT_NOTE_MAX = 2000;
+export const COMPLAINT_ADDITIONAL_MAX = 4000;
 
-export type ComplaintTypeId =
-  | 'food_quality'
-  | 'service'
-  | 'cleanliness'
-  | 'delay'
-  | 'wrong_order'
-  | 'other';
+export const COMPLAINT_CHANNELS = [
+  { id: 'talabat', slots: 3, titleEn: 'Talabat', titleAr: 'طلبات' },
+  { id: 'careem', slots: 2, titleEn: 'Careem', titleAr: 'كريم' },
+] as const;
 
-export const COMPLAINT_TYPES: readonly {
-  id: ComplaintTypeId;
-  titleEn: string;
-  titleAr: string;
-}[] = [
-  { id: 'food_quality', titleEn: 'Food quality', titleAr: 'جودة الطعام' },
-  { id: 'service', titleEn: 'Service', titleAr: 'الخدمة' },
-  { id: 'cleanliness', titleEn: 'Cleanliness', titleAr: 'النظافة' },
-  { id: 'delay', titleEn: 'Delay', titleAr: 'التأخير' },
-  { id: 'wrong_order', titleEn: 'Wrong order', titleAr: 'طلب خاطئ' },
-  { id: 'other', titleEn: 'Other', titleAr: 'أخرى' },
-];
+export type ComplaintChannelId = (typeof COMPLAINT_CHANNELS)[number]['id'];
 
-const TYPE_IDS = new Set<string>(COMPLAINT_TYPES.map((t) => t.id));
+export type ComplaintSlot = {
+  note: string;
+  photoUrl: string | null;
+};
 
 export type CustomerComplaintPayload = {
   kind: typeof CUSTOMER_COMPLAINT_KIND;
   v: number;
-  complainantName: string;
-  phone: string;
-  orderNumber: string;
-  types: ComplaintTypeId[];
+  talabat: ComplaintSlot[];
+  careem: ComplaintSlot[];
+  additionalNotes: string;
   description: string;
-  staffInvolved: string;
-  actionTaken: string;
-  photoUrls: string[];
-  photoNotes: Record<string, string>;
 };
 
 function trimField(v: unknown, max: number): string {
@@ -46,65 +30,93 @@ function trimField(v: unknown, max: number): string {
     .slice(0, max);
 }
 
-function uniqueUrls(urls: unknown, max: number): string[] {
+function normalizeSlot(raw: unknown): ComplaintSlot {
+  const rec = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const photo = trimField(rec.photoUrl, 2000).split('#')[0]?.split('?')[0] ?? '';
+  return {
+    note: trimField(rec.note, COMPLAINT_SLOT_NOTE_MAX),
+    photoUrl: photo.length > 3 ? photo : null,
+  };
+}
+
+function normalizeSlots(raw: unknown, count: number): ComplaintSlot[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  return Array.from({ length: count }, (_, i) => normalizeSlot(arr[i]));
+}
+
+export function listComplaintPhotos(payload: CustomerComplaintPayload): string[] {
   const out: string[] = [];
-  if (!Array.isArray(urls)) return out;
-  for (const item of urls) {
-    const s = String(item ?? '').trim();
-    if (s.length > 3 && !out.includes(s)) out.push(s);
-    if (out.length >= max) break;
+  for (const slot of [...payload.talabat, ...payload.careem]) {
+    if (slot.photoUrl && !out.includes(slot.photoUrl)) out.push(slot.photoUrl);
   }
   return out;
 }
 
-function normalizeTypes(raw: unknown): ComplaintTypeId[] {
-  const out: ComplaintTypeId[] = [];
-  if (!Array.isArray(raw)) return out;
-  for (const item of raw) {
-    const id = String(item ?? '').trim();
-    if (TYPE_IDS.has(id) && !out.includes(id as ComplaintTypeId)) out.push(id as ComplaintTypeId);
-  }
+export function complaintFilledSlots(payload: CustomerComplaintPayload): { channel: ComplaintChannelId; n: number; slot: ComplaintSlot }[] {
+  const out: { channel: ComplaintChannelId; n: number; slot: ComplaintSlot }[] = [];
+  payload.talabat.forEach((slot, i) => {
+    if (slot.note || slot.photoUrl) out.push({ channel: 'talabat', n: i + 1, slot });
+  });
+  payload.careem.forEach((slot, i) => {
+    if (slot.note || slot.photoUrl) out.push({ channel: 'careem', n: i + 1, slot });
+  });
   return out;
 }
 
-export function normalizeComplaintPhotoNotes(
-  photoUrls: string[],
-  raw: unknown
-): Record<string, string> {
-  const notes: Record<string, string> = {};
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return notes;
-  const rec = raw as Record<string, unknown>;
-  for (const url of photoUrls) {
-    const note = trimField(rec[url], COMPLAINT_PHOTO_NOTE_MAX);
-    if (note) notes[url] = note;
-  }
-  return notes;
+export function complaintHasContent(payload: CustomerComplaintPayload): boolean {
+  return Boolean(payload.additionalNotes || complaintFilledSlots(payload).length);
+}
+
+export function complaintComments(payload: CustomerComplaintPayload): string {
+  const bits = complaintFilledSlots(payload).map((row) => row.slot.note).filter(Boolean);
+  if (payload.additionalNotes) bits.push(payload.additionalNotes);
+  return (bits.join(' · ') || 'Complaints').slice(0, 4000);
+}
+
+export function complaintSeverity(_payload: CustomerComplaintPayload): 'medium' {
+  return 'medium';
 }
 
 export function encodeComplaintPayload(input: {
+  talabat?: unknown;
+  careem?: unknown;
+  additionalNotes?: string;
+  description?: string;
   complainantName?: string;
   phone?: string;
   orderNumber?: string;
   types?: string[];
-  description: string;
   staffInvolved?: string;
   actionTaken?: string;
-  photoUrls?: string[];
+  photoUrls?: unknown;
   photoNotes?: Record<string, string>;
 }): CustomerComplaintPayload {
-  const photoUrls = uniqueUrls(input.photoUrls ?? [], COMPLAINT_PHOTOS_MAX);
+  let talabat = normalizeSlots(input.talabat, 3);
+  let careem = normalizeSlots(input.careem, 2);
+  let additionalNotes = trimField(input.additionalNotes ?? input.description, COMPLAINT_ADDITIONAL_MAX);
+
+  const legacyPhotos = Array.isArray(input.photoUrls)
+    ? input.photoUrls.map((item) => String(item ?? '').trim()).filter((s) => s.length > 3)
+    : [];
+  if (legacyPhotos.length && !talabat.some((s) => s.photoUrl) && !careem.some((s) => s.photoUrl)) {
+    talabat = talabat.map((slot, i) => ({ ...slot, photoUrl: legacyPhotos[i] ?? slot.photoUrl }));
+  }
+
+  const description = complaintComments({
+    kind: CUSTOMER_COMPLAINT_KIND,
+    v: CUSTOMER_COMPLAINT_VERSION,
+    talabat,
+    careem,
+    additionalNotes,
+    description: '',
+  });
   return {
     kind: CUSTOMER_COMPLAINT_KIND,
     v: CUSTOMER_COMPLAINT_VERSION,
-    complainantName: trimField(input.complainantName, 120),
-    phone: trimField(input.phone, 40),
-    orderNumber: trimField(input.orderNumber, 80),
-    types: normalizeTypes(input.types),
-    description: trimField(input.description, 4000),
-    staffInvolved: trimField(input.staffInvolved, 400),
-    actionTaken: trimField(input.actionTaken, 2000),
-    photoUrls,
-    photoNotes: normalizeComplaintPhotoNotes(photoUrls, input.photoNotes),
+    talabat,
+    careem,
+    additionalNotes,
+    description,
   };
 }
 
@@ -115,19 +127,8 @@ export function parseComplaintPayload(raw: string | null | undefined): CustomerC
     if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
     const rec = v as Record<string, unknown>;
     if (rec.kind !== CUSTOMER_COMPLAINT_KIND) return null;
-    const description = trimField(rec.description, 4000);
-    if (!description) return null;
-    return encodeComplaintPayload({
-      complainantName: String(rec.complainantName ?? ''),
-      phone: String(rec.phone ?? ''),
-      orderNumber: String(rec.orderNumber ?? ''),
-      types: Array.isArray(rec.types) ? rec.types.map((x) => String(x)) : [],
-      description,
-      staffInvolved: String(rec.staffInvolved ?? ''),
-      actionTaken: String(rec.actionTaken ?? ''),
-      photoUrls: Array.isArray(rec.photoUrls) ? rec.photoUrls.map((x) => String(x)) : [],
-      photoNotes: rec.photoNotes && typeof rec.photoNotes === 'object' ? (rec.photoNotes as Record<string, string>) : {},
-    });
+    const payload = encodeComplaintPayload(rec);
+    return complaintHasContent(payload) ? payload : null;
   } catch {
     return null;
   }
@@ -136,23 +137,4 @@ export function parseComplaintPayload(raw: string | null | undefined): CustomerC
 export function isCustomerComplaintReport(item: { category?: string; photosJson?: string }): boolean {
   if (item.category === CUSTOMER_COMPLAINT_KIND) return true;
   return Boolean(item.photosJson && parseComplaintPayload(item.photosJson));
-}
-
-export function complaintComments(payload: CustomerComplaintPayload): string {
-  const typeBit = payload.types.length ? payload.types.join(', ') : 'complaint';
-  return `${typeBit} · ${payload.description}`.slice(0, 4000);
-}
-
-export function complaintSeverity(payload: CustomerComplaintPayload): 'medium' | 'high' {
-  return payload.types.includes('food_quality') ? 'high' : 'medium';
-}
-
-export function complaintTypeTitle(id: ComplaintTypeId, locale: string): string {
-  const row = COMPLAINT_TYPES.find((t) => t.id === id);
-  if (!row) return id;
-  return locale === 'ar' ? row.titleAr : row.titleEn;
-}
-
-export function complaintPhotoNote(payload: CustomerComplaintPayload, url: string): string {
-  return payload.photoNotes[url] ?? '';
 }

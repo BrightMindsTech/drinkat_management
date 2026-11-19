@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { requirePhotoArchiveViewer } from '@/lib/session';
 import { withApiErrors } from '@/lib/api-route-error';
 import { submissionUploadPaths } from '@/lib/photo-multi';
+import { signStoredUploadPath } from '@/lib/upload-signed-url';
 import { PHOTO_ARCHIVE_PURGED_PATH, photoArchiveCutoff } from '@/lib/photo-archive';
 
 export const GET = withApiErrors(async function GET() {
@@ -27,7 +28,7 @@ export const GET = withApiErrors(async function GET() {
     cutoff: cutoff.toISOString(),
     items: items
       .map((item) => {
-        const uploadPaths = submissionUploadPaths(item);
+        const uploadPaths = submissionUploadPaths(item).map(signStoredUploadPath);
         if (!uploadPaths.length) return null;
         return { ...item, uploadPaths };
       })

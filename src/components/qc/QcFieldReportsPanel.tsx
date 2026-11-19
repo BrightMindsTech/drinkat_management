@@ -19,8 +19,8 @@ import {
   parseQcReportPhotos,
 } from '@/lib/qc-branch-inspection';
 import {
-  complaintPhotoNote,
-  complaintTypeTitle,
+  COMPLAINT_CHANNELS,
+  complaintFilledSlots,
   isCustomerComplaintReport,
   parseComplaintPayload,
 } from '@/lib/qc-complaints';
@@ -118,7 +118,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
       const author = item.createdBy.employee?.name ?? item.createdBy.email;
       const payload = parseComplaintPayload(item.photosJson);
       const extra = payload
-        ? `${payload.description} ${payload.complainantName} ${payload.phone} ${payload.orderNumber} ${payload.staffInvolved}`
+        ? `${payload.description} ${payload.additionalNotes} ${payload.talabat.map((s) => s.note).join(' ')} ${payload.careem.map((s) => s.note).join(' ')}`
         : '';
       return `${item.comments} ${item.branch.name} ${author} ${extra}`.toLowerCase().includes(needle);
     });
@@ -466,12 +466,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
                   </>
                 ) : complaint ? (
                   <>
-                    <p className="text-xs font-bold uppercase tracking-wide text-red-700">{t.qcOps.qcComplaintNew}</p>
-                    {complaint.types.length ? (
-                      <p className="mt-1 text-sm font-semibold text-app-primary">
-                        {complaint.types.map((id) => complaintTypeTitle(id, locale)).join(' · ')}
-                      </p>
-                    ) : null}
+                    <p className="text-xs font-bold uppercase tracking-wide text-teal-700">{t.qcOps.qcComplaintNew}</p>
                     <p className={`${open ? '' : 'line-clamp-2'} mt-1 text-sm leading-relaxed text-app-primary`}>
                       {complaint.description}
                     </p>
@@ -487,52 +482,39 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
               </button>
               {open && complaint ? (
                 <div className="space-y-3 px-4 pb-4 text-sm text-app-primary">
-                  {complaint.complainantName ? (
+                  {COMPLAINT_CHANNELS.map((channel) => {
+                    const filled = complaintFilledSlots(complaint).filter((row) => row.channel === channel.id);
+                    if (!filled.length) return null;
+                    return (
+                      <div key={channel.id}>
+                        <p className="text-xs font-bold uppercase tracking-wide text-teal-700">
+                          {locale === 'ar' ? channel.titleAr : channel.titleEn}
+                        </p>
+                        <ul className="mt-1 space-y-2">
+                          {filled.map((row) => (
+                            <li key={`${channel.id}-${row.n}`} className="flex items-start gap-2">
+                              <span className="flex-1 whitespace-pre-wrap">
+                                {interpolate(t.qcOps.qcComplaintNote, { n: row.n })}
+                                {row.slot.note ? `: ${row.slot.note}` : ''}
+                              </span>
+                              {row.slot.photoUrl ? (
+                                <OpenUploadPhoto
+                                  src={row.slot.photoUrl}
+                                  gallery={photosList}
+                                  className="h-16 w-16 rounded-lg object-cover"
+                                />
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                  {complaint.additionalNotes ? (
                     <p>
-                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintName}: </span>
-                      {complaint.complainantName}
+                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintAdditional}: </span>
+                      {complaint.additionalNotes}
                     </p>
-                  ) : null}
-                  {complaint.phone ? (
-                    <p>
-                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintPhone}: </span>
-                      {complaint.phone}
-                    </p>
-                  ) : null}
-                  {complaint.orderNumber ? (
-                    <p>
-                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintOrder}: </span>
-                      {complaint.orderNumber}
-                    </p>
-                  ) : null}
-                  {complaint.staffInvolved ? (
-                    <p>
-                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintStaff}: </span>
-                      {complaint.staffInvolved}
-                    </p>
-                  ) : null}
-                  {complaint.actionTaken ? (
-                    <p>
-                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintAction}: </span>
-                      {complaint.actionTaken}
-                    </p>
-                  ) : null}
-                  {photosList.length ? (
-                    <div className="flex flex-wrap gap-2">
-                      {photosList.map((url) => {
-                        const reason = complaintPhotoNote(complaint, url);
-                        return (
-                          <span key={url} className="flex w-24 flex-col gap-0.5">
-                            <OpenUploadPhoto
-                              src={url}
-                              gallery={photosList}
-                              className="h-24 w-24 rounded-xl object-cover"
-                            />
-                            {reason ? <span className="text-[10px] leading-tight text-app-muted">{reason}</span> : null}
-                          </span>
-                        );
-                      })}
-                    </div>
                   ) : null}
                 </div>
               ) : open && inspection ? (

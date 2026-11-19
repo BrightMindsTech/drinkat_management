@@ -21,6 +21,7 @@ import {
   isApprovedEmployeeError,
 } from '../src/lib/kpi-evidence';
 import { uploadKeyFromPath } from '../src/lib/ai-images';
+import { signStoredUploadPath, verifyUploadSignature, canonicalUploadPath } from '../src/lib/upload-signed-url';
 
 assert.equal(canVerifyIssue('manager'), false);
 assert.equal(canVerifyIssue('qc'), true);
@@ -166,6 +167,7 @@ assert.equal(canSeeIssue('manager', { id: 'm1', branchId: 'b1' }, { branchId: 'b
 assert.equal(canSeeIssue('manager', { id: 'm1', branchId: 'b1' }, { branchId: 'b2', assigneeEmployeeId: 'e1' }), false);
 
 assert.equal(uploadKeyFromPath('/api/uploads/abc.jpg'), 'abc.jpg');
+assert.equal(uploadKeyFromPath('/api/uploads/abc.jpg?exp=1&sig=x'), 'abc.jpg');
 assert.equal(uploadKeyFromPath('/uploads/../secret'), null);
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -186,9 +188,25 @@ assert(prodWrangler.includes('PHOTO_CHECK_SCHEDULER_ENABLED'));
 assert(prodWrangler.includes('AI_PAID_USAGE_APPROVED'));
 
 const uploadGet = fs.readFileSync(path.join(root, 'src/app/api/uploads/[[...segments]]/route.ts'), 'utf8');
-assert(uploadGet.includes('requireSession'));
+assert(uploadGet.includes('verifyUploadSignature'));
 assert(uploadGet.includes('actorCanReadUpload'));
-assert(uploadGet.includes('private, no-store'));
+assert(uploadGet.includes('private, max-age=86400, immutable'));
+assert(!uploadGet.includes('requireSession'));
+
+const middlewareSrc = fs.readFileSync(path.join(root, 'src/middleware.ts'), 'utf8');
+assert(middlewareSrc.includes("pathname.startsWith('/api/uploads/')"));
+
+const viewerSrc = fs.readFileSync(path.join(root, 'src/components/UploadPhotoViewer.tsx'), 'utf8');
+assert(!viewerSrc.includes('location.assign'));
+
+const signed = signStoredUploadPath('/api/uploads/abc.jpg');
+assert.equal(canonicalUploadPath(signed), '/api/uploads/abc.jpg');
+const signedUrl = new URL(signed, 'https://example.com');
+assert.equal(
+  verifyUploadSignature('abc.jpg', signedUrl.searchParams.get('exp'), signedUrl.searchParams.get('sig')),
+  true
+);
+assert.equal(verifyUploadSignature('abc.jpg', String(Math.floor(Date.now() / 1000) + 60), 'nope'), false);
 
 const submit = fs.readFileSync(path.join(root, 'src/app/api/inspections/tasks/[id]/submit/route.ts'), 'utf8');
 assert(submit.includes('updateMany'));

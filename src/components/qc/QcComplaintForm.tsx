@@ -1,45 +1,47 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { interpolate, useLanguage } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { openNativeImageSourcePick } from '@/lib/open-camera-file';
 import {
-  COMPLAINT_PHOTOS_MAX,
-  COMPLAINT_PHOTO_NOTE_MAX,
-  COMPLAINT_TYPES,
+  COMPLAINT_ADDITIONAL_MAX,
+  COMPLAINT_CHANNELS,
+  COMPLAINT_SLOT_NOTE_MAX,
   CUSTOMER_COMPLAINT_KIND,
-  type ComplaintTypeId,
+  complaintHasContent,
+  encodeComplaintPayload,
+  type ComplaintSlot,
 } from '@/lib/qc-complaints';
-import { QcNotifyPicker, defaultNotifyTargets, type QcNotifyOption } from '@/components/qc/QcNotifyPicker';
+import { QcNotifyPicker, defaultNotifyTargets, notifyOptionLabel, type QcNotifyOption } from '@/components/qc/QcNotifyPicker';
 
 type Branch = { id: string; name: string };
+
+function emptySlots(n: number): ComplaintSlot[] {
+  return Array.from({ length: n }, () => ({ note: '', photoUrl: null }));
+}
 
 export function QcComplaintForm({
   branches,
   notifyOptions,
   initialBranchId,
+  reporterName,
   onCancel,
   onSubmitted,
 }: {
   branches: Branch[];
   notifyOptions: QcNotifyOption[];
   initialBranchId: string;
+  reporterName?: string;
   onCancel: () => void;
   onSubmitted: () => Promise<void> | void;
 }) {
   const { t, locale } = useLanguage();
   const [branchId, setBranchId] = useState(initialBranchId || branches[0]?.id || '');
   const [notifyTo, setNotifyTo] = useState<string[]>(() => defaultNotifyTargets(notifyOptions));
-  const [complainantName, setComplainantName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [orderNumber, setOrderNumber] = useState('');
-  const [types, setTypes] = useState<ComplaintTypeId[]>([]);
-  const [description, setDescription] = useState('');
-  const [staffInvolved, setStaffInvolved] = useState('');
-  const [actionTaken, setActionTaken] = useState('');
-  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
-  const [photoNotes, setPhotoNotes] = useState<Record<string, string>>({});
+  const [talabat, setTalabat] = useState<ComplaintSlot[]>(() => emptySlots(3));
+  const [careem, setCareem] = useState<ComplaintSlot[]>(() => emptySlots(2));
+  const [additionalNotes, setAdditionalNotes] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const nowLabel = useMemo(() => formatAppDateTime(new Date().toISOString(), locale), [locale]);
@@ -49,41 +51,34 @@ export function QcComplaintForm({
     setNotifyTo((cur) => (cur.length === 1 && cur[0] === 'all' ? next : cur));
   }, [notifyOptions]);
 
-  const uploading = busy !== null && busy !== 'submit';
-  const canAddPhoto = busy === null && photoUrls.length < COMPLAINT_PHOTOS_MAX;
+  const ready = complaintHasContent(encodeComplaintPayload({ talabat, careem, additionalNotes }));
+  const sentTo = notifyTo
+    .map((value) => {
+      const opt = notifyOptions.find((o) => o.value === value);
+      return opt ? notifyOptionLabel(opt, t) : value;
+    })
+    .join(', ');
 
-  function toggleType(id: ComplaintTypeId) {
-    setTypes((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  function setSlot(channel: 'talabat' | 'careem', index: number, patch: Partial<ComplaintSlot>) {
+    const setter = channel === 'talabat' ? setTalabat : setCareem;
+    setter((cur) => cur.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
 
-  async function uploadPhotos(files: File[]) {
-    const room = COMPLAINT_PHOTOS_MAX - photoUrls.length;
-    const batch = files.slice(0, Math.max(0, room));
-    if (!batch.length) return;
-    setBusy('upload');
+  async function attachPhoto(channel: 'talabat' | 'careem', index: number, files: File[]) {
+    const file = files[0];
+    if (!file || busy) return;
+    setBusy(`${channel}-${index}`);
     setErr(null);
     try {
-      const uploaded: string[] = [];
-      for (const file of batch) {
-        const form = new FormData();
-        form.set('file', file);
-        const r = await fetch('/api/upload', { method: 'POST', body: form, credentials: 'include' });
-        const d = (await r.json()) as { url?: string; error?: string };
-        if (!r.ok || !d.url) {
-          setErr(d.error || t.qcOps.qcReportsFailed);
-          break;
-        }
-        uploaded.push(d.url);
+      const form = new FormData();
+      form.set('file', file);
+      const r = await fetch('/api/upload', { method: 'POST', body: form, credentials: 'include' });
+      const d = (await r.json()) as { url?: string; error?: string };
+      if (!r.ok || !d.url) {
+        setErr(d.error || t.qcOps.qcReportsFailed);
+        return;
       }
-      if (uploaded.length) {
-        setPhotoUrls((cur) => {
-          const next = [...cur];
-          for (const url of uploaded) {
-            if (!next.includes(url) && next.length < COMPLAINT_PHOTOS_MAX) next.push(url);
-          }
-          return next;
-        });
-      }
+      setSlot(channel, index, { photoUrl: d.url });
     } catch {
       setErr(t.qcOps.qcReportsFailed);
     } finally {
@@ -92,9 +87,13 @@ export function QcComplaintForm({
   }
 
   async function submit() {
-    if (!branchId || !description.trim() || busy) return;
+    if (!branchId || busy) return;
     if (!notifyTo.length) {
       setErr(t.qcOps.qcReportsNotifyNeedOne);
+      return;
+    }
+    if (!ready) {
+      setErr(t.qcOps.qcComplaintNeedOne);
       return;
     }
     setBusy('submit');
@@ -108,15 +107,9 @@ export function QcComplaintForm({
           kind: CUSTOMER_COMPLAINT_KIND,
           branchId,
           notifyTo,
-          complainantName,
-          phone,
-          orderNumber,
-          types,
-          description,
-          staffInvolved,
-          actionTaken,
-          photoUrls,
-          photoNotes,
+          talabat,
+          careem,
+          additionalNotes,
         }),
       });
       const json = (await res.json()) as { error?: string };
@@ -132,12 +125,70 @@ export function QcComplaintForm({
     }
   }
 
+  function renderSlots(channel: 'talabat' | 'careem', rows: ComplaintSlot[]) {
+    return rows.map((slot, i) => {
+      const busyKey = `${channel}-${i}`;
+      return (
+        <div
+          key={`${channel}-${i}`}
+          className="grid grid-cols-1 gap-2 border-t border-gray-200 p-3 sm:grid-cols-[1fr_7.5rem] dark:border-ios-dark-separator"
+        >
+          <label className="block space-y-1">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-app-muted">
+              {interpolate(t.qcOps.qcComplaintNote, { n: i + 1 })}
+            </span>
+            <textarea
+              className="min-h-24 w-full rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-ios-dark-separator dark:bg-ios-dark-fill"
+              value={slot.note}
+              maxLength={COMPLAINT_SLOT_NOTE_MAX}
+              onChange={(e) => setSlot(channel, i, { note: e.target.value })}
+            />
+          </label>
+          <div className="space-y-1">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-app-muted">{t.qcOps.qcComplaintPicture}</span>
+            {slot.photoUrl ? (
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={slot.photoUrl} alt="" className="h-24 w-full rounded-xl object-cover" />
+                <button
+                  type="button"
+                  className="absolute -end-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-sm text-white"
+                  onClick={() => setSlot(channel, i, { photoUrl: null })}
+                  aria-label={t.common.close}
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={busy !== null}
+                className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-gray-300 px-2 text-center text-[11px] font-medium text-app-muted disabled:opacity-50 dark:border-ios-dark-separator"
+                onClick={() =>
+                  openNativeImageSourcePick((files) => {
+                    void attachPhoto(channel, i, files);
+                  })
+                }
+              >
+                {busy === busyKey ? t.qcOps.qcReportsUploading : t.qcOps.qcComplaintAttach}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    });
+  }
+
   return (
     <div className="space-y-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-app-primary">{t.qcOps.qcComplaintNew}</h1>
-          <p className="mt-1 text-sm leading-relaxed text-app-muted">{t.qcOps.qcComplaintHint}</p>
+        <div className="text-center sm:text-start">
+          <h1 className="text-2xl font-bold uppercase tracking-[0.18em] text-slate-800 dark:text-app-primary">
+            {t.qcOps.qcComplaintNew}
+          </h1>
+          <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-app-muted">
+            {t.qcOps.qcComplaintBrand}
+          </p>
         </div>
         <button
           type="button"
@@ -152,197 +203,86 @@ export function QcComplaintForm({
 
       {err ? <p className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-medium text-red-600">{err}</p> : null}
 
-      <label className="block space-y-1">
-        <span className="text-sm font-medium text-app-muted">{t.qcOps.qcReportsBranch}</span>
-        <select
-          aria-label={t.qcOps.qcReportsBranch}
-          className="min-h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
-          value={branchId}
-          onChange={(e) => setBranchId(e.target.value)}
-        >
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="text-xs text-app-muted">
-        {t.qcOps.qcInspectWhen}: {nowLabel}
-      </p>
-      <QcNotifyPicker
-        options={notifyOptions}
-        selected={notifyTo}
-        onChange={setNotifyTo}
-        disabled={busy !== null}
-      />
-
-      <section className="overflow-hidden rounded-3xl border border-gray-200 dark:border-ios-dark-separator">
-        <header className="bg-red-700 px-4 py-2.5 text-white dark:bg-red-800">
-          <p className="text-sm font-bold">A · {t.qcOps.qcComplaintSectionA}</p>
-        </header>
-        <div className="space-y-3 px-3 py-3">
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-app-muted">{t.qcOps.qcComplaintName}</span>
-            <input
-              className="min-h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
-              value={complainantName}
-              onChange={(e) => setComplainantName(e.target.value)}
-              maxLength={120}
-              placeholder={t.qcOps.qcComplaintNamePh}
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-app-muted">{t.qcOps.qcComplaintPhone}</span>
-            <input
-              className="min-h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              maxLength={40}
-              inputMode="tel"
-              placeholder={t.qcOps.qcComplaintPhonePh}
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-app-muted">{t.qcOps.qcComplaintOrder}</span>
-            <input
-              className="min-h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
-              value={orderNumber}
-              onChange={(e) => setOrderNumber(e.target.value)}
-              maxLength={80}
-              placeholder={t.qcOps.qcComplaintOrderPh}
-            />
-          </label>
-        </div>
-      </section>
-
-      <section className="overflow-hidden rounded-3xl border border-gray-200 dark:border-ios-dark-separator">
-        <header className="bg-red-700 px-4 py-2.5 text-white dark:bg-red-800">
-          <p className="text-sm font-bold">B · {t.qcOps.qcComplaintSectionB}</p>
-        </header>
-        <div className="flex flex-wrap gap-2 px-3 py-3">
-          {COMPLAINT_TYPES.map((row) => {
-            const on = types.includes(row.id);
-            return (
-              <button
-                key={row.id}
-                type="button"
-                disabled={busy !== null}
-                onClick={() => toggleType(row.id)}
-                className={`min-h-11 rounded-xl px-3 text-sm font-semibold touch-manipulation ${
-                  on
-                    ? 'bg-red-600 text-white'
-                    : 'border border-gray-200 text-app-muted dark:border-ios-dark-separator'
-                }`}
-              >
-                {locale === 'ar' ? row.titleAr : row.titleEn}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="overflow-hidden rounded-3xl border border-gray-200 dark:border-ios-dark-separator">
-        <header className="bg-red-700 px-4 py-2.5 text-white dark:bg-red-800">
-          <p className="text-sm font-bold">C · {t.qcOps.qcComplaintSectionC}</p>
-        </header>
-        <div className="space-y-3 px-3 py-3">
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-app-muted">{t.qcOps.qcComplaintDetails}</span>
-            <textarea
-              className="min-h-32 w-full rounded-2xl border border-gray-200 bg-white p-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t.qcOps.qcComplaintDetailsPh}
-              maxLength={4000}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={!canAddPhoto}
-            className="min-h-11 rounded-xl border border-gray-200 px-3 text-xs font-semibold disabled:opacity-50 dark:border-ios-dark-separator"
-            onClick={() => {
-              if (!canAddPhoto) return;
-              openNativeImageSourcePick((files) => {
-                void uploadPhotos(files);
-              });
-            }}
-          >
-            {busy === 'upload' ? t.qcOps.qcReportsUploading : t.qcOps.qcInspectPhoto}
-          </button>
-          {photoUrls.length ? (
-            <div className="space-y-2">
-              {photoUrls.map((url) => (
-                <div key={url} className="flex items-start gap-2">
-                  <div className="relative shrink-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt="" className="h-16 w-16 rounded-xl object-cover" />
-                    <button
-                      type="button"
-                      className="absolute -end-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-sm text-white"
-                      onClick={() => {
-                        setPhotoUrls((cur) => cur.filter((u) => u !== url));
-                        setPhotoNotes((cur) => {
-                          const next = { ...cur };
-                          delete next[url];
-                          return next;
-                        });
-                      }}
-                      aria-label={t.common.close}
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <label className="min-w-0 flex-1 space-y-0.5">
-                    <span className="text-[11px] font-medium text-app-muted">{t.qcOps.qcInspectPhotoReason}</span>
-                    <input
-                      type="text"
-                      value={photoNotes[url] ?? ''}
-                      maxLength={COMPLAINT_PHOTO_NOTE_MAX}
-                      placeholder={t.qcOps.qcInspectPhotoReasonPh}
-                      className="min-h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm dark:border-ios-dark-separator dark:bg-ios-dark-fill"
-                      onChange={(e) => setPhotoNotes((cur) => ({ ...cur, [url]: e.target.value }))}
-                    />
-                  </label>
-                </div>
+      <div className="overflow-hidden rounded-2xl border border-gray-200 text-sm dark:border-ios-dark-separator">
+        <div className="grid grid-cols-1 sm:grid-cols-2">
+          <label className="flex items-stretch border-b border-gray-200 dark:border-ios-dark-separator sm:border-e">
+            <span className="flex w-28 shrink-0 items-center bg-slate-50 px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-slate-700 dark:bg-ios-dark-elevated dark:text-app-muted">
+              {t.qcOps.qcReportsBranch}
+            </span>
+            <select
+              className="min-h-12 min-w-0 flex-1 bg-white px-3 dark:bg-ios-dark-fill"
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              aria-label={t.qcOps.qcReportsBranch}
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
               ))}
+            </select>
+          </label>
+          <div className="flex items-stretch border-b border-gray-200 dark:border-ios-dark-separator">
+            <span className="flex w-28 shrink-0 items-center bg-slate-50 px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-slate-700 dark:bg-ios-dark-elevated dark:text-app-muted">
+              {t.qcOps.qcComplaintDate}
+            </span>
+            <span className="flex min-h-12 flex-1 items-center px-3">{nowLabel}</span>
+          </div>
+          <div className="border-b border-gray-200 sm:col-span-2 sm:border-b-0 dark:border-ios-dark-separator">
+            <div className="flex flex-col sm:flex-row sm:items-start">
+              <span className="flex w-28 shrink-0 items-center bg-slate-50 px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-slate-700 dark:bg-ios-dark-elevated dark:text-app-muted">
+                {t.qcOps.qcComplaintSentTo}
+              </span>
+              <div className="min-w-0 flex-1 px-3 py-2">
+                <QcNotifyPicker
+                  options={notifyOptions}
+                  selected={notifyTo}
+                  onChange={setNotifyTo}
+                  disabled={busy !== null}
+                />
+                {sentTo ? <p className="mt-1 text-xs text-app-muted">{sentTo}</p> : null}
+              </div>
             </div>
-          ) : null}
+          </div>
+          <div className="flex items-stretch sm:col-span-2 sm:border-t sm:border-gray-200 dark:sm:border-ios-dark-separator">
+            <span className="flex w-28 shrink-0 items-center bg-slate-50 px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-slate-700 dark:bg-ios-dark-elevated dark:text-app-muted">
+              {t.qcOps.qcComplaintReportedBy}
+            </span>
+            <span className="flex min-h-12 flex-1 items-center px-3">{reporterName || '—'}</span>
+          </div>
         </div>
-      </section>
+      </div>
 
-      <section className="overflow-hidden rounded-3xl border border-gray-200 dark:border-ios-dark-separator">
-        <header className="bg-red-700 px-4 py-2.5 text-white dark:bg-red-800">
-          <p className="text-sm font-bold">D · {t.qcOps.qcComplaintSectionD}</p>
+      {COMPLAINT_CHANNELS.map((channel) => {
+        const rows = channel.id === 'talabat' ? talabat : careem;
+        return (
+          <section key={channel.id} className="overflow-hidden rounded-2xl border border-gray-200 dark:border-ios-dark-separator">
+            <header className="bg-teal-500 px-4 py-2.5 text-white">
+              <p className="text-sm font-bold uppercase tracking-wide">
+                {channel.id === 'talabat' ? '1' : '2'}. {locale === 'ar' ? channel.titleAr : channel.titleEn}
+              </p>
+            </header>
+            {renderSlots(channel.id, rows)}
+          </section>
+        );
+      })}
+
+      <section className="overflow-hidden rounded-2xl border border-teal-200 dark:border-teal-900/40">
+        <header className="bg-teal-50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-teal-800 dark:bg-teal-950/40 dark:text-teal-200">
+          {t.qcOps.qcComplaintAdditional}
         </header>
-        <div className="space-y-3 px-3 py-3">
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-app-muted">{t.qcOps.qcComplaintStaff}</span>
-            <input
-              className="min-h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
-              value={staffInvolved}
-              onChange={(e) => setStaffInvolved(e.target.value)}
-              maxLength={400}
-              placeholder={t.qcOps.qcComplaintStaffPh}
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-sm font-medium text-app-muted">{t.qcOps.qcComplaintAction}</span>
-            <textarea
-              className="min-h-24 w-full rounded-2xl border border-gray-200 bg-white p-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
-              value={actionTaken}
-              onChange={(e) => setActionTaken(e.target.value)}
-              placeholder={t.qcOps.qcComplaintActionPh}
-              maxLength={2000}
-            />
-          </label>
-        </div>
+        <textarea
+          className="min-h-24 w-full bg-white p-4 text-sm dark:bg-ios-dark-fill"
+          value={additionalNotes}
+          maxLength={COMPLAINT_ADDITIONAL_MAX}
+          onChange={(e) => setAdditionalNotes(e.target.value)}
+        />
       </section>
 
       <button
         type="button"
-        disabled={busy !== null || uploading || !description.trim() || !branchId || notifyTo.length === 0}
-        className="min-h-12 w-full rounded-2xl bg-red-600 text-base font-bold text-white disabled:opacity-50"
+        disabled={busy !== null || !ready || !branchId || notifyTo.length === 0}
+        className="min-h-12 w-full rounded-2xl bg-teal-600 text-base font-bold text-white disabled:opacity-50"
         onClick={() => void submit()}
       >
         {busy === 'submit' ? t.qcOps.qcReportsSubmitting : t.qcOps.qcComplaintSubmit}
