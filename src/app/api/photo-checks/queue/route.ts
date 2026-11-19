@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { requireCapability } from '@/lib/session';
 import { withApiErrors } from '@/lib/api-route-error';
 import { dataScopeForRole, normalizeUserRole } from '@/lib/permissions';
+import { managerPhotoSubmissionWhere } from '@/lib/photo-review-notify';
 import { submissionUploadPaths } from '@/lib/photo-multi';
 
 export const GET = withApiErrors(async function GET() {
@@ -17,8 +18,8 @@ export const GET = withApiErrors(async function GET() {
   const where =
     scope === 'organization'
       ? { status: 'pending_qc' }
-      : scope === 'branch' && user?.employee?.branchId
-        ? { status: 'pending_qc', branchId: user.employee.branchId }
+      : scope === 'branch' && user?.employee
+        ? { status: 'pending_qc', ...managerPhotoSubmissionWhere(user.employee) }
         : { status: 'pending_qc', id: '__none__' };
 
   const items = await prisma.photoCheckSubmission.findMany({

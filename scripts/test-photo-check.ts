@@ -92,6 +92,7 @@ import {
   pickPhotoWindowWinner,
 } from '../src/lib/photo-branch-claim';
 import { extractChatContent } from '../src/lib/ai-provider';
+import { managerPhotoSubmissionWhere, photoReviewManagerUserIds } from '../src/lib/photo-review-notify';
 import { photoQcSuggestionSchema } from '../src/lib/ai-schemas';
 
 const scored = scorePhotoCriteria(
@@ -1002,6 +1003,24 @@ assert.match(fs.readFileSync(path.join(root, 'src/components/SignOutButton.tsx')
 assert.match(swipe, /submission/);
 assert.match(reportsUi, /get\('report'\)/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/route.ts'), 'utf8'), /photo_check_review/);
+assert.deepEqual(photoReviewManagerUserIds({ reportsToUserId: 'mgr-omar', branchManagerUserIds: ['mgr-a', 'mgr-z'] }), [
+  'mgr-omar',
+]);
+assert.deepEqual(
+  photoReviewManagerUserIds({ reportsToUserId: null, branchManagerUserIds: ['mgr-a', 'mgr-z'] }).sort(),
+  ['mgr-a', 'mgr-z']
+);
+{
+  const where = managerPhotoSubmissionWhere({ id: 'omar-emp', branchId: 'cloud-kitchen' });
+  assert.equal(where.OR[0].employee?.reportsToEmployeeId, 'omar-emp');
+  assert.equal(where.OR[1].branchId, 'cloud-kitchen');
+  assert.equal(where.OR[1].employee?.reportsToEmployeeId, null);
+}
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-review-notify.ts'), 'utf8'), /reportsToEmployeeId/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/photo-review-notify.ts'), 'utf8'), /role: \{ in: \['owner', 'qc', 'manager'\] \}/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/queue/route.ts'), 'utf8'), /managerPhotoSubmissionWhere/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/review-notifications/route.ts'), 'utf8'), /managerPhotoSubmissionWhere/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/employees/[id]/route.ts'), 'utf8'), /reportsToEmployeeId/);
 assert.match(fs.readFileSync(path.join(root, 'public/push-navigation-sw.js'), 'utf8'), /qc_field_report/);
 assert.match(fs.readFileSync(path.join(root, 'public/push-navigation-sw.js'), 'utf8'), /qc_complaint/);
 assert.match(fs.readFileSync(path.join(root, 'public/push-navigation-sw.js'), 'utf8'), /photo_check_review/);

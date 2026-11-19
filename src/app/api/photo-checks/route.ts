@@ -278,7 +278,13 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
   }
 
   try {
-    const reviewerIds = await listPhotoReviewerUserIds(prisma, session.user.id);
+    const reviewerIds = await listPhotoReviewerUserIds(prisma, {
+      submitter: {
+        reportsToEmployeeId: user.employee.reportsToEmployeeId,
+        branchId: user.employee.branchId,
+      },
+      excludeUserId: session.user.id,
+    });
     const reviewUrl = `/dashboard/photo-review?submission=${encodeURIComponent(created.id)}`;
     await notifyUsers(prisma, reviewerIds, {
       category: 'photo_check_review',

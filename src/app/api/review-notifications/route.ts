@@ -3,6 +3,7 @@ import { requireSession } from '@/lib/session';
 import { normalizeUserRole } from '@/lib/formVisibility';
 import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 import { isTransientDbError } from '@/lib/prisma-retry';
+import { managerPhotoSubmissionWhere } from '@/lib/photo-review-notify';
 import { logErrorThrottled } from '@/lib/log-throttle';
 
 export async function GET() {
@@ -58,6 +59,8 @@ export async function GET() {
     let pendingLeavePromise: Promise<{ id: string; employee: { name: string } }[]>;
     let pendingAdvancesPromise: Promise<{ id: string; employee: { name: string }; amount: number }[]>;
 
+    let managerForPhotos: { id: string; branchId: string } | null = null;
+
     let pendingQcFormsPromise: Promise<
       {
         id: string;
@@ -76,6 +79,7 @@ export async function GET() {
 
       const managerEmployeeId = user.employee.id;
       const managerBranchId = user.employee.branchId;
+      managerForPhotos = { id: managerEmployeeId, branchId: managerBranchId };
 
       const qcFormSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       pendingQcFormsPromise = prisma.managementFormSubmission.findMany({
@@ -157,7 +161,10 @@ export async function GET() {
     }
 
     const pendingPhotos = await prisma.photoCheckSubmission.findMany({
-      where: { status: 'pending_qc' },
+      where: {
+        status: 'pending_qc',
+        ...(managerForPhotos ? managerPhotoSubmissionWhere(managerForPhotos) : {}),
+      },
       include: { employee: { select: { name: true } } },
       orderBy: { submittedAt: 'asc' },
       take: 20,
