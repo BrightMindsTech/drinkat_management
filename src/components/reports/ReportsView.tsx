@@ -23,6 +23,7 @@ import { buildQcScoreReport, type QcScoreReport } from '@/lib/qc-form-score-repo
 import { QcScoreReportModal } from '@/components/qc/QcScoreReportModal';
 import { ReportTableModal } from '@/components/ReportTableModal';
 import type { ReportTableData } from '@/lib/report-table';
+import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 
 const COLORS = ['#007AFF', '#5856D6', '#34C759', '#FF9500', '#FF3B30'];
 
@@ -1829,9 +1830,13 @@ export function ReportsView({ branches }: { branches: Branch[] }) {
                             {row.photos?.length ? (
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {row.photos.map((photo) => (
-                                  <a key={photo.id} href={photo.filePath} target="_blank" rel="noopener noreferrer">
-                                    <img src={photo.filePath} alt="QC archive" className="h-16 w-16 rounded border border-gray-200 dark:border-ios-dark-separator object-cover" />
-                                  </a>
+                                  <OpenUploadPhoto
+                                    key={photo.id}
+                                    src={photo.filePath}
+                                    gallery={row.photos.map((x) => x.filePath)}
+                                    alt="QC archive"
+                                    className="h-16 w-16 rounded border border-gray-200 dark:border-ios-dark-separator object-cover"
+                                  />
                                 ))}
                               </div>
                             ) : null}

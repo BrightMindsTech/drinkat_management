@@ -5,6 +5,7 @@ import type { ChecklistAssignment, Checklist, ChecklistItem, QcSubmission, Submi
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppClockTimeLabel, formatAppDate, formatAppDateTime } from '@/lib/format-datetime';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
+import { OpenUploadPhotoText } from '@/components/UploadPhotoViewer';
 
 type AssignmentWithChecklist = ChecklistAssignment & {
   checklist: Checklist & { items: ChecklistItem[] };
@@ -246,9 +247,14 @@ export function QCStaffView({
               {s.lateNote && <p className="w-full text-sm text-amber-600 dark:text-amber-400 mt-1">{s.lateNote}</p>}
               <div className="flex gap-1 flex-wrap">
                 {s.photos.map((p) => (
-                  <a key={p.id} href={p.filePath} target="_blank" rel="noopener noreferrer" className="text-sm text-ios-blue hover:underline">
+                  <OpenUploadPhotoText
+                    key={p.id}
+                    src={p.filePath}
+                    gallery={s.photos.map((x) => x.filePath)}
+                    className="text-sm text-ios-blue hover:underline"
+                  >
                     {t.common.photo}
-                  </a>
+                  </OpenUploadPhotoText>
                 ))}
               </div>
             </li>

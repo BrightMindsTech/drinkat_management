@@ -31,12 +31,18 @@ import {
 } from '../src/lib/photo-generate';
 import { isPhotoWindowOpenNow, photoWeekday } from '../src/lib/photo-time';
 import {
-  ACTIVE_PHOTO_REMINDER_MINUTES,
   PHOTO_REMINDER_PUSH_TTL_SEC,
   isPhotoTaskActiveForReminder,
   latestPhotoReminderAt,
   shouldSendActivePhotoReminder,
 } from '../src/lib/photo-reminders';
+import {
+  PHOTO_REMINDER_DAY_SLOTS,
+  PHOTO_REMINDER_LATE_SLOTS,
+  isLatePhotoReminderBranch,
+  latestDuePhotoReminderSlot,
+  photoReminderSlotsForBranch,
+} from '../src/lib/photo-reminder-clock';
 import { hashTrustedDeviceToken, trustedDeviceExpired } from '../src/lib/trusted-device';
 import { resolvePushNavigationUrl, safeInternalPath } from '../src/lib/push-navigation';
 import {
@@ -46,8 +52,10 @@ import {
   PHOTO_SATURDAY_ONLY_CODES,
   PHOTO_SATURDAY_WEEKDAY,
   PHOTO_WINDOW_HANDOFF_MINUTES,
+  isCloudKitchenBranchName,
   isSaturdayOnlyPhotoCode,
   minutesBeforeClock,
+  photoDaysOfWeekForBranch,
   photoScheduleDaysJson,
 } from '../src/lib/photo-official-windows';
 import { photoSchedulesMatchOfficial } from '../src/lib/photo-ops-program';
@@ -67,6 +75,14 @@ import {
   parseQcReportPhotos,
   validateInspectionAnswers,
 } from '../src/lib/qc-branch-inspection';
+import {
+  CUSTOMER_COMPLAINT_KIND,
+  complaintComments,
+  complaintSeverity,
+  encodeComplaintPayload,
+  isCustomerComplaintReport,
+  parseComplaintPayload,
+} from '../src/lib/qc-complaints';
 import { employeeEligibleForDefaultPhotoOps } from '../src/lib/photo-eligibility';
 import { formatPhotoCountdown, listUpcomingPhotoWindows, nextPhotoWave } from '../src/lib/photo-upcoming';
 import {
@@ -253,6 +269,9 @@ assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-generate.ts'), 'utf8
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-generate.ts'), 'utf8'), /BRANCH_PHOTO_CLAIMED/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-generate.ts'), 'utf8'), /listClaimedPhotoWindows/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-generate.ts'), 'utf8'), /photoBranchWindowKey/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-generate.ts'), 'utf8'), /photoDaysOfWeekForBranch/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /photoDaysOfWeekForBranch/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-ops-program.ts'), 'utf8'), /isCloudKitchenBranchName/);
 assert.ok(PHOTO_TASK_CREATE_BATCH > 0 && PHOTO_TASK_CREATE_BATCH <= 20);
 assert.equal(photoBranchWindowKey('b1', 's1'), 'b1:s1');
 assert.equal(
@@ -282,7 +301,14 @@ assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTa
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /branchClaimed/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /branchClaimed/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /employeeAssignedType/);
-assert.equal(ACTIVE_PHOTO_REMINDER_MINUTES, 180);
+assert.deepEqual([...PHOTO_REMINDER_DAY_SLOTS], ['08:00', '12:00', '16:00']);
+assert.deepEqual([...PHOTO_REMINDER_LATE_SLOTS], ['08:00', '12:00', '16:00', '20:00', '00:00']);
+assert.equal(isLatePhotoReminderBranch('MEU Branch'), false);
+assert.equal(isLatePhotoReminderBranch('HU Branch'), false);
+assert.equal(isLatePhotoReminderBranch('Airport Street Branch'), true);
+assert.equal(isLatePhotoReminderBranch('Cloud Kitchen Branch'), true);
+assert.deepEqual([...photoReminderSlotsForBranch('MEU Branch')], [...PHOTO_REMINDER_DAY_SLOTS]);
+assert.deepEqual([...photoReminderSlotsForBranch('Airport Street Branch')], [...PHOTO_REMINDER_LATE_SLOTS]);
 {
   const now = new Date();
   const open = {
@@ -317,10 +343,24 @@ assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTa
 assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskBoard.tsx'), 'utf8'), /isWindowClosed/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /windowGone/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /windowGone/);
-assert.equal(shouldSendActivePhotoReminder(null, new Date()), true);
-assert.equal(shouldSendActivePhotoReminder(new Date(Date.now() - 179 * 60_000), new Date()), false);
-assert.equal(shouldSendActivePhotoReminder(new Date(Date.now() - 180 * 60_000), new Date()), true);
-assert.equal(PHOTO_REMINDER_PUSH_TTL_SEC, 170 * 60);
+{
+  const eight = photoInstantInZone('2026-11-19', '08:00');
+  const noon = photoInstantInZone('2026-11-19', '12:00');
+  const four = photoInstantInZone('2026-11-19', '16:00');
+  const eightPm = photoInstantInZone('2026-11-19', '20:00');
+  const midnight = photoInstantInZone('2026-11-20', '00:00');
+  assert.equal(latestDuePhotoReminderSlot(eight, 'MEU Branch')?.hm, '08:00');
+  assert.equal(shouldSendActivePhotoReminder(null, eight, 'MEU Branch'), true);
+  assert.equal(shouldSendActivePhotoReminder(eight, new Date(eight.getTime() + 60_000), 'MEU Branch'), false);
+  assert.equal(shouldSendActivePhotoReminder(eight, noon, 'MEU Branch'), true);
+  assert.equal(shouldSendActivePhotoReminder(noon, four, 'HU Branch'), true);
+  assert.equal(shouldSendActivePhotoReminder(four, eightPm, 'MEU Branch'), false);
+  assert.equal(shouldSendActivePhotoReminder(four, eightPm, 'Airport Street Branch'), true);
+  assert.equal(shouldSendActivePhotoReminder(eightPm, midnight, 'Airport Street Branch'), true);
+  assert.equal(shouldSendActivePhotoReminder(eightPm, midnight, 'HU Branch'), false);
+  assert.equal(shouldSendActivePhotoReminder(four, midnight, 'Cloud Kitchen Branch'), true);
+}
+assert.equal(PHOTO_REMINDER_PUSH_TTL_SEC, 16 * 60 * 60 - 10 * 60);
 assert.equal(latestPhotoReminderAt([null, new Date('2026-10-13T10:00:00Z'), new Date('2026-10-13T10:20:00Z')])?.toISOString(), '2026-10-13T10:20:00.000Z');
 assert.equal(latestPhotoReminderAt([null, null]), null);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /dashboard\/photo\?task=/);
@@ -339,14 +379,15 @@ assert.doesNotMatch(
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /lastReminderKind === kind/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/push.ts'), 'utf8'), /ttlSec \?\? 30 \* 60/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/push.ts'), 'utf8'), /TTL: 300/);
-assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskReminderPulse.tsx'), 'utf8'), /180 \* 60 \* 1000/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskReminderPulse.tsx'), 'utf8'), /shouldSendPhotoReminderAtClock/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /branchName: emp.branch.name/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskReminderPulse.tsx'), 'utf8'), /photo-checks\/tasks\?read=1/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/in-app/InAppNotificationStack.tsx'), 'utf8'), /photo-checks\/tasks\?read=1/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/in-app/InAppNotificationStack.tsx'), 'utf8'), /60_000/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/rate-limit-edge.ts'), 'utf8'), /max: 900/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/layout.tsx'), 'utf8'), /PhotoTaskReminderPulse/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/PushForegroundBridge.tsx'), 'utf8'), /reminderAt/);
-assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /repeats every 3 hours/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /8am, 12pm and 4pm/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/ai/page.tsx'), 'utf8'), /redirect\('\/dashboard'\)/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/ai-provider.ts'), 'utf8'), /extractChatContent/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/ai-provider.ts'), 'utf8'), /max_tokens: 1600/);
@@ -407,6 +448,11 @@ assert.equal(photoScheduleDaysJson('fryer_cleanliness'), '[6]');
 assert.equal(photoScheduleDaysJson('grill_cleanliness'), '[6]');
 assert.equal(photoScheduleDaysJson('preparation_refrigerator'), '[6]');
 assert.equal(photoScheduleDaysJson('branch_cleanliness_360'), '[0,1,2,3,4,5,6]');
+assert.equal(isCloudKitchenBranchName('Cloud Kitchen Branch'), true);
+assert.equal(photoDaysOfWeekForBranch('fryer_cleanliness', 'MEU Branch'), '[6]');
+assert.equal(photoDaysOfWeekForBranch('fryer_cleanliness', 'Cloud Kitchen Branch'), '[0,1,2,3,4,5,6]');
+assert.equal(photoDaysOfWeekForBranch('grill_cleanliness', 'Cloud Kitchen Branch'), '[0,1,2,3,4,5,6]');
+assert.equal(photoDaysOfWeekForBranch('branch_cleanliness_360', 'Cloud Kitchen Branch'), '[0,1,2,3,4,5,6]');
 assert.equal(isSaturdayOnlyPhotoCode('slush_machine_cleaning'), true);
 assert.deepEqual([...PHOTO_SATURDAY_ONLY_CODES], [
   'slush_machine_cleaning',
@@ -642,6 +688,14 @@ assert.match(reportsUi, /notifyTo/);
 assert.match(reportsUi, /qcReportsNotify/);
 assert.match(reportsUi, /qcInspectNew/);
 assert.match(reportsUi, /QcBranchInspectionForm/);
+assert.match(reportsUi, /QcComplaintForm/);
+assert.match(reportsUi, /setCompose\('complaint'\)/);
+assert.match(reportsUi, /qcComplaintNew/);
+assert.match(reportsUi, /bg-red-600/);
+assert.match(reportsUi, /OpenUploadPhoto/);
+assert.doesNotMatch(reportsUi, /target="_blank"/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/upload-access.ts'), 'utf8'), /qcFieldReport/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/layout.tsx'), 'utf8'), /UploadPhotoViewerProvider/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openNativeImageSourcePick/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openRearCameraCapture/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /openImageLibraryPick/);
@@ -866,6 +920,7 @@ assert.equal(checked.ok, true);
 if (checked.ok) {
   assert.deepEqual(countInspectionResults(checked.answers), { pass: 28, fail: 1 });
   assert.deepEqual(checked.answers.a1?.photoUrls, ['/uploads/x.jpg', '/uploads/y.jpg']);
+  assert.deepEqual(checked.answers.a1?.photoNotes, {});
   const payload = encodeInspectionPayload(checked.answers, 'hood dirty');
   assert.equal(parseInspectionPayload(JSON.stringify(payload))?.notes, 'hood dirty');
   assert.deepEqual(parseQcReportPhotos(JSON.stringify(payload)), ['/uploads/x.jpg', '/uploads/y.jpg']);
@@ -879,6 +934,24 @@ if (checked.ok) {
     assert.deepEqual(onlyLegacyPhoto.answers.a1?.photoUrls, ['/uploads/old.jpg']);
   }
 }
+{
+  const withNotes = structuredClone(allPass);
+  withNotes.a1 = {
+    result: 'fail',
+    photoUrl: '/uploads/x.jpg',
+    photoUrls: ['/uploads/x.jpg', '/uploads/y.jpg'],
+    photoNotes: { '/uploads/x.jpg': '  hood dirty  ', '/uploads/gone.jpg': 'drop me' },
+  };
+  const noted = validateInspectionAnswers(withNotes);
+  assert.equal(noted.ok, true);
+  if (noted.ok) {
+    assert.deepEqual(noted.answers.a1?.photoNotes, { '/uploads/x.jpg': 'hood dirty' });
+    const round = parseInspectionPayload(JSON.stringify(encodeInspectionPayload(noted.answers, '')));
+    assert.equal(round?.answers.a1?.photoNotes['/uploads/x.jpg'], 'hood dirty');
+  }
+}
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /qcInspectPhotoReason/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcFieldReportsPanel.tsx'), 'utf8'), /inspectionPhotoNote/);
 assert.deepEqual(parseQcReportPhotos(JSON.stringify(['/a.jpg', '/b.jpg'])), ['/a.jpg', '/b.jpg']);
 {
   const legacy: Record<string, { result: 'pass' | 'fail'; photoUrl: string | null }> = {};
@@ -930,6 +1003,43 @@ assert.match(swipe, /submission/);
 assert.match(reportsUi, /get\('report'\)/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/route.ts'), 'utf8'), /photo_check_review/);
 assert.match(fs.readFileSync(path.join(root, 'public/push-navigation-sw.js'), 'utf8'), /qc_field_report/);
+assert.match(fs.readFileSync(path.join(root, 'public/push-navigation-sw.js'), 'utf8'), /qc_complaint/);
 assert.match(fs.readFileSync(path.join(root, 'public/push-navigation-sw.js'), 'utf8'), /photo_check_review/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/qc-reports/route.ts'), 'utf8'), /CUSTOMER_COMPLAINT_KIND/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/qc-reports/route.ts'), 'utf8'), /postComplaint/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /QcNotifyPicker/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /openNativeImageSourcePick/);
+{
+  const encoded = encodeComplaintPayload({
+    complainantName: '  Ali  ',
+    phone: '079',
+    orderNumber: 'A12',
+    types: ['food_quality', 'food_quality', 'unknown' as never],
+    description: 'cold fries',
+    staffInvolved: 'Omar',
+    actionTaken: 'replaced',
+    photoUrls: ['/uploads/c.jpg', '/uploads/c.jpg'],
+    photoNotes: { '/uploads/c.jpg': '  soggy  ', '/uploads/gone.jpg': 'drop' },
+  });
+  assert.equal(encoded.kind, CUSTOMER_COMPLAINT_KIND);
+  assert.equal(encoded.complainantName, 'Ali');
+  assert.deepEqual(encoded.types, ['food_quality']);
+  assert.deepEqual(encoded.photoUrls, ['/uploads/c.jpg']);
+  assert.deepEqual(encoded.photoNotes, { '/uploads/c.jpg': 'soggy' });
+  assert.equal(complaintSeverity(encoded), 'high');
+  assert.match(complaintComments(encoded), /cold fries/);
+  const round = parseComplaintPayload(JSON.stringify(encoded));
+  assert.equal(round?.description, 'cold fries');
+  assert.equal(isCustomerComplaintReport({ category: CUSTOMER_COMPLAINT_KIND }), true);
+  assert.deepEqual(parseQcReportPhotos(JSON.stringify(encoded)), ['/uploads/c.jpg']);
+}
+assert.equal(
+  resolvePushNavigationUrl({
+    type: 'qc_complaint',
+    url: '/dashboard/qc-reports',
+    reportId: 'cmp_1',
+  }),
+  '/dashboard/qc-reports?report=cmp_1'
+);
 
 console.log('photo-check: ok');

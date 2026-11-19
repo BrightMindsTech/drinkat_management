@@ -92,6 +92,21 @@ export async function actorCanReadUpload(
   });
   if (ownDraft) return true;
 
+  const fieldReport = await prisma.qcFieldReport.findFirst({
+    where: {
+      OR: pathNeedles.map((p) => ({ photosJson: { contains: p } })),
+    },
+    select: { id: true },
+  });
+  if (fieldReport) {
+    if (role === 'manager') return true;
+    const flags = await prisma.user.findUnique({
+      where: { id: opts.userId },
+      select: { qcReportsInbox: true, hrKpiReviewer: true },
+    });
+    if (flags?.qcReportsInbox || flags?.hrKpiReviewer) return true;
+  }
+
   const photo = await prisma.photoCheckSubmission.findFirst({
     where: {
       OR: [

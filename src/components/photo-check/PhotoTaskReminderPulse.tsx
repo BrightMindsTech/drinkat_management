@@ -7,10 +7,19 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { setForegroundInterval } from '@/lib/app-foreground';
 import { APP_RESUME_EVENT } from '@/lib/app-resume-sync';
 import { fetchWithRetry } from '@/lib/fetch-with-retry';
+import {
+  latestDuePhotoReminderSlot,
+  latestPhotoReminderAt,
+  shouldSendPhotoReminderAtClock,
+} from '@/lib/photo-reminder-clock';
 
-const INTERVAL_MS = 180 * 60 * 1000;
-
-type PhotoTaskRow = { id: string; status: string; windowStartAt?: string; dueAt?: string };
+type PhotoTaskRow = {
+  id: string;
+  status: string;
+  windowStartAt?: string;
+  dueAt?: string;
+  lastRemindedAt?: string | null;
+};
 
 function openUnfinished(items: PhotoTaskRow[]): PhotoTaskRow[] {
   const now = Date.now();
@@ -30,12 +39,12 @@ function openUnfinished(items: PhotoTaskRow[]): PhotoTaskRow[] {
   });
 }
 
-/** While a photo window is open, surface a reminder every 3 hours even if APNs is quiet. */
+/** Surface a reminder at the branch clock slots even if APNs is quiet. */
 export function PhotoTaskReminderPulse() {
   const { upsert } = useInAppNotifications();
   const { t } = useLanguage();
   const router = useRouter();
-  const lastRemindedAt = useRef<number>(0);
+  const lastSlotKey = useRef<string>('');
 
   useEffect(() => {
     let mounted = true;
@@ -45,24 +54,30 @@ export function PhotoTaskReminderPulse() {
       try {
         const res = await fetchWithRetry('/api/photo-checks/tasks?read=1', { cache: 'no-store' });
         if (!res.ok) return;
-        const json = (await res.json()) as { required?: boolean; items?: PhotoTaskRow[] };
+        const json = (await res.json()) as {
+          required?: boolean;
+          items?: PhotoTaskRow[];
+          branchName?: string;
+        };
         if (!json.required || !Array.isArray(json.items)) return;
         const open = openUnfinished(json.items);
         if (!open.length) {
-          lastRemindedAt.current = 0;
+          lastSlotKey.current = '';
           return;
         }
-        const now = Date.now();
-        if (!lastRemindedAt.current) {
-          lastRemindedAt.current = now;
-          return;
-        }
-        if (now - lastRemindedAt.current < INTERVAL_MS) return;
-        lastRemindedAt.current = now;
+        const now = new Date();
+        const last = latestPhotoReminderAt(
+          open.map((row) => (row.lastRemindedAt ? new Date(row.lastRemindedAt) : null))
+        );
+        if (!shouldSendPhotoReminderAtClock(last, now, json.branchName)) return;
+        const slot = latestDuePhotoReminderSlot(now, json.branchName);
+        const slotKey = slot?.at.toISOString() ?? '';
+        if (slotKey && lastSlotKey.current === slotKey) return;
+        lastSlotKey.current = slotKey;
         const first = open[0]!;
         const href = `/dashboard/photo?task=${encodeURIComponent(first.id)}`;
         upsert({
-          id: `photo-task-reminder-${now}`,
+          id: `photo-task-reminder-${now.getTime()}`,
           title: t.photoCheck.reminderTitle,
           body: t.photoCheck.reminderBody,
           href,

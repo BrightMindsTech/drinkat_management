@@ -4,6 +4,7 @@ import { withApiErrors } from '@/lib/api-route-error';
 import { employeePhotoRequired } from '@/lib/photo-eligibility';
 import { generatePhotoTasksForEmployee } from '@/lib/photo-generate';
 import { assignApprovedPhotoTypes } from '@/lib/photo-ops-program';
+import { photoDaysOfWeekForBranch } from '@/lib/photo-official-windows';
 import { photoPeriodKey, shiftPhotoPeriodKey } from '@/lib/photo-time';
 import { listUpcomingPhotoWindows, nextPhotoWave } from '@/lib/photo-upcoming';
 import {
@@ -28,7 +29,7 @@ export const GET = withApiErrors(async function GET(req: Request) {
   const readOnly = new URL(req.url).searchParams.get('read') === '1';
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    include: { employee: true },
+    include: { employee: { include: { branch: { select: { name: true } } } } },
   });
   if (!user?.employee) return Response.json({ required: false, items: [], upcoming: [] });
   const emp = user.employee;
@@ -43,7 +44,11 @@ export const GET = withApiErrors(async function GET(req: Request) {
     if (assignedCount === 0) {
       await assignApprovedPhotoTypes(prisma, emp.id);
     }
-    await generatePhotoTasksForEmployee(prisma, emp.id, now);
+    try {
+      await generatePhotoTasksForEmployee(prisma, emp.id, now);
+    } catch (e) {
+      console.error('[photo-checks/tasks] generate failed', emp.id, e);
+    }
   }
 
   const periodKey = photoPeriodKey(now);
@@ -108,12 +113,17 @@ export const GET = withApiErrors(async function GET(req: Request) {
   ]);
 
   const assigned = new Set(assignments.map((a) => a.typeId));
-  const relevant = schedules.filter((s) => {
-    if (s.employeeId && s.employeeId !== emp.id) return false;
-    if (s.branchId && s.branchId !== emp.branchId) return false;
-    if (s.role && s.role !== emp.role) return false;
-    return assigned.has(s.typeId);
-  });
+  const relevant = schedules
+    .filter((s) => {
+      if (s.employeeId && s.employeeId !== emp.id) return false;
+      if (s.branchId && s.branchId !== emp.branchId) return false;
+      if (s.role && s.role !== emp.role) return false;
+      return assigned.has(s.typeId);
+    })
+    .map((s) => ({
+      ...s,
+      daysOfWeekJson: photoDaysOfWeekForBranch(s.type.code, emp.branch.name),
+    }));
 
   const have = new Set([
     ...items.map((t) => `${t.scheduleId}:${t.periodKey}`),
@@ -153,5 +163,12 @@ export const GET = withApiErrors(async function GET(req: Request) {
     })
     .filter((row): row is NonNullable<typeof row> => row != null);
 
-  return Response.json({ required: true, periodKey, now: now.toISOString(), items, upcoming });
+  return Response.json({
+    required: true,
+    periodKey,
+    now: now.toISOString(),
+    branchName: emp.branch.name,
+    items,
+    upcoming,
+  });
 });

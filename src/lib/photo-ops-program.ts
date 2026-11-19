@@ -5,6 +5,7 @@ import {
   PHOTO_PROGRAM_STAMP,
   PHOTO_SATURDAY_DAYS_JSON,
   PHOTO_SATURDAY_WEEKDAY,
+  isCloudKitchenBranchName,
   isSaturdayOnlyPhotoCode,
   photoScheduleDaysJson,
 } from '@/lib/photo-official-windows';
@@ -181,9 +182,14 @@ async function cancelOffSaturdayWeeklyPhotoTasks(
       typeId: { in: weeklyIds },
       status: { in: ['scheduled', 'due', 'in_progress', 'overdue'] },
     },
-    select: { id: true, periodKey: true },
+    select: { id: true, periodKey: true, branch: { select: { name: true } } },
   });
-  const ids = open.filter((row) => photoWeekday(row.periodKey) !== PHOTO_SATURDAY_WEEKDAY).map((row) => row.id);
+  const ids = open
+    .filter(
+      (row) =>
+        photoWeekday(row.periodKey) !== PHOTO_SATURDAY_WEEKDAY && !isCloudKitchenBranchName(row.branch.name)
+    )
+    .map((row) => row.id);
   if (!ids.length) return;
   await prisma.photoCheckTask.updateMany({
     where: { id: { in: ids } },

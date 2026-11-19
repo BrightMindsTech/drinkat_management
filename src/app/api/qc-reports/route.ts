@@ -13,11 +13,21 @@ import {
   BRANCH_INSPECTION_KIND,
   countInspectionResults,
   encodeInspectionPayload,
+  INSPECTION_PHOTO_NOTE_MAX,
   INSPECTION_PHOTOS_PER_ITEM_MAX,
   inspectionComments,
   inspectionSeverity,
   validateInspectionAnswers,
 } from '@/lib/qc-branch-inspection';
+import {
+  COMPLAINT_PHOTOS_MAX,
+  COMPLAINT_PHOTO_NOTE_MAX,
+  COMPLAINT_TYPES,
+  CUSTOMER_COMPLAINT_KIND,
+  complaintComments,
+  complaintSeverity,
+  encodeComplaintPayload,
+} from '@/lib/qc-complaints';
 import { z } from 'zod';
 
 const notifyToSchema = z.union([z.string().min(1).max(80), z.array(z.string().min(1).max(80)).min(1).max(40)]).optional();
@@ -32,6 +42,25 @@ const noteSchema = z.object({
   notifyTo: notifyToSchema,
 });
 
+const complaintSchema = z.object({
+  kind: z.literal(CUSTOMER_COMPLAINT_KIND),
+  branchId: z.string(),
+  complainantName: z.string().max(120).optional().default(''),
+  phone: z.string().max(40).optional().default(''),
+  orderNumber: z.string().max(80).optional().default(''),
+  types: z
+    .array(z.enum(['food_quality', 'service', 'cleanliness', 'delay', 'wrong_order', 'other']))
+    .max(COMPLAINT_TYPES.length)
+    .optional()
+    .default([]),
+  description: z.string().min(1).max(4000),
+  staffInvolved: z.string().max(400).optional().default(''),
+  actionTaken: z.string().max(2000).optional().default(''),
+  photoUrls: z.array(z.string().max(2000)).max(COMPLAINT_PHOTOS_MAX).optional().default([]),
+  photoNotes: z.record(z.string().max(2000), z.string().max(COMPLAINT_PHOTO_NOTE_MAX)).optional(),
+  notifyTo: notifyToSchema,
+});
+
 const inspectionSchema = z.object({
   kind: z.literal('branch_inspection'),
   branchId: z.string(),
@@ -42,6 +71,7 @@ const inspectionSchema = z.object({
       result: z.enum(['pass', 'fail']),
       photoUrl: z.string().max(2000).optional().nullable(),
       photoUrls: z.array(z.string().max(2000)).max(INSPECTION_PHOTOS_PER_ITEM_MAX).optional(),
+      photoNotes: z.record(z.string().max(2000), z.string().max(INSPECTION_PHOTO_NOTE_MAX)).optional(),
     })
   ),
 });
@@ -83,6 +113,9 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
   const body = (await req.json()) as { kind?: unknown };
   if (body?.kind === BRANCH_INSPECTION_KIND) {
     return postInspection(session.user.id, body);
+  }
+  if (body?.kind === CUSTOMER_COMPLAINT_KIND) {
+    return postComplaint(session.user.id, body);
   }
   return postNote(session.user.id, body);
 });
@@ -168,6 +201,51 @@ async function postInspection(userId: string, body: unknown) {
         body: pushBody,
         data: {
           type: 'qc_field_report',
+          url: `/dashboard/qc-reports?report=${encodeURIComponent(item.id)}`,
+          reportId: item.id,
+        },
+      },
+    });
+  }
+  return Response.json({ item });
+}
+
+async function postComplaint(userId: string, body: unknown) {
+  const parsed = complaintSchema.safeParse(body);
+  if (!parsed.success) return Response.json({ error: 'Describe the complaint' }, { status: 400 });
+  const branch = await prisma.branch.findUnique({ where: { id: parsed.data.branchId } });
+  if (!branch) return Response.json({ error: 'Branch not found' }, { status: 404 });
+  const payload = encodeComplaintPayload(parsed.data);
+  if (!payload.description) return Response.json({ error: 'Describe the complaint' }, { status: 400 });
+  const item = await prisma.qcFieldReport.create({
+    data: {
+      createdById: userId,
+      branchId: parsed.data.branchId,
+      category: CUSTOMER_COMPLAINT_KIND,
+      severity: complaintSeverity(payload),
+      comments: complaintComments(payload),
+      photosJson: JSON.stringify(payload),
+    },
+  });
+
+  const ids = await resolveQcReportRecipients(prisma, userId, parsed.data.notifyTo ?? 'all');
+  const pushTitle = `Complaint · ${branch.name}`;
+  const pushBody = payload.description.slice(0, 140);
+  if (ids.length) {
+    await notifyUsers(prisma, ids, {
+      category: 'qc_field_report',
+      title: pushTitle,
+      body: pushBody,
+      dataJson: JSON.stringify({
+        type: 'qc_complaint',
+        reportId: item.id,
+        url: `/dashboard/qc-reports?report=${encodeURIComponent(item.id)}`,
+      }),
+      push: {
+        title: pushTitle,
+        body: pushBody,
+        data: {
+          type: 'qc_complaint',
           url: `/dashboard/qc-reports?report=${encodeURIComponent(item.id)}`,
           reportId: item.id,
         },

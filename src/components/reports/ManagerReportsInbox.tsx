@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
+import { OpenUploadPhotoText } from '@/components/UploadPhotoViewer';
 import type { LocaleMessages } from '@/locales/en';
 
 export type OwnerTimeClockAlert = {
@@ -117,14 +118,12 @@ function FormSubmissionDetail({
             <dt className="text-app-label leading-snug">{f.label}:</dt>
             <dd className="text-app-primary break-words leading-snug">
               {f.type === 'photo' && s.answers[f.key] ? (
-                <a
-                  href={s.answers[f.key]}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <OpenUploadPhotoText
+                  src={s.answers[f.key]}
                   className="font-medium text-ios-blue hover:underline"
                 >
                   {m.openPhoto}
-                </a>
+                </OpenUploadPhotoText>
               ) : (
                 (s.answers[f.key] ?? '—')
               )}

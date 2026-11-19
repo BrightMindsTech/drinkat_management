@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { requireHrStaffAdmin } from '@/lib/session';
 import { z } from 'zod';
 import { withApiErrors } from '@/lib/api-route-error';
+import { cancelOpenPhotoTasks } from '@/lib/photo-eligibility';
+import { generatePhotoTasksForEmployee } from '@/lib/photo-generate';
 
 export const GET = withApiErrors(async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireHrStaffAdmin();
@@ -157,6 +159,15 @@ export const PATCH = withApiErrors(async function PATCH(req: NextRequest, { para
       documents: true,
     },
   });
+
+  if (branchId && branchId !== existing.branchId) {
+    await cancelOpenPhotoTasks(prisma, id, 'branch_transfer');
+    try {
+      await generatePhotoTasksForEmployee(prisma, id);
+    } catch (e) {
+      console.error('[employees] photo generate after branch change failed', id, e);
+    }
+  }
 
   return Response.json(updated);
 });

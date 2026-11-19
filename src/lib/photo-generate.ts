@@ -8,6 +8,7 @@ import {
   shiftPhotoPeriodKey,
 } from '@/lib/photo-time';
 import { BRANCH_PHOTO_CLAIMED, listClaimedPhotoWindows, photoBranchWindowKey } from '@/lib/photo-branch-claim';
+import { photoDaysOfWeekForBranch } from '@/lib/photo-official-windows';
 
 /** D1 createMany bound-parameter ceiling — keep batches small. */
 export const PHOTO_TASK_CREATE_BATCH = 12;
@@ -92,6 +93,7 @@ export async function generatePhotoCheckTasksForDay(
         slotKey: true,
         startTime: true,
         dueTime: true,
+        type: { select: { code: true } },
       },
     }),
     prisma.employee.findMany({
@@ -100,7 +102,7 @@ export async function generatePhotoCheckTasksForDay(
         ...(onlyEmployeeId ? { id: onlyEmployeeId } : {}),
         photoCheckSetting: { required: true },
       },
-      select: { id: true, branchId: true, role: true },
+      select: { id: true, branchId: true, role: true, branch: { select: { name: true } } },
     }),
     prisma.photoCheckTask.findMany({
       where: { periodKey: { in: periodKeys }, ...(onlyEmployeeId ? { assigneeEmployeeId: onlyEmployeeId } : {}) },
@@ -126,6 +128,17 @@ export async function generatePhotoCheckTasksForDay(
         branchId: onlyEmployeeId ? employees[0]?.branchId : undefined,
       })
     );
+  }
+
+  if (onlyEmployeeId && employees[0]) {
+    await prisma.photoCheckTask.updateMany({
+      where: {
+        assigneeEmployeeId: onlyEmployeeId,
+        status: { in: ['scheduled', 'due', 'in_progress', 'overdue'] },
+        NOT: { branchId: employees[0].branchId },
+      },
+      data: { branchId: employees[0].branchId },
+    });
   }
 
   const healWindows = !onlyEmployeeId;
@@ -167,8 +180,6 @@ export async function generatePhotoCheckTasksForDay(
     const weekday = photoWeekday(periodKey);
     const claimed = claimedByPeriod.get(periodKey) ?? new Set<string>();
     for (const schedule of schedules) {
-      const days = parsePhotoDaysOfWeek(schedule.daysOfWeekJson);
-      if (days.length > 0 && !days.includes(weekday)) continue;
       const { windowStartAt, dueAt } = photoWindowInstants(periodKey, schedule.startTime, schedule.dueTime);
       if (!shouldCreatePhotoOccurrence(dueAt, now)) {
         skipped += 1;
@@ -176,6 +187,8 @@ export async function generatePhotoCheckTasksForDay(
       }
       const status = dueAt <= now ? 'overdue' : windowStartAt <= now ? 'due' : 'scheduled';
       for (const emp of employees) {
+        const days = parsePhotoDaysOfWeek(photoDaysOfWeekForBranch(schedule.type.code, emp.branch.name));
+        if (days.length > 0 && !days.includes(weekday)) continue;
         if (schedule.employeeId && schedule.employeeId !== emp.id) continue;
         if (schedule.branchId && schedule.branchId !== emp.branchId) continue;
         if (schedule.role && schedule.role !== emp.role) continue;

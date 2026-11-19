@@ -56,6 +56,8 @@ const PUSH_TYPE_ROUTES: Record<string, RouteBuilder> = {
   staff_note: () => '/dashboard',
   qc_field_report: (d) =>
     d.reportId ? `/dashboard/qc-reports?report=${encodeURIComponent(d.reportId)}` : '/dashboard/qc-reports',
+  qc_complaint: (d) =>
+    d.reportId ? `/dashboard/qc-reports?report=${encodeURIComponent(d.reportId)}` : '/dashboard/qc-reports',
 };
 
 /** Normalize absolute or relative URLs to an in-app path. */

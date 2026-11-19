@@ -64,5 +64,15 @@ export function isSaturdayOnlyPhotoCode(typeCode: string): boolean {
   return (PHOTO_SATURDAY_ONLY_CODES as readonly string[]).includes(typeCode);
 }
 
+export function isCloudKitchenBranchName(name: string | null | undefined): boolean {
+  return (name ?? '').toLowerCase().includes('cloud kitchen');
+}
+
+/** Cafe branches: kitchen/slush deep-cleans on Saturday. Cloud Kitchen runs those same types every day. */
+export function photoDaysOfWeekForBranch(typeCode: string, branchName?: string | null): string {
+  if (isCloudKitchenBranchName(branchName) && isSaturdayOnlyPhotoCode(typeCode)) return PHOTO_DAILY_DAYS_JSON;
+  return photoScheduleDaysJson(typeCode);
+}
+
 export const HANDWRITTEN_ESPRESSO_NOTE =
   'Owner-approved handwritten specification: dose 18 g / yield 36 g. Working-manual 16 g / 50 g is superseded.';

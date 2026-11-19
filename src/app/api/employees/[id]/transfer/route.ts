@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { requireHrStaffAdmin } from '@/lib/session';
 import { z } from 'zod';
 import { withApiErrors } from '@/lib/api-route-error';
+import { cancelOpenPhotoTasks } from '@/lib/photo-eligibility';
+import { generatePhotoTasksForEmployee } from '@/lib/photo-generate';
 
 const bodySchema = z.object({
   toBranchId: z.string().min(1),
@@ -47,6 +49,13 @@ export const POST = withApiErrors(async function POST(req: NextRequest, { params
       where: { id: employee.userId },
       data: { branchId: toBranchId },
     });
+  }
+
+  await cancelOpenPhotoTasks(prisma, id, 'branch_transfer');
+  try {
+    await generatePhotoTasksForEmployee(prisma, id);
+  } catch (e) {
+    console.error('[employees/transfer] photo generate failed', id, e);
   }
 
   const updated = await prisma.employee.findUnique({

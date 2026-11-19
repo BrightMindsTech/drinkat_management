@@ -4,17 +4,26 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { AppModal } from '@/components/AppModal';
+import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
 import { QcBranchInspectionForm } from '@/components/qc/QcBranchInspectionForm';
+import { QcComplaintForm } from '@/components/qc/QcComplaintForm';
 import { QcNotifyPicker, defaultNotifyTargets, type QcNotifyOption } from '@/components/qc/QcNotifyPicker';
 import {
   BRANCH_INSPECTION_SECTIONS,
   countInspectionResults,
   inspectionAnswerPhotos,
+  inspectionPhotoNote,
   isBranchInspectionReport,
   parseInspectionPayload,
   parseQcReportPhotos,
 } from '@/lib/qc-branch-inspection';
+import {
+  complaintPhotoNote,
+  complaintTypeTitle,
+  isCustomerComplaintReport,
+  parseComplaintPayload,
+} from '@/lib/qc-complaints';
 
 type Report = {
   id: string;
@@ -27,8 +36,8 @@ type Report = {
   createdBy: { email: string; employee: { name: string } | null };
 };
 type Branch = { id: string; name: string };
-type ComposeMode = 'note' | 'inspection' | null;
-type KindFilter = 'all' | 'note' | 'inspection';
+type ComposeMode = 'note' | 'inspection' | 'complaint' | null;
+type KindFilter = 'all' | 'note' | 'inspection' | 'complaint';
 
 const MAX_PHOTOS = 3;
 
@@ -97,15 +106,21 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
     const needle = q.trim().toLowerCase();
     return items.filter((item) => {
       const inspection = isBranchInspectionReport(item);
+      const complaint = isCustomerComplaintReport(item);
       if (filterKind === 'inspection' && !inspection) return false;
-      if (filterKind === 'note' && inspection) return false;
+      if (filterKind === 'complaint' && !complaint) return false;
+      if (filterKind === 'note' && (inspection || complaint)) return false;
       if (filterBranch) {
         const named = branches.find((b) => b.id === filterBranch)?.name;
         if (item.branch.id !== filterBranch && item.branch.name !== named) return false;
       }
       if (!needle) return true;
       const author = item.createdBy.employee?.name ?? item.createdBy.email;
-      return `${item.comments} ${item.branch.name} ${author}`.toLowerCase().includes(needle);
+      const payload = parseComplaintPayload(item.photosJson);
+      const extra = payload
+        ? `${payload.description} ${payload.complainantName} ${payload.phone} ${payload.orderNumber} ${payload.staffInvolved}`
+        : '';
+      return `${item.comments} ${item.branch.name} ${author} ${extra}`.toLowerCase().includes(needle);
     });
   }, [items, q, filterBranch, filterKind, branches]);
 
@@ -167,6 +182,27 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
     }
   }
 
+  if (canCreate && compose === 'complaint') {
+    return (
+      <div id="section-qc-reports" className="mx-auto max-w-xl">
+        <QcComplaintForm
+          branches={branches}
+          notifyOptions={notifyOptions}
+          initialBranchId={branchId}
+          onCancel={() => {
+            setCompose(null);
+            setErr(null);
+          }}
+          onSubmitted={async () => {
+            setCompose(null);
+            setMsg(t.qcOps.qcComplaintSubmitted);
+            await load();
+          }}
+        />
+      </div>
+    );
+  }
+
   if (canCreate && compose === 'inspection') {
     return (
       <div id="section-qc-reports" className="mx-auto max-w-xl">
@@ -216,6 +252,16 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
             className="min-h-12 w-full rounded-2xl border border-gray-200 text-base font-semibold text-app-primary touch-manipulation active:opacity-90 dark:border-ios-dark-separator"
           >
             {t.qcOps.qcInspectNew}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setErr(null);
+              setCompose('complaint');
+            }}
+            className="min-h-12 w-full rounded-2xl bg-red-600 text-base font-semibold text-white touch-manipulation active:opacity-90 sm:col-span-2"
+          >
+            {t.qcOps.qcComplaintNew}
           </button>
         </div>
       ) : null}
@@ -352,8 +398,8 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
           ))}
         </select>
       </div>
-      <div className="flex gap-2">
-        {(['all', 'inspection', 'note'] as const).map((kind) => (
+      <div className="flex flex-wrap gap-2">
+        {(['all', 'inspection', 'note', 'complaint'] as const).map((kind) => (
           <button
             key={kind}
             type="button"
@@ -368,7 +414,9 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
               ? t.qcOps.qcInspectFilterAll
               : kind === 'inspection'
                 ? t.qcOps.qcInspectFilterForms
-                : t.qcOps.qcInspectFilterNotes}
+                : kind === 'complaint'
+                  ? t.qcOps.qcInspectFilterComplaints
+                  : t.qcOps.qcInspectFilterNotes}
           </button>
         ))}
       </div>
@@ -380,6 +428,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
       <ul className="space-y-3">
         {visible.map((item) => {
           const inspection = parseInspectionPayload(item.photosJson);
+          const complaint = parseComplaintPayload(item.photosJson);
           const photosList = parseQcReportPhotos(item.photosJson);
           const author = item.createdBy.employee?.name ?? item.createdBy.email;
           const open = openId === item.id;
@@ -415,6 +464,18 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
                       </p>
                     ) : null}
                   </>
+                ) : complaint ? (
+                  <>
+                    <p className="text-xs font-bold uppercase tracking-wide text-red-700">{t.qcOps.qcComplaintNew}</p>
+                    {complaint.types.length ? (
+                      <p className="mt-1 text-sm font-semibold text-app-primary">
+                        {complaint.types.map((id) => complaintTypeTitle(id, locale)).join(' · ')}
+                      </p>
+                    ) : null}
+                    <p className={`${open ? '' : 'line-clamp-2'} mt-1 text-sm leading-relaxed text-app-primary`}>
+                      {complaint.description}
+                    </p>
+                  </>
                 ) : (
                   <p className={`${open ? '' : 'line-clamp-3'} text-sm leading-relaxed text-app-primary`}>
                     {item.comments}
@@ -424,7 +485,57 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
                   {item.branch.name} · {author} · {formatAppDateTime(item.createdAt, locale)}
                 </p>
               </button>
-              {open && inspection ? (
+              {open && complaint ? (
+                <div className="space-y-3 px-4 pb-4 text-sm text-app-primary">
+                  {complaint.complainantName ? (
+                    <p>
+                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintName}: </span>
+                      {complaint.complainantName}
+                    </p>
+                  ) : null}
+                  {complaint.phone ? (
+                    <p>
+                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintPhone}: </span>
+                      {complaint.phone}
+                    </p>
+                  ) : null}
+                  {complaint.orderNumber ? (
+                    <p>
+                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintOrder}: </span>
+                      {complaint.orderNumber}
+                    </p>
+                  ) : null}
+                  {complaint.staffInvolved ? (
+                    <p>
+                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintStaff}: </span>
+                      {complaint.staffInvolved}
+                    </p>
+                  ) : null}
+                  {complaint.actionTaken ? (
+                    <p>
+                      <span className="font-medium text-app-muted">{t.qcOps.qcComplaintAction}: </span>
+                      {complaint.actionTaken}
+                    </p>
+                  ) : null}
+                  {photosList.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {photosList.map((url) => {
+                        const reason = complaintPhotoNote(complaint, url);
+                        return (
+                          <span key={url} className="flex w-24 flex-col gap-0.5">
+                            <OpenUploadPhoto
+                              src={url}
+                              gallery={photosList}
+                              className="h-24 w-24 rounded-xl object-cover"
+                            />
+                            {reason ? <span className="text-[10px] leading-tight text-app-muted">{reason}</span> : null}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : open && inspection ? (
                 <div className="space-y-3 px-4 pb-4">
                   {BRANCH_INSPECTION_SECTIONS.map((section) => (
                     <div key={section.id}>
@@ -447,13 +558,22 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
                                 {row.n}. {title}
                               </span>
                               {itemPhotos.length ? (
-                                <span className="flex flex-wrap justify-end gap-1">
-                                  {itemPhotos.map((url) => (
-                                    <a key={url} href={url} target="_blank" rel="noopener noreferrer">
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img src={url} alt="" className="h-12 w-12 rounded-lg object-cover" />
-                                    </a>
-                                  ))}
+                                <span className="flex max-w-[11rem] flex-wrap justify-end gap-1">
+                                  {itemPhotos.map((url) => {
+                                    const reason = inspectionPhotoNote(ans, url);
+                                    return (
+                                      <span key={url} className="flex w-14 flex-col items-end gap-0.5">
+                                        <OpenUploadPhoto
+                                          src={url}
+                                          gallery={itemPhotos}
+                                          className="h-12 w-12 rounded-lg object-cover"
+                                        />
+                                        {reason ? (
+                                          <span className="w-full text-[10px] leading-tight text-app-muted">{reason}</span>
+                                        ) : null}
+                                      </span>
+                                    );
+                                  })}
                                 </span>
                               ) : null}
                             </li>
@@ -466,10 +586,12 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
               ) : open && photosList.length > 0 ? (
                 <div className="flex flex-wrap gap-2 px-4 pb-4">
                   {photosList.map((url) => (
-                    <a key={url} href={url} target="_blank" rel="noopener noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt="" className="h-24 w-24 rounded-xl object-cover" />
-                    </a>
+                    <OpenUploadPhoto
+                      key={url}
+                      src={url}
+                      gallery={photosList}
+                      className="h-24 w-24 rounded-xl object-cover"
+                    />
                   ))}
                 </div>
               ) : !open && photosList.length > 0 ? (

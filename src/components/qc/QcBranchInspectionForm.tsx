@@ -8,17 +8,22 @@ import {
   BRANCH_INSPECTION_ITEM_IDS,
   BRANCH_INSPECTION_KIND,
   BRANCH_INSPECTION_SECTIONS,
+  INSPECTION_PHOTO_NOTE_MAX,
   INSPECTION_PHOTOS_PER_ITEM_MAX,
   type InspectionResult,
 } from '@/lib/qc-branch-inspection';
 import { QcNotifyPicker, defaultNotifyTargets, type QcNotifyOption } from '@/components/qc/QcNotifyPicker';
 
 type Branch = { id: string; name: string };
-type Draft = { result: InspectionResult | null; photoUrls: string[] };
+type Draft = { result: InspectionResult | null; photoUrls: string[]; photoNotes: Record<string, string> };
+
+function emptyDraft(): Draft {
+  return { result: null, photoUrls: [], photoNotes: {} };
+}
 
 function emptyDrafts(): Record<string, Draft> {
   const out: Record<string, Draft> = {};
-  for (const id of BRANCH_INSPECTION_ITEM_IDS) out[id] = { result: null, photoUrls: [] };
+  for (const id of BRANCH_INSPECTION_ITEM_IDS) out[id] = emptyDraft();
   return out;
 }
 
@@ -53,7 +58,7 @@ export function QcBranchInspectionForm({
   const uploading = busy !== null && busy !== 'submit';
 
   function setResult(id: string, result: InspectionResult) {
-    setDrafts((cur) => ({ ...cur, [id]: { ...(cur[id] ?? { photoUrls: [] }), result } }));
+    setDrafts((cur) => ({ ...cur, [id]: { ...(cur[id] ?? emptyDraft()), result } }));
   }
 
   function roomForPhotos(id: string, extra = 1) {
@@ -82,7 +87,7 @@ export function QcBranchInspectionForm({
       }
       if (uploaded.length) {
         setDrafts((cur) => {
-          const row = cur[id] ?? { result: null, photoUrls: [] };
+          const row = cur[id] ?? emptyDraft();
           const next = [...row.photoUrls];
           for (const url of uploaded) {
             if (!next.includes(url) && next.length < INSPECTION_PHOTOS_PER_ITEM_MAX) next.push(url);
@@ -106,14 +111,27 @@ export function QcBranchInspectionForm({
     setBusy('submit');
     setErr(null);
     try {
-      const answers: Record<string, { result: InspectionResult; photoUrl: string | null; photoUrls: string[] }> = {};
+      const answers: Record<
+        string,
+        { result: InspectionResult; photoUrl: string | null; photoUrls: string[]; photoNotes: Record<string, string> }
+      > = {};
       for (const id of BRANCH_INSPECTION_ITEM_IDS) {
         const row = drafts[id];
         if (!row?.result) {
           setErr(t.qcOps.qcInspectNeedAll);
           return;
         }
-        answers[id] = { result: row.result, photoUrl: row.photoUrls[0] ?? null, photoUrls: row.photoUrls };
+        const photoNotes: Record<string, string> = {};
+        for (const url of row.photoUrls) {
+          const note = (row.photoNotes[url] ?? '').trim();
+          if (note) photoNotes[url] = note.slice(0, INSPECTION_PHOTO_NOTE_MAX);
+        }
+        answers[id] = {
+          result: row.result,
+          photoUrl: row.photoUrls[0] ?? null,
+          photoUrls: row.photoUrls,
+          photoNotes,
+        };
       }
       const res = await fetch('/api/qc-reports', {
         method: 'POST',
@@ -194,7 +212,7 @@ export function QcBranchInspectionForm({
           </header>
           <ul className="divide-y divide-gray-100 dark:divide-ios-dark-separator">
             {section.items.map((item) => {
-              const draft = drafts[item.id] ?? { result: null, photoUrls: [] };
+              const draft = drafts[item.id] ?? emptyDraft();
               const title = locale === 'ar' ? item.titleAr : item.titleEn;
               const canAddPhoto = busy === null && roomForPhotos(item.id);
               return (
@@ -242,27 +260,57 @@ export function QcBranchInspectionForm({
                     </button>
                   </div>
                   {draft.photoUrls.length ? (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {draft.photoUrls.map((url) => (
-                        <div key={url} className="relative inline-block">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={url} alt="" className="h-16 w-16 rounded-xl object-cover" />
-                          <button
-                            type="button"
-                            className="absolute -end-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-sm text-white"
-                            onClick={() =>
-                              setDrafts((cur) => {
-                                const row = cur[item.id] ?? { result: null, photoUrls: [] };
-                                return {
-                                  ...cur,
-                                  [item.id]: { ...row, photoUrls: row.photoUrls.filter((u) => u !== url) },
-                                };
-                              })
-                            }
-                            aria-label={t.common.close}
-                          >
-                            ×
-                          </button>
+                        <div key={url} className="flex items-start gap-2">
+                          <div className="relative shrink-0">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={url} alt="" className="h-16 w-16 rounded-xl object-cover" />
+                            <button
+                              type="button"
+                              className="absolute -end-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-sm text-white"
+                              onClick={() =>
+                                setDrafts((cur) => {
+                                  const row = cur[item.id] ?? emptyDraft();
+                                  const photoNotes = { ...row.photoNotes };
+                                  delete photoNotes[url];
+                                  return {
+                                    ...cur,
+                                    [item.id]: {
+                                      ...row,
+                                      photoUrls: row.photoUrls.filter((u) => u !== url),
+                                      photoNotes,
+                                    },
+                                  };
+                                })
+                              }
+                              aria-label={t.common.close}
+                            >
+                              ×
+                            </button>
+                          </div>
+                          <label className="min-w-0 flex-1 space-y-0.5">
+                            <span className="text-[11px] font-medium text-app-muted">{t.qcOps.qcInspectPhotoReason}</span>
+                            <input
+                              type="text"
+                              value={draft.photoNotes[url] ?? ''}
+                              maxLength={INSPECTION_PHOTO_NOTE_MAX}
+                              placeholder={t.qcOps.qcInspectPhotoReasonPh}
+                              className="min-h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm dark:border-ios-dark-separator dark:bg-ios-dark-fill"
+                              onChange={(e) =>
+                                setDrafts((cur) => {
+                                  const row = cur[item.id] ?? emptyDraft();
+                                  return {
+                                    ...cur,
+                                    [item.id]: {
+                                      ...row,
+                                      photoNotes: { ...row.photoNotes, [url]: e.target.value },
+                                    },
+                                  };
+                                })
+                              }
+                            />
+                          </label>
                         </div>
                       ))}
                     </div>

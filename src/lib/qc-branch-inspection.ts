@@ -2,6 +2,7 @@ export const BRANCH_INSPECTION_KIND = 'branch_inspection';
 export const BRANCH_INSPECTION_VERSION = 1;
 /** High enough for a real visit; still bounds upload/API size. */
 export const INSPECTION_PHOTOS_PER_ITEM_MAX = 30;
+export const INSPECTION_PHOTO_NOTE_MAX = 280;
 
 export type InspectionResult = 'pass' | 'fail';
 
@@ -90,7 +91,12 @@ export const BRANCH_INSPECTION_SECTIONS: readonly BranchInspectionSection[] = [
 export const BRANCH_INSPECTION_ITEMS = BRANCH_INSPECTION_SECTIONS.flatMap((s) => [...s.items]);
 export const BRANCH_INSPECTION_ITEM_IDS = BRANCH_INSPECTION_ITEMS.map((i) => i.id);
 
-export type InspectionAnswer = { result: InspectionResult; photoUrl: string | null; photoUrls: string[] };
+export type InspectionAnswer = {
+  result: InspectionResult;
+  photoUrl: string | null;
+  photoUrls: string[];
+  photoNotes: Record<string, string>;
+};
 export type InspectionAnswers = Record<string, InspectionAnswer>;
 
 function isPhotoUrl(v: unknown): v is string {
@@ -114,6 +120,28 @@ export function normalizeInspectionPhotoUrls(row: { photoUrl?: unknown; photoUrl
 export function inspectionAnswerPhotos(answer: InspectionAnswer | null | undefined): string[] {
   if (!answer) return [];
   return normalizeInspectionPhotoUrls(answer);
+}
+
+export function normalizeInspectionPhotoNotes(
+  row: { photoNotes?: unknown } | null | undefined,
+  photoUrls: string[]
+): Record<string, string> {
+  const allowed = new Set(photoUrls);
+  const out: Record<string, string> = {};
+  const raw = row?.photoNotes;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [url, note] of Object.entries(raw as Record<string, unknown>)) {
+    if (!allowed.has(url)) continue;
+    if (typeof note !== 'string') continue;
+    const trimmed = note.trim().slice(0, INSPECTION_PHOTO_NOTE_MAX);
+    if (trimmed) out[url] = trimmed;
+  }
+  return out;
+}
+
+export function inspectionPhotoNote(answer: InspectionAnswer | null | undefined, url: string): string {
+  const note = answer?.photoNotes?.[url];
+  return typeof note === 'string' ? note : '';
 }
 
 export type BranchInspectionPayload = {
@@ -145,7 +173,8 @@ export function validateInspectionAnswers(raw: unknown): { ok: true; answers: In
     const result = (row as { result?: unknown }).result;
     if (!isResult(result)) return { ok: false, error: 'Answer every checklist item' };
     const photoUrls = normalizeInspectionPhotoUrls(row as { photoUrl?: unknown; photoUrls?: unknown });
-    answers[id] = { result, photoUrl: photoUrls[0] ?? null, photoUrls };
+    const photoNotes = normalizeInspectionPhotoNotes(row as { photoNotes?: unknown }, photoUrls);
+    answers[id] = { result, photoUrl: photoUrls[0] ?? null, photoUrls, photoNotes };
   }
   return { ok: true, answers };
 }
@@ -189,7 +218,8 @@ function parseStoredInspectionAnswers(raw: unknown): InspectionAnswers | null {
     const result = (row as { result?: unknown }).result;
     if (!isResult(result)) continue;
     const photoUrls = normalizeInspectionPhotoUrls(row as { photoUrl?: unknown; photoUrls?: unknown });
-    answers[id] = { result, photoUrl: photoUrls[0] ?? null, photoUrls };
+    const photoNotes = normalizeInspectionPhotoNotes(row as { photoNotes?: unknown }, photoUrls);
+    answers[id] = { result, photoUrl: photoUrls[0] ?? null, photoUrls, photoNotes };
     any = true;
   }
   return any ? answers : null;
@@ -229,12 +259,19 @@ export function listInspectionPhotos(payload: BranchInspectionPayload): string[]
   return out;
 }
 
-/** Note reports store a URL array; inspections store a structured object. */
+/** Note reports store a URL array; inspections/complaints store a structured object. */
 export function parseQcReportPhotos(raw: string): string[] {
   const inspection = parseInspectionPayload(raw);
   if (inspection) return listInspectionPhotos(inspection);
   try {
     const v = JSON.parse(raw) as unknown;
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const rec = v as { kind?: unknown; photoUrls?: unknown };
+      if (rec.kind === 'customer_complaint' && Array.isArray(rec.photoUrls)) {
+        return rec.photoUrls.map((item) => String(item ?? '').trim()).filter((s) => s.length > 3);
+      }
+      return [];
+    }
     if (!Array.isArray(v)) return [];
     return v.map((item) => String(item ?? '').trim()).filter((s) => s.length > 3);
   } catch {

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import type { Employee, Branch, Department, EmployeeTransfer, EmployeeDocument } from '@prisma/client';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import { formatAppDate, formatAppShiftTimeRange } from '@/lib/format-datetime';
+import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 import { EmployeeDocumentsSection } from './EmployeeDocumentsSection';
 import { SalaryHistorySection } from './SalaryHistorySection';
 import { PerformanceReviewsSection } from './PerformanceReviewsSection';
@@ -454,24 +455,20 @@ export function EmployeeCard({
             <div className="mt-3">
               <div className="flex items-center gap-3 flex-wrap">
                 {resolvedIdCardFrontPhotoUrl && (
-                  <a href={resolvedIdCardFrontPhotoUrl} target="_blank" rel="noopener noreferrer" className="block">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={resolvedIdCardFrontPhotoUrl}
-                      alt={t.common.idCardFrontPhoto}
-                      className="h-14 w-14 rounded border border-gray-200 dark:border-ios-dark-separator object-cover"
-                    />
-                  </a>
+                  <OpenUploadPhoto
+                    src={resolvedIdCardFrontPhotoUrl}
+                    gallery={[resolvedIdCardFrontPhotoUrl, resolvedIdCardBackPhotoUrl].filter(Boolean) as string[]}
+                    alt={t.common.idCardFrontPhoto}
+                    className="h-14 w-14 rounded border border-gray-200 dark:border-ios-dark-separator object-cover"
+                  />
                 )}
                 {resolvedIdCardBackPhotoUrl && (
-                  <a href={resolvedIdCardBackPhotoUrl} target="_blank" rel="noopener noreferrer" className="block">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={resolvedIdCardBackPhotoUrl}
-                      alt={t.common.idCardBackPhoto}
-                      className="h-14 w-14 rounded border border-gray-200 dark:border-ios-dark-separator object-cover"
-                    />
-                  </a>
+                  <OpenUploadPhoto
+                    src={resolvedIdCardBackPhotoUrl}
+                    gallery={[resolvedIdCardFrontPhotoUrl, resolvedIdCardBackPhotoUrl].filter(Boolean) as string[]}
+                    alt={t.common.idCardBackPhoto}
+                    className="h-14 w-14 rounded border border-gray-200 dark:border-ios-dark-separator object-cover"
+                  />
                 )}
               </div>
               <div className="mt-1 flex gap-3 text-xs text-app-muted flex-wrap">

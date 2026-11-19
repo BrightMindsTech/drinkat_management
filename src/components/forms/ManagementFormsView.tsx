@@ -10,6 +10,7 @@ import type { FormFieldDef } from '@/lib/formTemplate';
 import { isStaffLevelRole } from '@/lib/permissions';
 import { scrollIntoViewById } from '@/lib/scrollIntoViewDeferred';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
+import { OpenUploadPhotoText } from '@/components/UploadPhotoViewer';
 import { buildSubmissionReportTable, type SubmissionReportCsvInput } from '@/lib/formSubmissionCsv';
 import { ReportTableModal } from '@/components/ReportTableModal';
 import type { ReportTableData } from '@/lib/report-table';
@@ -549,9 +550,9 @@ export function ManagementFormsView({
             </div>
             <p className="text-xs text-app-muted mt-1.5">{t.forms.cameraOnlyHint}</p>
             {typeof v === 'string' && v && (
-              <a href={v} target="_blank" rel="noopener noreferrer" className="text-ios-blue text-xs mt-1 inline-block">
+              <OpenUploadPhotoText src={v} className="text-ios-blue text-xs mt-1 inline-block">
                 {t.common.photo}
-              </a>
+              </OpenUploadPhotoText>
             )}
           </div>
         );
@@ -1052,14 +1053,12 @@ export function ManagementFormsView({
                           </dt>
                           <dd className="text-app-primary break-words leading-snug">
                             {f.type === 'photo' && s.answers[f.key] ? (
-                              <a
-                                href={s.answers[f.key]}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <OpenUploadPhotoText
+                                src={s.answers[f.key]}
                                 className="font-medium text-ios-blue hover:underline"
                               >
                                 {t.common.photo}
-                              </a>
+                              </OpenUploadPhotoText>
                             ) : (
                               (s.answers[f.key] ?? '—')
                             )}

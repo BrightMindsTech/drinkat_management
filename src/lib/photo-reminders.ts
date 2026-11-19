@@ -2,13 +2,17 @@ import type { PrismaClient } from '@prisma/client';
 import { isPhotoCheckSchedulerEnabled } from '@/lib/photo-generate';
 import { notifyUsers } from '@/lib/user-notify';
 import { BRANCH_PHOTO_CLAIMED } from '@/lib/photo-branch-claim';
+import {
+  latestPhotoReminderAt,
+  shouldSendPhotoReminderAtClock,
+} from '@/lib/photo-reminder-clock';
 import { isPhotoWindowOpenNow } from '@/lib/photo-time';
 import { formatAppTime } from '@/lib/format-datetime';
 
-/** While a photo window is open, keep nudging until the employee submits. */
-export const ACTIVE_PHOTO_REMINDER_MINUTES = 180;
-/** Keep the OS notification until the next 3-hour tick. */
-export const PHOTO_REMINDER_PUSH_TTL_SEC = 170 * 60;
+export { latestPhotoReminderAt, shouldSendPhotoReminderAtClock as shouldSendActivePhotoReminder };
+
+/** Keep the OS banner overnight until the next morning 8am slot. */
+export const PHOTO_REMINDER_PUSH_TTL_SEC = 16 * 60 * 60 - 10 * 60;
 /** Only currently open windows — never scan thousands of historical overdue rows. */
 export const PHOTO_REMINDER_OPEN_TAKE = 800;
 
@@ -24,25 +28,6 @@ export function isPhotoTaskActiveForReminder(
     task.status === 'overdue' ||
     task.status === 'scheduled'
   );
-}
-
-export function shouldSendActivePhotoReminder(
-  lastRemindedAt: Date | null,
-  now: Date,
-  intervalMinutes = ACTIVE_PHOTO_REMINDER_MINUTES
-): boolean {
-  if (!lastRemindedAt) return true;
-  return now.getTime() - lastRemindedAt.getTime() >= intervalMinutes * 60_000;
-}
-
-/** One push per person — latest lastRemindedAt across their open tasks. */
-export function latestPhotoReminderAt(times: Array<Date | null | undefined>): Date | null {
-  let latest: Date | null = null;
-  for (const t of times) {
-    if (!t) continue;
-    if (!latest || t.getTime() > latest.getTime()) latest = t;
-  }
-  return latest;
 }
 
 function photoReminderCopy(
@@ -92,7 +77,7 @@ export async function sendPhotoCheckRemindersIfDue(prisma: PrismaClient, now = n
       dueAt: { gte: now },
     },
     include: {
-      assignee: { select: { userId: true, name: true } },
+      assignee: { select: { userId: true, name: true, branch: { select: { name: true } } } },
       type: { select: { titleEn: true, titleAr: true } },
     },
     orderBy: { dueAt: 'asc' },
@@ -165,7 +150,8 @@ export async function sendPhotoCheckRemindersIfDue(prisma: PrismaClient, now = n
   let sent = 0;
   for (const [userId, userTasks] of byUser) {
     const last = latestPhotoReminderAt(userTasks.map((t) => t.lastRemindedAt));
-    if (!shouldSendActivePhotoReminder(last, now)) {
+    const branchName = userTasks[0]?.assignee.branch.name ?? '';
+    if (!shouldSendPhotoReminderAtClock(last, now, branchName)) {
       skipped += userTasks.length;
       continue;
     }

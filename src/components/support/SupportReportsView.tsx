@@ -5,6 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { MAX_SCREENSHOTS } from '@/lib/support-reports';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
+import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 
 type ReportRow = {
   id: string;
@@ -249,14 +250,12 @@ export function SupportReportsView({ isOwner }: { isOwner: boolean }) {
                 {r.screenshotPaths.length > 0 ? (
                   <div className="flex flex-wrap gap-2 pt-1">
                     {r.screenshotPaths.map((path) => (
-                      <a key={path} href={path} target="_blank" rel="noopener noreferrer">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={path}
-                          alt=""
-                          className="h-24 w-24 object-cover rounded-lg border border-gray-200 dark:border-ios-dark-separator"
-                        />
-                      </a>
+                      <OpenUploadPhoto
+                        key={path}
+                        src={path}
+                        gallery={r.screenshotPaths}
+                        className="h-24 w-24 object-cover rounded-lg border border-gray-200 dark:border-ios-dark-separator"
+                      />
                     ))}
                   </div>
                 ) : null}

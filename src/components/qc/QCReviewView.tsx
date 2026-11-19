@@ -5,6 +5,7 @@ import type { Checklist, ChecklistItem, ChecklistAssignment, Employee, Branch, D
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import { formatAppClockTimeLabel, formatAppDate, formatAppDateTime, formatAppMonthYear } from '@/lib/format-datetime';
 import { useGuardedAction } from '@/contexts/AsyncActionContext';
+import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 
 type ChecklistWithItems = Checklist & { branch: Branch | null; items: ChecklistItem[] };
 type AssignmentWithRelations = ChecklistAssignment & {
@@ -422,15 +423,13 @@ export function QCReviewView({
               {expandedSubmissionDetails[s.id] && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {s.photos.map((p) => (
-                    <a
+                    <OpenUploadPhoto
                       key={p.id}
-                      href={p.filePath}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block"
-                    >
-                      <img src={p.filePath} alt="QC" className="h-24 w-24 object-cover rounded border" />
-                    </a>
+                      src={p.filePath}
+                      gallery={s.photos.map((x) => x.filePath)}
+                      alt="QC"
+                      className="h-24 w-24 object-cover rounded border"
+                    />
                   ))}
                 </div>
               )}
@@ -588,9 +587,13 @@ export function QCReviewView({
                         {s.photos.length > 0 ? (
                           <div className="mt-2 flex flex-wrap gap-2">
                             {s.photos.map((p) => (
-                              <a key={p.id} href={p.filePath} target="_blank" rel="noopener noreferrer">
-                                <img src={p.filePath} alt="QC archive" className="h-20 w-20 object-cover rounded border border-gray-200 dark:border-ios-dark-separator" />
-                              </a>
+                              <OpenUploadPhoto
+                                key={p.id}
+                                src={p.filePath}
+                                gallery={s.photos.map((x) => x.filePath)}
+                                alt="QC archive"
+                                className="h-20 w-20 object-cover rounded border border-gray-200 dark:border-ios-dark-separator"
+                              />
                             ))}
                           </div>
                         ) : null}

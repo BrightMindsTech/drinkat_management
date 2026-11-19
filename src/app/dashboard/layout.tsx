@@ -4,6 +4,7 @@ import { normalizeUserRole } from '@/lib/formVisibility';
 import { isQcReviewerUser } from '@/lib/qc-reviewer';
 import { prisma } from '@/lib/prisma';
 import { InAppNotificationProvider } from '@/contexts/InAppNotificationContext';
+import { UploadPhotoViewerProvider } from '@/components/UploadPhotoViewer';
 import { AppResumeSync } from '@/components/AppResumeSync';
 import { AppReconnectingNotice } from '@/components/AppReconnectingNotice';
 import { DashboardSessionRecovery } from '@/components/DashboardSessionRecovery';
@@ -72,6 +73,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <InAppNotificationProvider>
+      <UploadPhotoViewerProvider>
       <PushForegroundBridge />
       <PhotoTaskReminderPulse />
       <TrustedDeviceSync />
@@ -101,6 +103,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       >
         {children}
       </DashboardLayoutClient>
+      </UploadPhotoViewerProvider>
     </InAppNotificationProvider>
   );
 }
