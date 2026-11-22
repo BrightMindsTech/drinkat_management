@@ -1134,6 +1134,7 @@ export const en = {
     qcComplaintNote: 'Complaint {n} — note',
     qcComplaintPicture: 'Picture',
     qcComplaintAttach: 'Attach screenshot',
+    qcComplaintAddNote: 'Add another note',
     qcComplaintAdditional: 'Additional notes',
     qcComplaintNeedOne: 'Add at least one note or screenshot.',
     qcComplaintTalabat: 'Talabat',

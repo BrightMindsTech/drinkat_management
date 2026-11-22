@@ -1133,6 +1133,7 @@ export const ar: LocaleMessages = {
     qcComplaintNote: 'شكوى {n} — ملاحظة',
     qcComplaintPicture: 'صورة',
     qcComplaintAttach: 'أرفق لقطة شاشة',
+    qcComplaintAddNote: 'إضافة ملاحظة أخرى',
     qcComplaintAdditional: 'ملاحظات إضافية',
     qcComplaintNeedOne: 'أضف ملاحظة أو صورة واحدة على الأقل.',
     qcComplaintTalabat: 'طلبات',

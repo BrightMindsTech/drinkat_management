@@ -50,6 +50,7 @@ import {
   PHOTO_PROGRAM_STAMP,
   PHOTO_SATURDAY_DAYS_JSON,
   PHOTO_SATURDAY_ONLY_CODES,
+  PHOTO_KITCHEN_STATION_CODES,
   PHOTO_SATURDAY_WEEKDAY,
   PHOTO_WINDOW_HANDOFF_MINUTES,
   isCloudKitchenBranchName,
@@ -461,6 +462,32 @@ assert.deepEqual([...PHOTO_SATURDAY_ONLY_CODES], [
   'grill_cleanliness',
   'preparation_refrigerator',
 ]);
+assert.deepEqual([...PHOTO_KITCHEN_STATION_CODES], [
+  'grill_temperature_check',
+  'grill_surrounding_walls',
+  'ventilation_extractor_cleaning',
+  'holding_cabinet_cleanliness',
+  'packaging_and_dates',
+  'storage_shelves',
+  'station_mats_cleanliness',
+]);
+assert.equal(photoScheduleDaysJson('grill_temperature_check'), '[0,1,2,3,4,5,6]');
+assert.equal(photoScheduleDaysJson('holding_cabinet_cleanliness'), '[0,1,2,3,4,5,6]');
+assert.equal(photoScheduleDaysJson('ventilation_extractor_cleaning'), '[0,1,2,3,4,5,6]');
+{
+  const mig28 = fs.readFileSync(path.join(root, 'prisma/migrations/0028_kitchen_station_photos.sql'), 'utf8');
+  assert.match(mig28, /قياس حرارة الجريل/);
+  assert.match(mig28, /نظافة الجدران حول جريل/);
+  assert.match(mig28, /نظافة الهود/);
+  assert.match(mig28, /نظافة الحاضنة/);
+  assert.match(mig28, /التغليف والتواريخ للمواد/);
+  assert.match(mig28, /ارفف التخزين/);
+  assert.match(mig28, /نظافة البسطات/);
+  assert.match(mig28, /ventilation_extractor_cleaning/);
+  assert.doesNotMatch(mig28, /DELETE FROM "Employee"/);
+  assert.doesNotMatch(mig28.toUpperCase(), /DROP TABLE/);
+}
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-ops-program.ts'), 'utf8'), /assignMissingApprovedTypesToPhotoStaff/);
 assert.equal(
   employeeEligibleForDefaultPhotoOps({ status: 'active', role: 'manager', employmentType: 'full_time' }),
   true
@@ -1040,8 +1067,8 @@ assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.
   });
   assert.equal(encoded.kind, CUSTOMER_COMPLAINT_KIND);
   assert.equal(encoded.talabat[0]?.note, 'late order');
-  assert.equal(encoded.talabat.length, 3);
-  assert.equal(encoded.careem.length, 2);
+  assert.equal(encoded.talabat.length, 1);
+  assert.equal(encoded.careem.length, 1);
   assert.equal(encoded.additionalNotes, 'follow up');
   assert.equal(complaintHasContent(encoded), true);
   assert.match(complaintComments(encoded), /late order/);
@@ -1054,10 +1081,24 @@ assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.
   );
   assert.equal(legacy?.additionalNotes, 'old note');
   assert.equal(legacy?.talabat[0]?.photoUrl, '/uploads/c.jpg');
+  const many = encodeComplaintPayload({
+    talabat: [
+      { note: 'one' },
+      { note: 'two' },
+      { note: 'three' },
+      { note: 'four' },
+      { note: 'five' },
+    ],
+  });
+  assert.equal(many.talabat.length, 5);
+  assert.equal(many.talabat[4]?.note, 'five');
 }
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /Talabat|talabat/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /Careem|careem/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /qcComplaintAttach/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /qcComplaintAddNote/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.tsx'), 'utf8'), /addSlot/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/qc-reports/route.ts'), 'utf8'), /COMPLAINT_SLOTS_MAX/);
 assert.equal(
   resolvePushNavigationUrl({
     type: 'qc_complaint',

@@ -54,6 +54,17 @@ export const PHOTO_SATURDAY_ONLY_CODES = [
   'preparation_refrigerator',
 ] as const;
 
+/** Owner 2026-11-22 kitchen station list. Grill temperature is a per-shift measurement. */
+export const PHOTO_KITCHEN_STATION_CODES = [
+  'grill_temperature_check',
+  'grill_surrounding_walls',
+  'ventilation_extractor_cleaning',
+  'holding_cabinet_cleanliness',
+  'packaging_and_dates',
+  'storage_shelves',
+  'station_mats_cleanliness',
+] as const;
+
 export function photoScheduleDaysJson(typeCode: string): string {
   return (PHOTO_SATURDAY_ONLY_CODES as readonly string[]).includes(typeCode)
     ? PHOTO_SATURDAY_DAYS_JSON

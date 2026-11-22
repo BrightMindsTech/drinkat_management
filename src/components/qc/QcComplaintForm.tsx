@@ -8,6 +8,7 @@ import {
   COMPLAINT_ADDITIONAL_MAX,
   COMPLAINT_CHANNELS,
   COMPLAINT_SLOT_NOTE_MAX,
+  COMPLAINT_SLOTS_MAX,
   CUSTOMER_COMPLAINT_KIND,
   complaintHasContent,
   encodeComplaintPayload,
@@ -39,8 +40,8 @@ export function QcComplaintForm({
   const { t, locale } = useLanguage();
   const [branchId, setBranchId] = useState(initialBranchId || branches[0]?.id || '');
   const [notifyTo, setNotifyTo] = useState<string[]>(() => defaultNotifyTargets(notifyOptions));
-  const [talabat, setTalabat] = useState<ComplaintSlot[]>(() => emptySlots(3));
-  const [careem, setCareem] = useState<ComplaintSlot[]>(() => emptySlots(2));
+  const [talabat, setTalabat] = useState<ComplaintSlot[]>(() => emptySlots(COMPLAINT_CHANNELS[0].startSlots));
+  const [careem, setCareem] = useState<ComplaintSlot[]>(() => emptySlots(COMPLAINT_CHANNELS[1].startSlots));
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -62,6 +63,11 @@ export function QcComplaintForm({
   function setSlot(channel: 'talabat' | 'careem', index: number, patch: Partial<ComplaintSlot>) {
     const setter = channel === 'talabat' ? setTalabat : setCareem;
     setter((cur) => cur.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  function addSlot(channel: 'talabat' | 'careem') {
+    const setter = channel === 'talabat' ? setTalabat : setCareem;
+    setter((cur) => (cur.length >= COMPLAINT_SLOTS_MAX ? cur : [...cur, { note: '', photoUrl: null }]));
   }
 
   async function attachPhoto(channel: 'talabat' | 'careem', index: number, files: File[]) {
@@ -263,6 +269,20 @@ export function QcComplaintForm({
               </p>
             </header>
             {renderSlots(channel.id, rows)}
+            {rows.length < COMPLAINT_SLOTS_MAX ? (
+              <div className="border-t border-gray-200 p-3 dark:border-ios-dark-separator">
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => addSlot(channel.id)}
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-teal-400 bg-teal-50 text-sm font-bold text-teal-800 disabled:opacity-50 dark:border-teal-700 dark:bg-teal-950/40 dark:text-teal-200"
+                >
+                  <span className="text-lg leading-none">+</span>
+                  {t.qcOps.qcComplaintAddNote}
+                  {` (${rows.length + 1})`}
+                </button>
+              </div>
+            ) : null}
           </section>
         );
       })}

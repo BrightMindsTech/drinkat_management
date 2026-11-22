@@ -3,9 +3,10 @@ export const CUSTOMER_COMPLAINT_VERSION = 2;
 export const COMPLAINT_SLOT_NOTE_MAX = 2000;
 export const COMPLAINT_ADDITIONAL_MAX = 4000;
 
+export const COMPLAINT_SLOTS_MAX = 20;
 export const COMPLAINT_CHANNELS = [
-  { id: 'talabat', slots: 3, titleEn: 'Talabat', titleAr: 'طلبات' },
-  { id: 'careem', slots: 2, titleEn: 'Careem', titleAr: 'كريم' },
+  { id: 'talabat', startSlots: 3, titleEn: 'Talabat', titleAr: 'طلبات' },
+  { id: 'careem', startSlots: 2, titleEn: 'Careem', titleAr: 'كريم' },
 ] as const;
 
 export type ComplaintChannelId = (typeof COMPLAINT_CHANNELS)[number]['id'];
@@ -39,9 +40,15 @@ function normalizeSlot(raw: unknown): ComplaintSlot {
   };
 }
 
-function normalizeSlots(raw: unknown, count: number): ComplaintSlot[] {
+function slotHasContent(slot: ComplaintSlot): boolean {
+  return Boolean(slot.note || slot.photoUrl);
+}
+
+function normalizeSlots(raw: unknown): ComplaintSlot[] {
   const arr = Array.isArray(raw) ? raw : [];
-  return Array.from({ length: count }, (_, i) => normalizeSlot(arr[i]));
+  const slots = arr.slice(0, COMPLAINT_SLOTS_MAX).map(normalizeSlot);
+  while (slots.length && !slotHasContent(slots[slots.length - 1]!)) slots.pop();
+  return slots;
 }
 
 export function listComplaintPhotos(payload: CustomerComplaintPayload): string[] {
@@ -55,10 +62,10 @@ export function listComplaintPhotos(payload: CustomerComplaintPayload): string[]
 export function complaintFilledSlots(payload: CustomerComplaintPayload): { channel: ComplaintChannelId; n: number; slot: ComplaintSlot }[] {
   const out: { channel: ComplaintChannelId; n: number; slot: ComplaintSlot }[] = [];
   payload.talabat.forEach((slot, i) => {
-    if (slot.note || slot.photoUrl) out.push({ channel: 'talabat', n: i + 1, slot });
+    if (slotHasContent(slot)) out.push({ channel: 'talabat', n: i + 1, slot });
   });
   payload.careem.forEach((slot, i) => {
-    if (slot.note || slot.photoUrl) out.push({ channel: 'careem', n: i + 1, slot });
+    if (slotHasContent(slot)) out.push({ channel: 'careem', n: i + 1, slot });
   });
   return out;
 }
@@ -91,15 +98,19 @@ export function encodeComplaintPayload(input: {
   photoUrls?: unknown;
   photoNotes?: Record<string, string>;
 }): CustomerComplaintPayload {
-  let talabat = normalizeSlots(input.talabat, 3);
-  let careem = normalizeSlots(input.careem, 2);
-  let additionalNotes = trimField(input.additionalNotes ?? input.description, COMPLAINT_ADDITIONAL_MAX);
+  let talabat = normalizeSlots(input.talabat);
+  const careem = normalizeSlots(input.careem);
+  const additionalNotes = trimField(input.additionalNotes ?? input.description, COMPLAINT_ADDITIONAL_MAX);
 
   const legacyPhotos = Array.isArray(input.photoUrls)
     ? input.photoUrls.map((item) => String(item ?? '').trim()).filter((s) => s.length > 3)
     : [];
   if (legacyPhotos.length && !talabat.some((s) => s.photoUrl) && !careem.some((s) => s.photoUrl)) {
-    talabat = talabat.map((slot, i) => ({ ...slot, photoUrl: legacyPhotos[i] ?? slot.photoUrl }));
+    const needed = Math.min(COMPLAINT_SLOTS_MAX, Math.max(talabat.length, legacyPhotos.length));
+    talabat = Array.from({ length: needed }, (_, i) => ({
+      note: talabat[i]?.note ?? '',
+      photoUrl: talabat[i]?.photoUrl ?? legacyPhotos[i] ?? null,
+    }));
   }
 
   const description = complaintComments({

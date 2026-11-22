@@ -21,6 +21,7 @@ type SchemaCtx = {
   tables: Set<string>;
   userCols: Set<string>;
   photoTypeCols: Set<string>;
+  photoCodes: Set<string>;
   sopCols: Set<string>;
 };
 
@@ -37,6 +38,12 @@ const STEPS: Step[] = [
   { id: '0025', file: 'prisma/migrations/0025_photo_limits_1_3.sql', alreadyApplied: (c) => c.tables.has('PhotoUploadDiscard') },
   { id: '0026', file: 'prisma/migrations/0026_hr_notes.sql', alreadyApplied: (c) => c.tables.has('HrNote') },
   { id: '0027', file: 'prisma/migrations/0027_trusted_devices.sql', alreadyApplied: (c) => c.tables.has('TrustedDevice') },
+  {
+    id: '0028',
+    file: 'prisma/migrations/0028_kitchen_station_photos.sql',
+    alreadyApplied: (c) =>
+      c.photoCodes.has('grill_temperature_check') && c.photoCodes.has('holding_cabinet_cleanliness'),
+  },
 ];
 
 function splitSqlStatements(sql: string): string[] {
@@ -138,7 +145,12 @@ function loadSchema(): SchemaCtx {
   const sopCols = new Set(
     tables.has('SopDocument') ? d1Query(`PRAGMA table_info(SopDocument)`).map((r) => String(r.name)) : []
   );
-  return { tables, userCols, photoTypeCols, sopCols };
+  const photoCodes = new Set(
+    tables.has('PhotoCheckType')
+      ? d1Query(`SELECT code FROM PhotoCheckType`).map((r) => String(r.code))
+      : []
+  );
+  return { tables, userCols, photoTypeCols, photoCodes, sopCols };
 }
 
 function counts() {
@@ -201,6 +213,10 @@ function main() {
       `REFUSED: identity counts changed employees ${before.employees}→${after.employees} users ${before.users}→${after.users}`
     );
   }
+  const kitchenTypes = d1Query(
+    `SELECT code, titleAr, provisional FROM PhotoCheckType WHERE code IN ('grill_temperature_check','holding_cabinet_cleanliness','ventilation_extractor_cleaning')`
+  );
+  console.log(JSON.stringify({ kitchenStationPhotos: kitchenTypes }));
   const max360 = d1Query(
     `SELECT minPhotos, maxPhotos FROM PhotoCheckType WHERE code = 'branch_cleanliness_360'`
   )[0];

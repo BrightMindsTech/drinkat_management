@@ -22,6 +22,7 @@ import {
 import {
   COMPLAINT_ADDITIONAL_MAX,
   COMPLAINT_SLOT_NOTE_MAX,
+  COMPLAINT_SLOTS_MAX,
   CUSTOMER_COMPLAINT_KIND,
   complaintComments,
   complaintHasContent,
@@ -51,8 +52,8 @@ const complaintSlotSchema = z.object({
 const complaintSchema = z.object({
   kind: z.literal(CUSTOMER_COMPLAINT_KIND),
   branchId: z.string(),
-  talabat: z.array(complaintSlotSchema).max(3).optional().default([]),
-  careem: z.array(complaintSlotSchema).max(2).optional().default([]),
+  talabat: z.array(complaintSlotSchema).max(COMPLAINT_SLOTS_MAX).optional().default([]),
+  careem: z.array(complaintSlotSchema).max(COMPLAINT_SLOTS_MAX).optional().default([]),
   additionalNotes: z.string().max(COMPLAINT_ADDITIONAL_MAX).optional().default(''),
   notifyTo: notifyToSchema,
 });

@@ -56,7 +56,7 @@ export async function approvedPhotoTypes(prisma: PrismaClient) {
 export async function ensureOfficialPhotoProgram(
   prisma: PrismaClient,
   opts: { enableStaff?: boolean } = {}
-): Promise<{ types: number; schedules: number; enabled: number }> {
+): Promise<{ types: number; schedules: number; enabled: number; assigned: number }> {
   const enableStaff = opts.enableStaff === true;
   const types = await approvedPhotoTypes(prisma);
   if (types.length) {
@@ -167,8 +167,9 @@ export async function ensureOfficialPhotoProgram(
     }
   }
 
+  const assigned = await assignMissingApprovedTypesToPhotoStaff(prisma);
   const enabled = enableStaff ? (await enableFullTimePhotoOps(prisma)).enabled : 0;
-  return { types: types.length, schedules: existing.length + toCreate.length, enabled };
+  return { types: types.length, schedules: existing.length + toCreate.length, enabled, assigned };
 }
 
 async function cancelOffSaturdayWeeklyPhotoTasks(
@@ -272,4 +273,47 @@ export async function assignApprovedPhotoTypes(prisma: PrismaClient, employeeId:
     })),
   });
   return types;
+}
+
+/** Adds newly approved catalog types to staff who already have photo-ops on. Does not turn anyone on. */
+export async function assignMissingApprovedTypesToPhotoStaff(prisma: PrismaClient): Promise<number> {
+  const types = await approvedPhotoTypes(prisma);
+  if (!types.length) return 0;
+  const required = await prisma.photoCheckEmployeeSetting.findMany({
+    where: { required: true },
+    select: { employeeId: true },
+  });
+  if (!required.length) return 0;
+  const empIds = required.map((row) => row.employeeId);
+  const existing = await prisma.photoCheckEmployeeType.findMany({
+    where: { employeeId: { in: empIds } },
+    select: { employeeId: true, typeId: true },
+  });
+  const haveByEmp = new Map<string, Set<string>>();
+  for (const row of existing) {
+    const set = haveByEmp.get(row.employeeId) ?? new Set<string>();
+    set.add(row.typeId);
+    haveByEmp.set(row.employeeId, set);
+  }
+  let assigned = 0;
+  for (const empId of empIds) {
+    const have = haveByEmp.get(empId) ?? new Set<string>();
+    const missing = types.filter((t) => !have.has(t.id));
+    if (!missing.length) continue;
+    await prisma.photoCheckEmployeeType.createMany({
+      data: missing.map((t) => ({
+        id: globalThis.crypto.randomUUID(),
+        employeeId: empId,
+        typeId: t.id,
+        assigned: true,
+      })),
+    });
+    try {
+      await generatePhotoTasksForEmployee(prisma, empId);
+    } catch (e) {
+      console.error('[photo-ops] generate after new types failed', empId, e);
+    }
+    assigned += 1;
+  }
+  return assigned;
 }
