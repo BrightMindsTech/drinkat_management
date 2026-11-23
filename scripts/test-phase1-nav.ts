@@ -35,7 +35,7 @@ assert(hrefs('owner').includes('/dashboard/photo-review'));
 assert(hrefs('owner').includes('/dashboard/photo-archive'));
 assert(hrefs('owner').includes('/dashboard/photo-ops'));
 assert(hrefs('manager').includes('/dashboard/photo'));
-assert(hrefs('manager').includes('/dashboard/photo-review'));
+assert(!hrefs('manager').includes('/dashboard/photo-review'));
 assert(!hrefs('manager').includes('/dashboard/photo-archive'));
 assert(!hrefs('staff').includes('/dashboard/photo-archive'));
 assert(hrefs('staff', { hrKpiReviewer: true }).includes('/dashboard/photo-archive'));
@@ -89,13 +89,21 @@ assert.deepEqual(
   getDashboardHomeTiles({ role: 'manager' }).map((t) => t.href),
   [
     '/dashboard/photo',
-    '/dashboard/photo-review',
     '/dashboard/kpi',
     '/dashboard/qc-reports',
     '/dashboard/support',
   ]
 );
-assert.equal(getDashboardHomeTiles({ role: 'owner' }).length, 0);
+assert.deepEqual(
+  getDashboardHomeTiles({ role: 'owner' }).map((t) => t.href),
+  [
+    '/dashboard/photo-review',
+    '/dashboard/photo-archive',
+    '/dashboard/qc-reports',
+    '/dashboard/kpi',
+    '/dashboard/support',
+  ]
+);
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const layout = fs.readFileSync(path.join(root, 'src/components/dashboard/DashboardLayoutClient.tsx'), 'utf8');
@@ -119,7 +127,7 @@ assert(
   fs.readFileSync(path.join(root, 'src/app/dashboard/page.tsx'), 'utf8').includes('computeAndStoreEmployeeKpi')
 );
 assert(!home.includes('PhotoTaskBoard'));
-assert(home.includes("role === 'owner' || role === 'manager'"));
+assert(!home.includes('PhotoSwipeReview'));
 const navLinks = fs.readFileSync(path.join(root, 'src/components/dashboard/DashboardNavLinks.tsx'), 'utf8');
 assert(navLinks.includes('IconMegaphone'));
 assert(navLinks.includes('IconArchive'));

@@ -308,11 +308,6 @@ export async function assignMissingApprovedTypesToPhotoStaff(prisma: PrismaClien
         assigned: true,
       })),
     });
-    try {
-      await generatePhotoTasksForEmployee(prisma, empId);
-    } catch (e) {
-      console.error('[photo-ops] generate after new types failed', empId, e);
-    }
     assigned += 1;
   }
   return assigned;

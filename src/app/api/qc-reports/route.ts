@@ -30,6 +30,7 @@ import {
   encodeComplaintPayload,
 } from '@/lib/qc-complaints';
 import { signUploadUrlsInJsonString } from '@/lib/upload-signed-url';
+import { runSubmitSideEffects } from '@/lib/submit-side-effects';
 import { z } from 'zod';
 
 const notifyToSchema = z.union([z.string().min(1).max(80), z.array(z.string().min(1).max(80)).min(1).max(40)]).optional();
@@ -140,10 +141,11 @@ async function postNote(userId: string, body: unknown) {
     },
   });
 
-  const ids = await resolveQcReportRecipients(prisma, userId, parsed.data.notifyTo ?? 'all');
-  const pushTitle = `QC report · ${branch.name}`;
-  const pushBody = parsed.data.comments.slice(0, 140);
-  if (ids.length) {
+  await runSubmitSideEffects('qc-note-notify', async () => {
+    const ids = await resolveQcReportRecipients(prisma, userId, parsed.data.notifyTo ?? 'all');
+    const pushTitle = `QC report · ${branch.name}`;
+    const pushBody = parsed.data.comments.slice(0, 140);
+    if (!ids.length) return;
     await notifyUsers(prisma, ids, {
       category: 'qc_field_report',
       title: pushTitle,
@@ -163,7 +165,7 @@ async function postNote(userId: string, body: unknown) {
         },
       },
     });
-  }
+  });
   return Response.json({ item });
 }
 
@@ -187,10 +189,11 @@ async function postInspection(userId: string, body: unknown) {
     },
   });
 
-  const ids = await resolveQcReportRecipients(prisma, userId, parsed.data.notifyTo ?? 'all');
-  const pushTitle = `Branch inspection · ${branch.name}`;
-  const pushBody = `${fail} fail · ${pass} pass${notes.trim() ? ` · ${notes.trim().slice(0, 80)}` : ''}`;
-  if (ids.length) {
+  await runSubmitSideEffects('qc-inspection-notify', async () => {
+    const ids = await resolveQcReportRecipients(prisma, userId, parsed.data.notifyTo ?? 'all');
+    const pushTitle = `Branch inspection · ${branch.name}`;
+    const pushBody = `${fail} fail · ${pass} pass${notes.trim() ? ` · ${notes.trim().slice(0, 80)}` : ''}`;
+    if (!ids.length) return;
     await notifyUsers(prisma, ids, {
       category: 'qc_field_report',
       title: pushTitle,
@@ -210,7 +213,7 @@ async function postInspection(userId: string, body: unknown) {
         },
       },
     });
-  }
+  });
   return Response.json({ item });
 }
 
@@ -232,10 +235,11 @@ async function postComplaint(userId: string, body: unknown) {
     },
   });
 
-  const ids = await resolveQcReportRecipients(prisma, userId, parsed.data.notifyTo ?? 'all');
-  const pushTitle = `Complaint · ${branch.name}`;
-  const pushBody = payload.description.slice(0, 140);
-  if (ids.length) {
+  await runSubmitSideEffects('qc-complaint-notify', async () => {
+    const ids = await resolveQcReportRecipients(prisma, userId, parsed.data.notifyTo ?? 'all');
+    const pushTitle = `Complaint · ${branch.name}`;
+    const pushBody = payload.description.slice(0, 140);
+    if (!ids.length) return;
     await notifyUsers(prisma, ids, {
       category: 'qc_field_report',
       title: pushTitle,
@@ -255,6 +259,6 @@ async function postComplaint(userId: string, body: unknown) {
         },
       },
     });
-  }
+  });
   return Response.json({ item });
 }

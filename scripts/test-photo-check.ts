@@ -206,7 +206,7 @@ assert.match(home, /kpiScore/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/page.tsx'), 'utf8'), /computeAndStoreEmployeeKpi/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /Your KPI:/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /مؤشر أدائك:/);
-assert.match(home, /PhotoSwipeReview/);
+assert.doesNotMatch(home, /PhotoSwipeReview/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/dashboard-home-tiles.ts'), 'utf8'), /homePhotoReview/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/dashboard-home-tiles.ts'), 'utf8'), /homePhotoArchive/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/dashboard-home-tiles.ts'), 'utf8'), /homeHrNotes/);
@@ -646,10 +646,12 @@ if (invalidAi.success) {
 assert.equal(photoQcSuggestionSchema.safeParse('not-json').success, false);
 
 const postSrc = fs.readFileSync(path.join(root, 'src/app/api/photo-checks/route.ts'), 'utf8');
+assert.match(postSrc, /actorOwnsUpload/);
+assert.doesNotMatch(postSrc, /actorCanReadUpload/);
 assert.match(postSrc, /staffImages/);
-assert.ok(postSrc.indexOf('loadInspectionImage(path)') < postSrc.indexOf('photoCheckSubmission.create'));
+assert.ok(postSrc.indexOf('photoCheckSubmission.create') < postSrc.indexOf('loadInspectionImage(path)'));
 assert.match(postSrc, /This task was already submitted/);
-assert.match(postSrc, /Nothing was submitted/);
+assert.match(postSrc, /submission kept/);
 assert.doesNotMatch(postSrc, /employeeOutcome: 'approved'/);
 
 const board = fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskBoard.tsx'), 'utf8');
@@ -684,6 +686,8 @@ assert.match(board, /discardUploads/);
 assert.match(board, /PHOTO_DEFAULT_MAX_PHOTOS/);
 
 const swipe = fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoSwipeReview.tsx'), 'utf8');
+assert.match(swipe, /dxRef/);
+assert.match(swipe, /moved > 160/);
 assert.match(swipe, /decidingRef/);
 assert.match(swipe, /stopPropagation/);
 assert.match(swipe, /Already reviewed|409/);
@@ -691,8 +695,10 @@ assert.match(swipe, /openPhoto/);
 assert.doesNotMatch(swipe, /location\.assign/);
 
 const reviewSrc = fs.readFileSync(path.join(root, 'src/app/api/photo-checks/[id]/review/route.ts'), 'utf8');
+assert.match(reviewSrc, /requirePhotoQcReviewer/);
 assert.match(reviewSrc, /status: 'pending_qc'/);
 assert.match(reviewSrc, /Already reviewed/);
+assert.doesNotMatch(reviewSrc, /dataScopeForRole/);
 
 const reports = fs.readFileSync(path.join(root, 'src/app/api/qc-reports/route.ts'), 'utf8');
 assert.match(reports, /signUploadUrlsInJsonString/);
@@ -803,6 +809,7 @@ assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/rou
 const tasksRoute = fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8');
 assert.match(tasksRoute, /listUpcomingPhotoWindows/);
 assert.match(tasksRoute, /generatePhotoTasksForEmployee/);
+assert.match(tasksRoute, /existingToday === 0/);
 assert.match(tasksRoute, /searchParams.get\('read'\) === '1'/);
 assert.doesNotMatch(tasksRoute, /ensureOfficialPhotoProgram/);
 assert.match(tasksRoute, /yesterdayKey/);
@@ -854,6 +861,11 @@ assert.equal(formatPhotoCountdown(3661000, 'en'), '1h 01m');
 assert.match(formatPhotoCountdown(90_000, 'ar'), /د/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/queue/route.ts'), 'utf8'), /criteriaJson/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/queue/route.ts'), 'utf8'), /signStoredUploadPath/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/session.ts'), 'utf8'), /requirePhotoQcReviewer/);
+assert.doesNotMatch(
+  fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoCheckCapture.tsx'), 'utf8'),
+  /aiVerdict === 'pass'/
+);
 assert.match(fs.readFileSync(path.join(root, 'scripts/grant-sara-production.ts'), 'utf8'), /d1 execute/);
 assert.match(fs.readFileSync(path.join(root, 'scripts/grant-sara-production.ts'), 'utf8'), /--remote/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'scripts/grant-sara-production.ts'), 'utf8'), /from 'wrangler'/);
@@ -1049,8 +1061,9 @@ assert.deepEqual(
 }
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-review-notify.ts'), 'utf8'), /reportsToEmployeeId/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/photo-review-notify.ts'), 'utf8'), /role: \{ in: \['owner', 'qc', 'manager'\] \}/);
-assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/queue/route.ts'), 'utf8'), /managerPhotoSubmissionWhere/);
-assert.match(fs.readFileSync(path.join(root, 'src/app/api/review-notifications/route.ts'), 'utf8'), /managerPhotoSubmissionWhere/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/queue/route.ts'), 'utf8'), /requirePhotoQcReviewer/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/queue/route.ts'), 'utf8'), /managerPhotoSubmissionWhere/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/review-notifications/route.ts'), 'utf8'), /role === 'manager'/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/employees/[id]/route.ts'), 'utf8'), /reportsToEmployeeId/);
 assert.match(fs.readFileSync(path.join(root, 'public/push-navigation-sw.js'), 'utf8'), /qc_field_report/);
 assert.match(fs.readFileSync(path.join(root, 'public/push-navigation-sw.js'), 'utf8'), /qc_complaint/);

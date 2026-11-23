@@ -129,7 +129,7 @@ export function PhotoCheckCapture() {
             {recent.slice(0, 8).map((row) => (
               <li key={row.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                 <span className="text-app-primary">
-                  {row.status === 'approved' || row.aiVerdict === 'pass'
+                  {row.status === 'approved'
                     ? t.photoCheck.approved
                     : row.status === 'ai_rejected' || row.status === 'rejected'
                       ? t.photoCheck.rejected

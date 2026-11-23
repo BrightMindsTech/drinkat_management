@@ -33,9 +33,16 @@ const HR_TILES: HomeTile[] = [
 
 const MANAGER_TILES: HomeTile[] = [
   { href: '/dashboard/photo', labelKey: 'homeMyTasks' },
-  { href: '/dashboard/photo-review', labelKey: 'homePhotoReview' },
   { href: '/dashboard/kpi', labelKey: 'homeMyKpi' },
   { href: '/dashboard/qc-reports', labelKey: 'homeQcReports' },
+  { href: '/dashboard/support', labelKey: 'homeSupport' },
+];
+
+const OWNER_TILES: HomeTile[] = [
+  { href: '/dashboard/photo-review', labelKey: 'homePhotoReview' },
+  { href: '/dashboard/photo-archive', labelKey: 'homePhotoArchive' },
+  { href: '/dashboard/qc-reports', labelKey: 'homeQcReports' },
+  { href: '/dashboard/kpi', labelKey: 'homeMyKpi' },
   { href: '/dashboard/support', labelKey: 'homeSupport' },
 ];
 
@@ -75,6 +82,7 @@ export function getDashboardHomeTiles(input: {
   }
   if (hr) return HR_TILES;
   if (role === 'manager') return MANAGER_TILES;
+  if (role === 'owner') return OWNER_TILES;
   if (isStaffLevelRole(role)) return STAFF_TILES;
   return [];
 }

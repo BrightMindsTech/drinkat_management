@@ -2,12 +2,11 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireCapability, requireSession } from '@/lib/session';
 import { withApiErrors } from '@/lib/api-route-error';
-import { actorCanReadUpload, objectKeyFromUploadPath } from '@/lib/upload-access';
+import { actorOwnsUpload, objectKeyFromUploadPath } from '@/lib/upload-access';
 import { loadInspectionImage } from '@/lib/ai-images';
 import { AiUnavailableError, runAi } from '@/lib/ai-provider';
 import { photoQcSuggestionSchema } from '@/lib/ai-schemas';
 import { computeAndStoreCurrentEmployeeKpis } from '@/lib/kpi-compute';
-import { normalizeUserRole } from '@/lib/permissions';
 import { parseCriteriaJson, scorePhotoCriteria } from '@/lib/photo-score';
 import { employeeAssignedType } from '@/lib/photo-eligibility';
 import { photoAiContext } from '@/lib/photo-ai-context';
@@ -117,38 +116,18 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
     return Response.json({ error: `At most ${limits.max} photographs per submission.` }, { status: 400 });
   }
 
-  const role = normalizeUserRole(session.user.role);
   for (const uploadPath of uploadPaths) {
     const key = objectKeyFromUploadPath(uploadPath);
     if (!key) return Response.json({ error: 'Invalid photo path' }, { status: 400 });
-    const canRead = await actorCanReadUpload(prisma, {
-      objectKey: key,
-      userId: session.user.id,
-      role,
-      employee: { id: user.employee.id, branchId: user.employee.branchId },
-    });
-    if (!canRead) return Response.json({ error: 'You cannot use this photograph.' }, { status: 403 });
+    const owns = await actorOwnsUpload(prisma, key, session.user.id);
+    if (!owns) return Response.json({ error: 'You cannot use this photograph.' }, { status: 403 });
   }
   const uploadPath = uploadPaths[0];
-
-  const staffImages: { mime: string; base64: string }[] = [];
-  try {
-    for (const path of uploadPaths) {
-      staffImages.push(await loadInspectionImage(path));
-    }
-  } catch {
-    return Response.json(
-      { error: 'One or more photographs could not be loaded from storage. Nothing was submitted.' },
-      { status: 400 }
-    );
-  }
-
   const refs = await prisma.photoCheckReference.findMany({
     where: { typeId: task.typeId, approved: true },
     take: 3,
   });
   const criteria = parseCriteriaJson(task.type.criteriaJson);
-  const ctx = await photoAiContext(prisma, { code: task.type.code, titleEn: task.type.titleEn });
 
   let created;
   try {
@@ -174,23 +153,31 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
     throw e;
   }
 
-  await prisma.photoCheckTask.updateMany({
-    where: { id: task.id, status: { notIn: ['completed', 'cancelled', 'excused'] } },
-    data: { status: 'completed', submissionId: created.id, updatedAt: new Date() },
-  });
+  try {
+    await prisma.photoCheckTask.updateMany({
+      where: { id: task.id, status: { notIn: ['completed', 'cancelled', 'excused'] } },
+      data: { status: 'completed', submissionId: created.id, updatedAt: new Date() },
+    });
+  } catch (e) {
+    console.error('[photo-checks] task complete after save failed; submission kept', created.id, e);
+  }
 
-  const claim = await claimPhotoWindowForBranch(prisma, {
-    winnerTaskId: task.id,
-    submissionId: created.id,
-    branchId: task.branchId,
-    scheduleId: task.scheduleId,
-    periodKey: task.periodKey,
-  });
-  if (claim.outcome !== 'won') {
-    return Response.json(
-      { error: 'A teammate already submitted this check for your branch.', code: BRANCH_PHOTO_CLAIMED_CODE },
-      { status: 409 }
-    );
+  try {
+    const claim = await claimPhotoWindowForBranch(prisma, {
+      winnerTaskId: task.id,
+      submissionId: created.id,
+      branchId: task.branchId,
+      scheduleId: task.scheduleId,
+      periodKey: task.periodKey,
+    });
+    if (claim.outcome !== 'won') {
+      return Response.json(
+        { error: 'A teammate already submitted this check for your branch.', code: BRANCH_PHOTO_CLAIMED_CODE },
+        { status: 409 }
+      );
+    }
+  } catch (e) {
+    console.error('[photo-checks] claim after save failed; submission kept', created.id, e);
   }
 
   let aiVerdict: 'pass' | 'fail' | 'unassessable' | 'pending' | 'unavailable' = 'unavailable';
@@ -202,6 +189,11 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
   let live = false;
 
   try {
+    const staffImages: { mime: string; base64: string }[] = [];
+    for (const path of uploadPaths) {
+      staffImages.push(await loadInspectionImage(path));
+    }
+    const ctx = await photoAiContext(prisma, { code: task.type.code, titleEn: task.type.titleEn });
     const images = [...staffImages];
     const refTake = 2;
     for (const ref of refs.slice(0, refTake)) {
@@ -275,10 +267,15 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
     }
   }
 
-  const item = await prisma.photoCheckSubmission.update({
-    where: { id: created.id },
-    data: { aiVerdict, aiScore, aiExplanation, aiClarity, aiCriteriaJson, aiRunId, status: 'pending_qc' },
-  });
+  let item = created;
+  try {
+    item = await prisma.photoCheckSubmission.update({
+      where: { id: created.id },
+      data: { aiVerdict, aiScore, aiExplanation, aiClarity, aiCriteriaJson, aiRunId, status: 'pending_qc' },
+    });
+  } catch (e) {
+    console.error('[photo-checks] AI fields update failed; submission kept', created.id, e);
+  }
 
   let kpi = null;
   try {

@@ -7,7 +7,6 @@ import { EmployeeCard } from './EmployeeCard';
 import { RegisterStaffForm } from './RegisterStaffForm';
 import { DepartmentSection } from './DepartmentSection';
 import { ManagerAssignmentsSection } from './ManagerAssignmentsSection';
-import { OwnerPushBroadcastSection } from './OwnerPushBroadcastSection';
 
 type EmployeeWithRelations = Employee & { branch: Branch; department?: Department | null; user: { email: string } | null };
 
@@ -143,7 +142,6 @@ export function HROwnerView({
 
   return (
     <div className="app-page">
-      {showOwnerTools ? <OwnerPushBroadcastSection /> : null}
       <section id="hr-owner-staff" className={sectionClass}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-app-primary">{t.hr.staff}</h2>

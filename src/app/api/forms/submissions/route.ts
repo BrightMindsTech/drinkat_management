@@ -18,6 +18,7 @@ import { resolveBranchIdByName } from '@/lib/branch-resolve';
 import { notifyUsers } from '@/lib/user-notify';
 import { maybePurgeOldManagementFormSubmissions } from '@/lib/form-submission-retention';
 import { withApiErrors } from '@/lib/api-route-error';
+import { runSubmitSideEffects } from '@/lib/submit-side-effects';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -224,24 +225,20 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
     },
   });
 
-  // Notify owners immediately for every submission.
-  const ownerIds = await getOwnerUserIds();
-
-  const inboxTitle = `New form submission: ${template.title}`;
-  const inboxBody = `${emp.name} submitted "${template.title}" (${submission.branch.name}).`;
-  const inboxData = JSON.stringify({
-    submissionId: submission.id,
-    templateId: template.id,
-    employeeId: emp.id,
-    type: 'form_submitted',
-  });
-
-  const formsReviewHref = `/dashboard/forms#forms-review-submission-${submission.id}`;
-
-  if (ownerIds.length > 0) {
-    const ownerCategory =
-      template.category === 'cash' ? 'forms_cash_submitted_to_owner' : 'forms_submission_owner_direct';
-    try {
+  await runSubmitSideEffects('form-submission-notify', async () => {
+    const ownerIds = await getOwnerUserIds();
+    const inboxTitle = `New form submission: ${template.title}`;
+    const inboxBody = `${emp.name} submitted "${template.title}" (${submission.branch.name}).`;
+    const inboxData = JSON.stringify({
+      submissionId: submission.id,
+      templateId: template.id,
+      employeeId: emp.id,
+      type: 'form_submitted',
+    });
+    const formsReviewHref = `/dashboard/forms#forms-review-submission-${submission.id}`;
+    if (ownerIds.length > 0) {
+      const ownerCategory =
+        template.category === 'cash' ? 'forms_cash_submitted_to_owner' : 'forms_submission_owner_direct';
       await notifyUsers(prisma, ownerIds, {
         category: ownerCategory,
         title: inboxTitle,
@@ -257,16 +254,12 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
           },
         },
       });
-    } catch {
-      /* notification optional */
     }
-  }
-
-  if (template.category === 'qc' && submissionBranchId) {
-    const managerUserIds = (await getManagerUserIdsForBranch(submissionBranchId)).filter(
-      (id) => id !== session.user.id
-    );
-    if (managerUserIds.length > 0) {
+    if (template.category === 'qc' && submissionBranchId) {
+      const managerUserIds = (await getManagerUserIdsForBranch(submissionBranchId)).filter(
+        (id) => id !== session.user.id
+      );
+      if (managerUserIds.length === 0) return;
       const managerTitle = `QC evaluation: ${template.title}`;
       const managerBody = `${emp.name} submitted a quality control evaluation for ${submission.branch.name}. Open to view the form and score.`;
       const managerData = JSON.stringify({
@@ -275,27 +268,23 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
         branchId: submissionBranchId,
         type: 'qc_form_submitted',
       });
-      try {
-        await notifyUsers(prisma, managerUserIds, {
-          category: 'forms_qc_submitted_branch_manager',
+      await notifyUsers(prisma, managerUserIds, {
+        category: 'forms_qc_submitted_branch_manager',
+        title: managerTitle,
+        body: managerBody,
+        dataJson: managerData,
+        push: {
           title: managerTitle,
           body: managerBody,
-          dataJson: managerData,
-          push: {
-            title: managerTitle,
-            body: managerBody,
-            data: {
-              type: 'forms_submission_branch_manager',
-              url: formsReviewHref,
-              submissionId: submission.id,
-            },
+          data: {
+            type: 'forms_submission_branch_manager',
+            url: formsReviewHref,
+            submissionId: submission.id,
           },
-        });
-      } catch {
-        /* notification optional */
-      }
+        },
+      });
     }
-  }
+  });
 
   return Response.json({
     ...submission,

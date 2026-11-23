@@ -54,6 +54,7 @@ export function PhotoSwipeReview() {
   const [dx, setDx] = useState(0);
   const [photoIndex, setPhotoIndex] = useState(0);
   const startX = useRef<number | null>(null);
+  const dxRef = useRef(0);
   const decidingRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -130,17 +131,24 @@ export function PhotoSwipeReview() {
   function onPointerDown(clientX: number) {
     if (busy) return;
     startX.current = clientX;
+    dxRef.current = 0;
   }
   function onPointerMove(clientX: number) {
     if (startX.current == null || busy) return;
-    setDx(clientX - startX.current);
+    const next = clientX - startX.current;
+    dxRef.current = next;
+    setDx(next);
   }
   function onPointerUp() {
     if (startX.current == null || busy) return;
-    if (dx > 90) void decide('approved');
-    else if (dx < -90) void decide('rejected');
-    else setDx(0);
+    const moved = dxRef.current;
     startX.current = null;
+    if (moved > 160) void decide('approved');
+    else if (moved < -160) void decide('rejected');
+    else {
+      dxRef.current = 0;
+      setDx(0);
+    }
   }
 
   if (loading) {

@@ -71,7 +71,6 @@ export function getDashboardNavItems(
   if (r === 'manager') {
     items.push(
       { href: `${base}/photo`, labelKey: 'photoCheck' },
-      { href: `${base}/photo-review`, labelKey: 'photoReview' },
       { href: `${base}/qc-reports`, labelKey: 'qcReports' },
       { href: `${base}/kpi`, labelKey: 'kpi' },
       supportItem

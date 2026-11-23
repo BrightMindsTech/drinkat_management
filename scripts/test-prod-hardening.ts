@@ -187,6 +187,11 @@ assert(!prodWrangler.includes('INSPECTION_SCHEDULER_ENABLED'));
 assert(prodWrangler.includes('PHOTO_CHECK_SCHEDULER_ENABLED'));
 assert(prodWrangler.includes('AI_PAID_USAGE_APPROVED'));
 
+const uploadAccess = fs.readFileSync(path.join(root, 'src/lib/upload-access.ts'), 'utf8');
+assert(uploadAccess.includes('actorOwnsUpload'));
+assert(uploadAccess.includes('if (await actorOwnsUpload'));
+assert(!/Promise\.all\(\[/.test(uploadAccess));
+
 const uploadGet = fs.readFileSync(path.join(root, 'src/app/api/uploads/[[...segments]]/route.ts'), 'utf8');
 assert(uploadGet.includes('verifyUploadSignature'));
 assert(uploadGet.includes('actorCanReadUpload'));
@@ -211,5 +216,20 @@ assert.equal(verifyUploadSignature('abc.jpg', String(Math.floor(Date.now() / 100
 const submit = fs.readFileSync(path.join(root, 'src/app/api/inspections/tasks/[id]/submit/route.ts'), 'utf8');
 assert(submit.includes('updateMany'));
 assert(submit.includes('fields.length === 0'));
+assert(submit.includes("runSubmitSideEffects('inspection-issues-notify'"));
+assert(
+  submit.indexOf('managementFormSubmission.create') <
+    submit.indexOf("runSubmitSideEffects('inspection-issues-notify'")
+);
+assert(submit.includes('submission kept'));
+
+const qcReports = fs.readFileSync(path.join(root, 'src/app/api/qc-reports/route.ts'), 'utf8');
+assert(qcReports.includes("runSubmitSideEffects('qc-note-notify'"));
+assert(qcReports.includes("runSubmitSideEffects('qc-inspection-notify'"));
+assert(qcReports.includes("runSubmitSideEffects('qc-complaint-notify'"));
+
+const cronSrc = fs.readFileSync(path.join(root, 'src/app/api/cron/time-clock/route.ts'), 'utf8');
+assert(cronSrc.includes('photo_generate_min_interval:v1'));
+assert(cronSrc.includes('12 * 60 * 1000'));
 
 console.log('prod-hardening: ok');

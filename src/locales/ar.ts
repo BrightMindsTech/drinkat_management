@@ -482,7 +482,7 @@ export const ar: LocaleMessages = {
     searchStaffPlaceholder: 'الاسم، الفرع، القسم، البريد، الهاتف…',
     staffSearchResultCount: '{count} ظاهر',
     filterByBranch: 'تصفية حسب الفرع',
-    registerStaff: 'تسجيل موظف',
+    registerStaff: '+ موظف جديد',
     historicalExport: 'تصدير السجلات التاريخية',
     historicalExportHint: 'تنزيل أرشيف للقراءة فقط للسلف والإجازات ونسخ الرواتب والمستندات والمراجعات والنقل. لا يُحذف شيء.',
     historicalExportButton: 'تنزيل الأرشيف',

@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { interpolate, useLanguage } from '@/contexts/LanguageContext';
 import { getDashboardHomeTiles, type HomeTileLabelKey } from '@/lib/dashboard-home-tiles';
-import { PhotoSwipeReview } from '@/components/photo-check/PhotoSwipeReview';
 
 function IconClipboardCheck({ className }: { className?: string }) {
   return (
@@ -140,7 +139,6 @@ export function DashboardHomeContent({
 }) {
   const { t } = useLanguage();
   const tiles = getDashboardHomeTiles({ role, hrKpiReviewer, qcHome });
-  const showSwipe = (role === 'owner' || role === 'manager') && tiles.length === 0;
 
   return (
     <div className="app-page space-y-6">
@@ -156,9 +154,7 @@ export function DashboardHomeContent({
         <p className="text-sm text-app-secondary">
           {tiles.length > 0
             ? t.dashboard.staffHomeHint
-            : showSwipe
-              ? t.photoReview.homeHint
-              : interpolate(t.dashboard.welcomeMeta, { email, role })}
+            : interpolate(t.dashboard.welcomeMeta, { email, role })}
         </p>
       </header>
 
@@ -178,8 +174,6 @@ export function DashboardHomeContent({
           ))}
         </section>
       ) : null}
-
-      {showSwipe ? <PhotoSwipeReview /> : null}
     </div>
   );
 }

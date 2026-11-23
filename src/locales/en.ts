@@ -481,7 +481,7 @@ export const en = {
     searchStaffPlaceholder: 'Name, branch, department, email, phone…',
     staffSearchResultCount: '{count} shown',
     filterByBranch: 'Filter by branch',
-    registerStaff: 'Register staff',
+    registerStaff: '+ new staff',
     historicalExport: 'Historical HR export',
     historicalExportHint: 'Download a read-only archive of advances, leave, payroll copies, documents, reviews, and transfers. Nothing is deleted.',
     historicalExportButton: 'Download archive',

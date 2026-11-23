@@ -37,6 +37,7 @@ export const GET = withApiErrors(async function GET(req: Request) {
   if (!required) return Response.json({ required: false, items: [], upcoming: [] });
 
   const now = new Date();
+  const periodKey = photoPeriodKey(now);
   if (!readOnly) {
     const assignedCount = await prisma.photoCheckEmployeeType.count({
       where: { employeeId: emp.id, assigned: true },
@@ -44,14 +45,17 @@ export const GET = withApiErrors(async function GET(req: Request) {
     if (assignedCount === 0) {
       await assignApprovedPhotoTypes(prisma, emp.id);
     }
-    try {
-      await generatePhotoTasksForEmployee(prisma, emp.id, now);
-    } catch (e) {
-      console.error('[photo-checks/tasks] generate failed', emp.id, e);
+    const existingToday = await prisma.photoCheckTask.count({
+      where: { assigneeEmployeeId: emp.id, periodKey },
+    });
+    if (existingToday === 0) {
+      try {
+        await generatePhotoTasksForEmployee(prisma, emp.id, now);
+      } catch (e) {
+        console.error('[photo-checks/tasks] generate failed', emp.id, e);
+      }
     }
   }
-
-  const periodKey = photoPeriodKey(now);
   const yesterdayKey = shiftPhotoPeriodKey(periodKey, -1);
   const claimedToday = readOnly
     ? { claimedScheduleIds: await listClaimedScheduleIdsForEmployee(prisma, {

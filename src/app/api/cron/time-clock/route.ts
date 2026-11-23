@@ -132,8 +132,21 @@ export async function GET(req: Request) {
       console.error('[cron/maintenance] photo-check reminders failed', e);
     }
     try {
-      await ensureOfficialPhotoProgram(prisma, { enableStaff: true });
-      photoGeneration = await generatePhotoCheckTasksForDay(prisma);
+      const genStamp = await prisma.appCronWatermark.findUnique({
+        where: { key: 'photo_generate_min_interval:v1' },
+        select: { lastRunAt: true },
+      });
+      const due =
+        !genStamp || Date.now() - genStamp.lastRunAt.getTime() >= 12 * 60 * 1000;
+      if (due) {
+        await ensureOfficialPhotoProgram(prisma, { enableStaff: true });
+        photoGeneration = await generatePhotoCheckTasksForDay(prisma);
+        await prisma.appCronWatermark.upsert({
+          where: { key: 'photo_generate_min_interval:v1' },
+          create: { key: 'photo_generate_min_interval:v1', lastRunAt: new Date() },
+          update: { lastRunAt: new Date() },
+        });
+      }
     } catch (e) {
       console.error('[cron/maintenance] photo-check generation failed', e);
     }

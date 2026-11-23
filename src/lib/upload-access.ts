@@ -21,6 +21,18 @@ export async function recordUploadObject(
   });
 }
 
+export async function actorOwnsUpload(
+  prisma: PrismaClient,
+  objectKey: string,
+  userId: string
+): Promise<boolean> {
+  const owned = await prisma.uploadObject.findUnique({
+    where: { objectKey },
+    select: { uploadedByUserId: true },
+  });
+  return owned?.uploadedByUserId === userId;
+}
+
 export async function actorCanReadUpload(
   prisma: PrismaClient,
   opts: {
@@ -32,75 +44,64 @@ export async function actorCanReadUpload(
 ): Promise<boolean> {
   const role = normalizeUserRole(opts.role);
   if (role === 'owner' || role === 'qc') return true;
+  if (await actorOwnsUpload(prisma, opts.objectKey, opts.userId)) return true;
 
   const pathNeedles = [`/api/uploads/${opts.objectKey}`, `/uploads/${opts.objectKey}`];
   const employeeId = opts.employee?.id ?? '__none__';
   const branchId = opts.employee?.branchId;
 
-  const [owned, issue, ownDoc, ownSubmission, branchSub, ownDraft, fieldReport, photo] = await Promise.all([
-    prisma.uploadObject.findUnique({
-      where: { objectKey: opts.objectKey },
-      select: { uploadedByUserId: true },
-    }),
-    prisma.issue.findFirst({
+  const issue = await prisma.issue.findFirst({
+    where: {
+      OR: [
+        { beforePhotoPath: { in: pathNeedles } },
+        { afterPhotoPath: { in: pathNeedles } },
+      ],
+    },
+    select: { branchId: true, assigneeEmployeeId: true },
+  });
+  if (issue && canSeeIssue(role, opts.employee, issue)) return true;
+
+  if (opts.employee) {
+    const ownDoc = await prisma.employeeDocument.findFirst({
+      where: { employeeId: opts.employee.id, filePath: { in: pathNeedles } },
+      select: { id: true },
+    });
+    if (ownDoc) return true;
+  }
+
+  const ownSubmission = await prisma.managementFormSubmission.findFirst({
+    where: {
+      employeeId,
+      OR: pathNeedles.map((p) => ({ answersJson: { contains: p } })),
+    },
+    select: { id: true },
+  });
+  if (ownSubmission) return true;
+
+  if (opts.employee && (role === 'manager' || role === 'assistant_manager')) {
+    const branchSub = await prisma.managementFormSubmission.findFirst({
       where: {
-        OR: [
-          { beforePhotoPath: { in: pathNeedles } },
-          { afterPhotoPath: { in: pathNeedles } },
-        ],
-      },
-      select: { branchId: true, assigneeEmployeeId: true },
-    }),
-    opts.employee
-      ? prisma.employeeDocument.findFirst({
-          where: { employeeId: opts.employee.id, filePath: { in: pathNeedles } },
-          select: { id: true },
-        })
-      : Promise.resolve(null),
-    prisma.managementFormSubmission.findFirst({
-      where: {
-        employeeId,
+        branchId: opts.employee.branchId,
         OR: pathNeedles.map((p) => ({ answersJson: { contains: p } })),
       },
       select: { id: true },
-    }),
-    opts.employee && (role === 'manager' || role === 'assistant_manager')
-      ? prisma.managementFormSubmission.findFirst({
-          where: {
-            branchId: opts.employee.branchId,
-            OR: pathNeedles.map((p) => ({ answersJson: { contains: p } })),
-          },
-          select: { id: true },
-        })
-      : Promise.resolve(null),
-    prisma.inspectionTask.findFirst({
-      where: {
-        assigneeEmployeeId: employeeId,
-        OR: pathNeedles.map((p) => ({ draftJson: { contains: p } })),
-      },
-      select: { id: true },
-    }),
-    prisma.qcFieldReport.findFirst({
-      where: { OR: pathNeedles.map((p) => ({ photosJson: { contains: p } })) },
-      select: { id: true },
-    }),
-    prisma.photoCheckSubmission.findFirst({
-      where: {
-        OR: [
-          { uploadPath: { in: pathNeedles } },
-          { images: { some: { uploadPath: { in: pathNeedles } } } },
-        ],
-      },
-      select: { employeeId: true, branchId: true },
-    }),
-  ]);
+    });
+    if (branchSub) return true;
+  }
 
-  if (owned?.uploadedByUserId === opts.userId) return true;
-  if (issue && canSeeIssue(role, opts.employee, issue)) return true;
-  if (ownDoc) return true;
-  if (ownSubmission) return true;
-  if (branchSub) return true;
+  const ownDraft = await prisma.inspectionTask.findFirst({
+    where: {
+      assigneeEmployeeId: employeeId,
+      OR: pathNeedles.map((p) => ({ draftJson: { contains: p } })),
+    },
+    select: { id: true },
+  });
   if (ownDraft) return true;
+
+  const fieldReport = await prisma.qcFieldReport.findFirst({
+    where: { OR: pathNeedles.map((p) => ({ photosJson: { contains: p } })) },
+    select: { id: true },
+  });
   if (fieldReport) {
     if (role === 'manager') return true;
     const flags = await prisma.user.findUnique({
@@ -109,6 +110,16 @@ export async function actorCanReadUpload(
     });
     if (flags?.qcReportsInbox || flags?.hrKpiReviewer) return true;
   }
+
+  const photo = await prisma.photoCheckSubmission.findFirst({
+    where: {
+      OR: [
+        { uploadPath: { in: pathNeedles } },
+        { images: { some: { uploadPath: { in: pathNeedles } } } },
+      ],
+    },
+    select: { employeeId: true, branchId: true },
+  });
   if (photo) {
     if (opts.employee?.id === photo.employeeId) return true;
     if (role === 'manager' && branchId === photo.branchId) return true;

@@ -65,6 +65,14 @@ export async function requireCapability(capability: Capability) {
   return session;
 }
 
+/** Photo approve/reject: owner, login role qc, or QC-department staff. Not branch managers. */
+export async function requirePhotoQcReviewer() {
+  const session = await requireSession();
+  if (!(await userHasQcReviewerScope(prisma, session))) deny(403, 'Forbidden');
+  if (normalizeUserRole(session.user.role) === 'manager') deny(403, 'Forbidden');
+  return session;
+}
+
 /** Owner/QC/manager (branch KPI), or HR reviewer (all employees). Does not unlock payroll. */
 export async function requireKpiRosterViewer() {
   const session = await requireSession();

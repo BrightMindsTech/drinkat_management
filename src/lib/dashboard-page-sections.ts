@@ -84,7 +84,6 @@ export function getPageSections(pathname: string, roleRaw: string | undefined | 
     }
     if (role === 'owner') {
       return [
-        { id: 'hr-owner-push-broadcast', labelRef: 'hr.pushBroadcastTitle' },
         { id: 'hr-owner-staff', labelRef: 'hr.staff' },
         { id: 'hr-owner-departments', labelRef: 'hr.departments' },
         { id: 'hr-owner-manager-assignments', labelRef: 'hr.assignToManager' },
