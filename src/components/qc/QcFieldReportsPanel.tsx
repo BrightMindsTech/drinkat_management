@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLanguage, interpolate } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { AppModal } from '@/components/AppModal';
-import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
+import { CredentialedUploadImg, OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
-import { QcBranchInspectionForm } from '@/components/qc/QcBranchInspectionForm';
+import { QcBranchInspectionForm, QcWarehouseInspectionForm } from '@/components/qc/QcBranchInspectionForm';
 import { QcComplaintForm } from '@/components/qc/QcComplaintForm';
 import { QcNotifyPicker, defaultNotifyTargets, type QcNotifyOption } from '@/components/qc/QcNotifyPicker';
 import {
@@ -18,6 +18,12 @@ import {
   parseInspectionPayload,
   parseQcReportPhotos,
 } from '@/lib/qc-branch-inspection';
+import {
+  WAREHOUSE_INSPECTION_SECTIONS,
+  countWarehouseInspectionResults,
+  isWarehouseInspectionReport,
+  parseWarehouseInspectionPayload,
+} from '@/lib/qc-warehouse-inspection';
 import {
   COMPLAINT_CHANNELS,
   complaintFilledSlots,
@@ -36,7 +42,7 @@ type Report = {
   createdBy: { email: string; employee: { name: string } | null };
 };
 type Branch = { id: string; name: string };
-type ComposeMode = 'note' | 'inspection' | 'complaint' | null;
+type ComposeMode = 'note' | 'inspection' | 'warehouse' | 'complaint' | null;
 type KindFilter = 'all' | 'note' | 'inspection' | 'complaint';
 
 const MAX_PHOTOS = 3;
@@ -105,7 +111,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return items.filter((item) => {
-      const inspection = isBranchInspectionReport(item);
+      const inspection = isBranchInspectionReport(item) || isWarehouseInspectionReport(item);
       const complaint = isCustomerComplaintReport(item);
       if (filterKind === 'inspection' && !inspection) return false;
       if (filterKind === 'complaint' && !complaint) return false;
@@ -224,6 +230,27 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
     );
   }
 
+  if (canCreate && compose === 'warehouse') {
+    return (
+      <div id="section-qc-reports" className="mx-auto max-w-xl">
+        <QcWarehouseInspectionForm
+          branches={branches}
+          notifyOptions={notifyOptions}
+          initialBranchId={branchId}
+          onCancel={() => {
+            setCompose(null);
+            setErr(null);
+          }}
+          onSubmitted={async () => {
+            setCompose(null);
+            setMsg(t.qcOps.qcWarehouseInspectSubmitted);
+            await load();
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div id="section-qc-reports" className="mx-auto max-w-xl space-y-4">
       <div>
@@ -252,6 +279,16 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
             className="min-h-12 w-full rounded-2xl border border-gray-200 text-base font-semibold text-app-primary touch-manipulation active:opacity-90 dark:border-ios-dark-separator"
           >
             {t.qcOps.qcInspectNew}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setErr(null);
+              setCompose('warehouse');
+            }}
+            className="min-h-12 w-full rounded-2xl border border-gray-200 text-base font-semibold text-app-primary touch-manipulation active:opacity-90 dark:border-ios-dark-separator sm:col-span-2"
+          >
+            {t.qcOps.qcWarehouseInspectNew}
           </button>
           <button
             type="button"
@@ -339,8 +376,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
             <div className="flex flex-wrap gap-2">
               {photos.map((url) => (
                 <div key={url} className="relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt="" className="h-20 w-20 rounded-xl object-cover" />
+                  <CredentialedUploadImg src={url} className="h-20 w-20 rounded-xl object-cover" />
                   <button
                     type="button"
                     className="absolute -end-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-sm text-white"
@@ -427,13 +463,19 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
 
       <ul className="space-y-3">
         {visible.map((item) => {
-          const inspection = parseInspectionPayload(item.photosJson);
+          const warehouse = parseWarehouseInspectionPayload(item.photosJson);
+          const inspection = warehouse ?? parseInspectionPayload(item.photosJson);
+          const inspectionSections = warehouse ? WAREHOUSE_INSPECTION_SECTIONS : BRANCH_INSPECTION_SECTIONS;
           const complaint = parseComplaintPayload(item.photosJson);
           const photosList = parseQcReportPhotos(item.photosJson);
           const author = item.createdBy.employee?.name ?? item.createdBy.email;
           const open = openId === item.id;
           const highlight = highlightId === item.id;
-          const counts = inspection ? countInspectionResults(inspection.answers) : null;
+          const counts = inspection
+            ? warehouse
+              ? countWarehouseInspectionResults(inspection.answers)
+              : countInspectionResults(inspection.answers)
+            : null;
           return (
             <li
               key={item.id}
@@ -451,7 +493,9 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
               >
                 {inspection ? (
                   <>
-                    <p className="text-xs font-bold uppercase tracking-wide text-teal-700">{t.qcOps.qcInspectNew}</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-teal-700">
+                      {warehouse ? t.qcOps.qcWarehouseInspectNew : t.qcOps.qcInspectNew}
+                    </p>
                     <p className="mt-1 text-sm font-semibold text-app-primary">
                       {interpolate(t.qcOps.qcInspectSummary, {
                         fail: counts?.fail ?? 0,
@@ -519,7 +563,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
                 </div>
               ) : open && inspection ? (
                 <div className="space-y-3 px-4 pb-4">
-                  {BRANCH_INSPECTION_SECTIONS.map((section) => (
+                  {inspectionSections.map((section) => (
                     <div key={section.id}>
                       <p className="text-xs font-bold text-teal-700">
                         {section.id} · {locale === 'ar' ? section.titleAr : section.titleEn}

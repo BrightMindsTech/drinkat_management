@@ -35,10 +35,24 @@ export async function listClaimedPhotoWindows(
   return new Set(rows.map((r) => photoBranchWindowKey(r.branchId, r.scheduleId)));
 }
 
+export type ClaimedPhotoWindow = {
+  scheduleId: string;
+  periodKey: string;
+  submittedByName: string;
+};
+
 export async function listClaimedScheduleIdsForEmployee(
   prisma: PrismaClient,
   opts: { employeeId: string; branchId: string; periodKey: string }
 ): Promise<string[]> {
+  const claimed = await listClaimedPhotoWindowsWithSubmitter(prisma, opts);
+  return claimed.map((c) => c.scheduleId);
+}
+
+export async function listClaimedPhotoWindowsWithSubmitter(
+  prisma: PrismaClient,
+  opts: { employeeId: string; branchId: string; periodKey: string }
+): Promise<ClaimedPhotoWindow[]> {
   const claimed = await prisma.photoCheckTask.findMany({
     where: {
       branchId: opts.branchId,
@@ -46,9 +60,37 @@ export async function listClaimedScheduleIdsForEmployee(
       status: 'completed',
       NOT: { assigneeEmployeeId: opts.employeeId },
     },
-    select: { scheduleId: true },
+    select: {
+      scheduleId: true,
+      periodKey: true,
+      assignee: { select: { name: true } },
+      submission: { select: { submittedAt: true } },
+    },
   });
-  return [...new Set(claimed.map((c) => c.scheduleId))];
+  const bySchedule = new Map<string, typeof claimed>();
+  for (const row of claimed) {
+    const list = bySchedule.get(row.scheduleId) ?? [];
+    list.push(row);
+    bySchedule.set(row.scheduleId, list);
+  }
+  const out: ClaimedPhotoWindow[] = [];
+  for (const [scheduleId, rows] of bySchedule) {
+    const winner = pickPhotoWindowWinner(
+      rows.map((row) => ({
+        id: row.scheduleId,
+        submittedAt: row.submission?.submittedAt ?? null,
+        name: row.assignee.name,
+        periodKey: row.periodKey,
+      }))
+    );
+    if (!winner) continue;
+    out.push({
+      scheduleId,
+      periodKey: winner.periodKey,
+      submittedByName: winner.name.trim() || '—',
+    });
+  }
+  return out;
 }
 
 export async function hideClaimedPhotoTasksForEmployee(

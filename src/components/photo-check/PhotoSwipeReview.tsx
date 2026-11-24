@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useUploadPhotoViewer } from '@/components/UploadPhotoViewer';
+import { CredentialedUploadImg, useUploadPhotoViewer } from '@/components/UploadPhotoViewer';
 import { parseCriteriaJson } from '@/lib/photo-score';
 
 function CriteriaList({ raw, defsJson, locale }: { raw: string; defsJson?: string | null; locale: string }) {
@@ -208,13 +208,9 @@ export function PhotoSwipeReview() {
               {t.photoReview.reject}
             </span>
           ) : null}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <CredentialedUploadImg
             src={shown}
-            alt=""
             className="h-80 w-full object-cover"
-            draggable={false}
-            onContextMenu={(e) => e.preventDefault()}
             onClick={() => {
               if (Math.abs(dx) < 10) openPhoto(shown, paths);
             }}

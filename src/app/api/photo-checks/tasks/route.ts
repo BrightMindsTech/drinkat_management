@@ -5,10 +5,12 @@ import { employeePhotoRequired } from '@/lib/photo-eligibility';
 import { generatePhotoTasksForEmployee } from '@/lib/photo-generate';
 import { assignApprovedPhotoTypes } from '@/lib/photo-ops-program';
 import { photoDaysOfWeekForBranch } from '@/lib/photo-official-windows';
-import { photoPeriodKey, shiftPhotoPeriodKey } from '@/lib/photo-time';
+import { photoPeriodKey, photoWindowInstants, shiftPhotoPeriodKey } from '@/lib/photo-time';
 import { listUpcomingPhotoWindows, nextPhotoWave } from '@/lib/photo-upcoming';
 import {
+  BRANCH_PHOTO_CLAIMED,
   hideClaimedPhotoTasksForEmployee,
+  listClaimedPhotoWindowsWithSubmitter,
   listClaimedScheduleIdsForEmployee,
 } from '@/lib/photo-branch-claim';
 
@@ -79,12 +81,33 @@ export const GET = withApiErrors(async function GET(req: Request) {
         branchId: emp.branchId,
         periodKey: yesterdayKey,
       });
+  const [claimedTodayWithNames, claimedYesterdayWithNames] = await Promise.all([
+    listClaimedPhotoWindowsWithSubmitter(prisma, {
+      employeeId: emp.id,
+      branchId: emp.branchId,
+      periodKey,
+    }),
+    listClaimedPhotoWindowsWithSubmitter(prisma, {
+      employeeId: emp.id,
+      branchId: emp.branchId,
+      periodKey: yesterdayKey,
+    }),
+  ]);
   const [items, assignments, schedules] = await Promise.all([
     prisma.photoCheckTask.findMany({
       where: {
         assigneeEmployeeId: emp.id,
-        status: { notIn: ['cancelled'] },
-        OR: [{ periodKey }, { periodKey: yesterdayKey, dueAt: { gte: now } }],
+        OR: [
+          {
+            status: { notIn: ['cancelled'] },
+            OR: [{ periodKey }, { periodKey: yesterdayKey, dueAt: { gte: now } }],
+          },
+          {
+            status: 'cancelled',
+            excusedReason: BRANCH_PHOTO_CLAIMED,
+            periodKey: { in: [periodKey, yesterdayKey] },
+          },
+        ],
       },
       include: {
         type: { select: typeSelect },
@@ -167,12 +190,73 @@ export const GET = withApiErrors(async function GET(req: Request) {
     })
     .filter((row): row is NonNullable<typeof row> => row != null);
 
+  const claimNameByKey = new Map(
+    [...claimedTodayWithNames, ...claimedYesterdayWithNames].map((row) => [
+      `${row.scheduleId}:${row.periodKey}`,
+      row.submittedByName,
+    ])
+  );
+  const overlayItems = items.map((task) => {
+    const submittedByName = claimNameByKey.get(`${task.scheduleId}:${task.periodKey}`) ?? null;
+    const unavailable =
+      Boolean(submittedByName) ||
+      (task.status === 'cancelled' && task.excusedReason === BRANCH_PHOTO_CLAIMED);
+    return {
+      ...task,
+      unavailable,
+      submittedByName: unavailable ? submittedByName : null,
+    };
+  });
+  const haveTaskKeys = new Set(overlayItems.map((t) => `${t.scheduleId}:${t.periodKey}`));
+  const scheduleById = new Map(relevant.map((s) => [s.id, s]));
+  for (const claim of [...claimedTodayWithNames, ...claimedYesterdayWithNames]) {
+    const key = `${claim.scheduleId}:${claim.periodKey}`;
+    if (haveTaskKeys.has(key)) continue;
+    const schedule = scheduleById.get(claim.scheduleId);
+    if (!schedule) continue;
+    const { windowStartAt, dueAt } = photoWindowInstants(
+      claim.periodKey,
+      schedule.startTime,
+      schedule.dueTime
+    );
+    overlayItems.push({
+      id: `claimed:${claim.scheduleId}:${claim.periodKey}`,
+      scheduleId: claim.scheduleId,
+      typeId: schedule.typeId,
+      assigneeEmployeeId: emp.id,
+      branchId: emp.branchId,
+      periodKey: claim.periodKey,
+      slotKey: schedule.slotKey,
+      windowStartAt,
+      dueAt,
+      status: 'cancelled',
+      submissionId: null,
+      reminderCount: 0,
+      lastRemindedAt: null,
+      lastReminderKind: null,
+      excusedReason: BRANCH_PHOTO_CLAIMED,
+      createdAt: windowStartAt,
+      updatedAt: windowStartAt,
+      type: schedule.type,
+      schedule: {
+        slotKey: schedule.slotKey,
+        slotLabelEn: schedule.slotLabelEn,
+        slotLabelAr: schedule.slotLabelAr,
+        dueTime: schedule.dueTime,
+        startTime: schedule.startTime,
+      },
+      submission: null,
+      unavailable: true,
+      submittedByName: claim.submittedByName,
+    } as (typeof overlayItems)[number]);
+  }
+
   return Response.json({
     required: true,
     periodKey,
     now: now.toISOString(),
     branchName: emp.branch.name,
-    items,
+    items: overlayItems,
     upcoming,
   });
 });

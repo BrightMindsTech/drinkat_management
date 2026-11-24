@@ -51,6 +51,8 @@ import {
   PHOTO_SATURDAY_DAYS_JSON,
   PHOTO_SATURDAY_ONLY_CODES,
   PHOTO_KITCHEN_STATION_CODES,
+  isKitchenPhotoStationCode,
+  photoBoardSection,
   PHOTO_SATURDAY_WEEKDAY,
   PHOTO_WINDOW_HANDOFF_MINUTES,
   isCloudKitchenBranchName,
@@ -65,6 +67,7 @@ import {
   pickQcReportRecipientIds,
   pickQcReportRecipientIdsMany,
   peopleNotifyOptions,
+  qcReportNotifyOptions,
 } from '../src/lib/qc-field-reports';
 import {
   BRANCH_INSPECTION_ITEM_IDS,
@@ -76,6 +79,17 @@ import {
   parseQcReportPhotos,
   validateInspectionAnswers,
 } from '../src/lib/qc-branch-inspection';
+import {
+  WAREHOUSE_INSPECTION_ITEM_IDS,
+  WAREHOUSE_INSPECTION_KIND,
+  WAREHOUSE_INSPECTION_SECTIONS,
+  countWarehouseInspectionResults,
+  encodeWarehouseInspectionPayload,
+  isWarehouseInspectionBranchName,
+  parseWarehouseInspectionPayload,
+  validateWarehouseInspectionAnswers,
+  warehouseInspectionBranches,
+} from '../src/lib/qc-warehouse-inspection';
 import {
   CUSTOMER_COMPLAINT_KIND,
   complaintComments,
@@ -297,11 +311,22 @@ assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/route.ts'
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/route.ts'), 'utf8'), /BRANCH_PHOTO_CLAIMED_CODE/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/route.ts'), 'utf8'), /branchId: task.branchId/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /hideClaimedPhotoTasksForEmployee/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /listClaimedPhotoWindowsWithSubmitter/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /submittedByName/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/photo-checks/tasks/route.ts'), 'utf8'), /unavailable/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /BRANCH_PHOTO_CLAIMED/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-branch-claim.ts'), 'utf8'), /branchId: input.branchId/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-branch-claim.ts'), 'utf8'), /listClaimedPhotoWindowsWithSubmitter/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskBoard.tsx'), 'utf8'), /branchClaimed/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskBoard.tsx'), 'utf8'), /kitchenTag/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskBoard.tsx'), 'utf8'), /unavailable/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskBoard.tsx'), 'utf8'), /alreadySubmitted/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskBoard.tsx'), 'utf8'), /submittedBy/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /Already submitted/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /branchClaimed/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /kitchenTag: 'Kitchen'/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /branchClaimed/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /kitchenTag/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/photo-reminders.ts'), 'utf8'), /employeeAssignedType/);
 assert.deepEqual([...PHOTO_REMINDER_DAY_SLOTS], ['08:00', '12:00', '16:00']);
 assert.deepEqual([...PHOTO_REMINDER_LATE_SLOTS], ['08:00', '12:00', '16:00', '20:00', '00:00']);
@@ -471,6 +496,13 @@ assert.deepEqual([...PHOTO_KITCHEN_STATION_CODES], [
   'storage_shelves',
   'station_mats_cleanliness',
 ]);
+assert.equal(isKitchenPhotoStationCode('grill_temperature_check'), true);
+assert.equal(isKitchenPhotoStationCode('branch_cleanliness_360'), false);
+assert.equal(photoBoardSection('grill_temperature_check'), 'kitchen');
+assert.equal(photoBoardSection('fryer_cleanliness'), 'kitchen');
+assert.equal(photoBoardSection('branch_cleanliness_360'), 'branch');
+assert.equal(photoBoardSection('coffee_machine_calibration'), 'machines');
+assert.equal(photoBoardSection('espresso_machine_cleaning'), 'machines');
 assert.equal(photoScheduleDaysJson('grill_temperature_check'), '[0,1,2,3,4,5,6]');
 assert.equal(photoScheduleDaysJson('holding_cabinet_cleanliness'), '[0,1,2,3,4,5,6]');
 assert.equal(photoScheduleDaysJson('ventilation_extractor_cleaning'), '[0,1,2,3,4,5,6]');
@@ -656,8 +688,8 @@ assert.doesNotMatch(postSrc, /employeeOutcome: 'approved'/);
 
 const board = fs.readFileSync(path.join(root, 'src/components/photo-check/PhotoTaskBoard.tsx'), 'utf8');
 assert.ok(
-  board.indexOf('dueTasks.map') < board.indexOf('t.photoCheck.nextWindowTitle'),
-  'current required tasks must render above the next photo window'
+  board.indexOf('t.photoCheck.nextWindowTitle') < board.indexOf('groupedBoard.map'),
+  'next photo window must render above current required tasks'
 );
 assert.match(board, /photo-task-highlight/);
 assert.match(board, /3000/);
@@ -666,12 +698,20 @@ assert.match(board, /closeTask/);
 assert.match(board, /photo-task-active-/);
 assert.match(board, /openTask\(row\)/);
 assert.match(board, /staffHowTo/);
+assert.match(board, /PhotoCameraIcon/);
+assert.match(board, /remainingBar/);
+assert.match(board, /grid-cols-2/);
+assert.match(board, /sticky top-0/);
+assert.match(board, /photoBoardSection/);
+assert.match(board, /sectionKitchen/);
 assert.match(board, /sentToQc/);
 assert.match(board, /dark:text-emerald-100/);
 assert.match(board, /scrollIntoView/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /closeTask: 'Back'/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /closeTask/);
 assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /staffHowTo/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /remainingBar/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/ar.ts'), 'utf8'), /scrollForMore/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/dashboard/page.tsx'), 'utf8'), /staffLandsOnPhotoChecks/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/dashboard-nav-config.ts'), 'utf8'), /staffLandsOnPhotoChecks/);
 assert.match(fs.readFileSync(path.join(root, 'src/app/globals.css'), 'utf8'), /photo-task-highlight 3s/);
@@ -708,10 +748,16 @@ assert.match(reports, /notifyTo/);
 assert.match(reports, /notifyToSchema/);
 assert.match(reports, /notifyOptions/);
 assert.match(reports, /branch_inspection/);
+assert.match(reports, /warehouse_inspection/);
+assert.match(reports, /isWarehouseInspectionBranchName/);
 assert.doesNotMatch(reports, /resolveBranchInspectionRecipients/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-field-reports.ts'), 'utf8'), /hrKpiReviewer/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-field-reports.ts'), 'utf8'), /pickQcReportRecipientIds/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-field-reports.ts'), 'utf8'), /sara@drinkat.com/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-field-reports.ts'), 'utf8'), /twety@drinkat.com/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-field-reports.ts'), 'utf8'), /ahmad_nazzal/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcNotifyPicker.tsx'), 'utf8'), /qcReportsNotifyAhmad/);
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /Ahmad Nazzal/);
 assert.doesNotMatch(reports, /employee: \{ branchId: parsed.data.branchId \}/);
 const reportsUi = fs.readFileSync(path.join(root, 'src/components/qc/QcFieldReportsPanel.tsx'), 'utf8');
 assert.match(reportsUi, /section-qc-reports/);
@@ -725,6 +771,9 @@ assert.match(reportsUi, /notifyTo/);
 assert.match(reportsUi, /qcReportsNotify/);
 assert.match(reportsUi, /qcInspectNew/);
 assert.match(reportsUi, /QcBranchInspectionForm/);
+assert.match(reportsUi, /QcWarehouseInspectionForm/);
+assert.match(reportsUi, /setCompose\('warehouse'\)/);
+assert.match(reportsUi, /qcWarehouseInspectNew/);
 assert.match(reportsUi, /QcComplaintForm/);
 assert.match(reportsUi, /setCompose\('complaint'\)/);
 assert.match(reportsUi, /qcComplaintNew/);
@@ -916,14 +965,16 @@ assert.equal(pendingKpi.components.find((c) => c.key === 'photo_quality')?.raw, 
 const notifyPeople = [
   { userId: 'owner-1', email: 'owner@drinkat.com', role: 'owner', hrKpiReviewer: false, name: 'Owner', branchId: '', branchName: '' },
   { userId: 'sara-1', email: 'sara@drinkat.com', role: 'hr', hrKpiReviewer: true, name: 'Sara', branchId: '', branchName: '' },
+  { userId: 'ahmad-1', email: 'twety@drinkat.com', role: 'qc', hrKpiReviewer: false, name: 'ahmad Nazzal', branchId: '', branchName: '' },
   { userId: 'mgr-1', email: 'm1@drinkat.com', role: 'manager', hrKpiReviewer: false, name: 'M1', branchId: 'b-air', branchName: 'Airport' },
   { userId: 'mgr-2', email: 'm2@drinkat.com', role: 'manager', hrKpiReviewer: false, name: 'M2', branchId: 'b-city', branchName: 'City' },
 ];
 assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'sara').sort(), ['sara-1']);
+assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'ahmad_nazzal').sort(), ['ahmad-1']);
 assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'owner').sort(), ['owner-1']);
 assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'managers').sort(), ['mgr-1', 'mgr-2']);
 assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'manager:mgr-2').sort(), ['mgr-2']);
-assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'all').sort(), ['mgr-1', 'mgr-2', 'owner-1', 'sara-1']);
+assert.deepEqual(pickQcReportRecipientIds(notifyPeople, 'qc-1', 'all').sort(), ['ahmad-1', 'mgr-1', 'mgr-2', 'owner-1', 'sara-1']);
 assert.equal(pickQcReportRecipientIds(notifyPeople, 'owner-1', 'owner').length, 0);
 assert.deepEqual(
   pickQcReportRecipientIdsMany(notifyPeople, 'qc-1', ['sara', 'manager:mgr-1']).sort(),
@@ -933,12 +984,21 @@ assert.deepEqual(
   pickQcReportRecipientIdsMany(notifyPeople, 'qc-1', ['owner', 'managers']).sort(),
   ['mgr-1', 'mgr-2', 'owner-1']
 );
-assert.deepEqual(peopleNotifyOptions([{ value: 'all' }, { value: 'sara' }, { value: 'managers' }, { value: 'manager:x' }]).map((o) => o.value), [
+assert.deepEqual(
+  pickQcReportRecipientIdsMany(notifyPeople, 'qc-1', ['ahmad_nazzal', 'sara']).sort(),
+  ['ahmad-1', 'sara-1']
+);
+assert.deepEqual(peopleNotifyOptions([{ value: 'all' }, { value: 'sara' }, { value: 'ahmad_nazzal' }, { value: 'managers' }, { value: 'manager:x' }]).map((o) => o.value), [
   'sara',
+  'ahmad_nazzal',
   'manager:x',
 ]);
-assert.deepEqual(pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-air').sort(), ['mgr-1', 'owner-1', 'sara-1']);
-assert.deepEqual(pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-city').sort(), ['mgr-2', 'owner-1', 'sara-1']);
+assert.deepEqual(
+  qcReportNotifyOptions(notifyPeople).map((o) => o.value),
+  ['all', 'sara', 'ahmad_nazzal', 'owner', 'managers', 'manager:mgr-1', 'manager:mgr-2']
+);
+assert.deepEqual(pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-air').sort(), ['ahmad-1', 'mgr-1', 'owner-1', 'sara-1']);
+assert.deepEqual(pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-city').sort(), ['ahmad-1', 'mgr-2', 'owner-1', 'sara-1']);
 assert.ok(!pickBranchInspectionRecipientIds(notifyPeople, 'qc-1', 'b-air').includes('mgr-2'));
 
 assert.equal(BRANCH_INSPECTION_SECTIONS.length, 5);
@@ -1011,6 +1071,37 @@ assert.deepEqual(parseQcReportPhotos(JSON.stringify(['/a.jpg', '/b.jpg'])), ['/a
   assert.equal(parsedLegacy?.answers.e4, undefined);
   assert.equal(parsedLegacy?.answers.d8, undefined);
 }
+
+assert.equal(WAREHOUSE_INSPECTION_KIND, 'warehouse_inspection');
+assert.equal(WAREHOUSE_INSPECTION_SECTIONS.length, 4);
+assert.equal(WAREHOUSE_INSPECTION_ITEM_IDS.length, 18);
+assert.equal(WAREHOUSE_INSPECTION_SECTIONS[0].titleAr, 'الالتزام بالسياسات');
+assert.equal(WAREHOUSE_INSPECTION_SECTIONS[1].titleAr, 'النظافة');
+assert.equal(WAREHOUSE_INSPECTION_SECTIONS[2].titleAr, 'التغليف والتواريخ');
+assert.equal(WAREHOUSE_INSPECTION_SECTIONS[3].titleAr, 'الفحص الحسي');
+assert.ok(WAREHOUSE_INSPECTION_ITEM_IDS.includes('wa4'));
+assert.ok(WAREHOUSE_INSPECTION_ITEM_IDS.includes('wb5'));
+assert.ok(WAREHOUSE_INSPECTION_ITEM_IDS.includes('wd3'));
+assert.equal(isWarehouseInspectionBranchName('Cloud Kitchen Branch'), true);
+assert.equal(isWarehouseInspectionBranchName('Central kitchen - Warehouse'), true);
+assert.equal(isWarehouseInspectionBranchName('MEU Branch'), false);
+assert.equal(warehouseInspectionBranches([{ id: '1', name: 'MEU Branch' }, { id: '2', name: 'Cloud Kitchen Branch' }]).map((b) => b.id).join(), '2');
+assert.equal(validateWarehouseInspectionAnswers({}).ok, false);
+{
+  const allPassW: Record<string, { result: 'pass' | 'fail'; photoUrl: string | null; photoUrls?: string[] }> = {};
+  for (const id of WAREHOUSE_INSPECTION_ITEM_IDS) allPassW[id] = { result: 'pass', photoUrl: null };
+  allPassW.wb5 = { result: 'fail', photoUrl: '/uploads/w.jpg', photoUrls: ['/uploads/w.jpg'] };
+  const checkedW = validateWarehouseInspectionAnswers(allPassW);
+  assert.equal(checkedW.ok, true);
+  if (checkedW.ok) {
+    assert.deepEqual(countWarehouseInspectionResults(checkedW.answers), { pass: 17, fail: 1 });
+    const payloadW = encodeWarehouseInspectionPayload(checkedW.answers, 'shelf dirty');
+    assert.equal(parseWarehouseInspectionPayload(JSON.stringify(payloadW))?.notes, 'shelf dirty');
+    assert.deepEqual(parseQcReportPhotos(JSON.stringify(payloadW)), ['/uploads/w.jpg']);
+  }
+}
+assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /Central kitchen – Warehouse/);
+assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /WAREHOUSE_INSPECTION_KIND/);
 
 assert.equal(
   resolvePushNavigationUrl({

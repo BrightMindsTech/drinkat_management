@@ -159,13 +159,16 @@ export function inspectionItemById(id: string): BranchInspectionItem | undefined
   return BRANCH_INSPECTION_ITEMS.find((i) => i.id === id);
 }
 
-export function validateInspectionAnswers(raw: unknown): { ok: true; answers: InspectionAnswers } | { ok: false; error: string } {
+export function validateInspectionAnswersFor(
+  itemIds: readonly string[],
+  raw: unknown
+): { ok: true; answers: InspectionAnswers } | { ok: false; error: string } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return { ok: false, error: 'Answer every checklist item' };
   }
   const rec = raw as Record<string, unknown>;
   const answers: InspectionAnswers = {};
-  for (const id of BRANCH_INSPECTION_ITEM_IDS) {
+  for (const id of itemIds) {
     const row = rec[id];
     if (!row || typeof row !== 'object' || Array.isArray(row)) {
       return { ok: false, error: 'Answer every checklist item' };
@@ -179,15 +182,26 @@ export function validateInspectionAnswers(raw: unknown): { ok: true; answers: In
   return { ok: true, answers };
 }
 
-export function countInspectionResults(answers: InspectionAnswers): { pass: number; fail: number } {
+export function validateInspectionAnswers(raw: unknown): { ok: true; answers: InspectionAnswers } | { ok: false; error: string } {
+  return validateInspectionAnswersFor(BRANCH_INSPECTION_ITEM_IDS, raw);
+}
+
+export function countInspectionResultsFor(
+  itemIds: readonly string[],
+  answers: InspectionAnswers
+): { pass: number; fail: number } {
   let pass = 0;
   let fail = 0;
-  for (const id of BRANCH_INSPECTION_ITEM_IDS) {
+  for (const id of itemIds) {
     const result = answers[id]?.result;
     if (result === 'fail') fail += 1;
     else if (result === 'pass') pass += 1;
   }
   return { pass, fail };
+}
+
+export function countInspectionResults(answers: InspectionAnswers): { pass: number; fail: number } {
+  return countInspectionResultsFor(BRANCH_INSPECTION_ITEM_IDS, answers);
 }
 
 export function inspectionSeverity(fail: number): 'low' | 'medium' | 'high' | 'critical' {
@@ -207,12 +221,12 @@ export function encodeInspectionPayload(answers: InspectionAnswers, notes: strin
   return { kind: BRANCH_INSPECTION_KIND, v: BRANCH_INSPECTION_VERSION, answers, notes: notes.trim() };
 }
 
-function parseStoredInspectionAnswers(raw: unknown): InspectionAnswers | null {
+export function parseStoredInspectionAnswersFor(itemIds: readonly string[], raw: unknown): InspectionAnswers | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const rec = raw as Record<string, unknown>;
   const answers: InspectionAnswers = {};
   let any = false;
-  for (const id of BRANCH_INSPECTION_ITEM_IDS) {
+  for (const id of itemIds) {
     const row = rec[id];
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
     const result = (row as { result?: unknown }).result;
@@ -223,6 +237,15 @@ function parseStoredInspectionAnswers(raw: unknown): InspectionAnswers | null {
     any = true;
   }
   return any ? answers : null;
+}
+
+function parseStoredInspectionAnswers(raw: unknown): InspectionAnswers | null {
+  return parseStoredInspectionAnswersFor(BRANCH_INSPECTION_ITEM_IDS, raw);
+}
+
+function parseStoredInspectionAnswersLoose(raw: unknown): InspectionAnswers | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return parseStoredInspectionAnswersFor(Object.keys(raw as Record<string, unknown>), raw);
 }
 
 export function parseInspectionPayload(raw: string): BranchInspectionPayload | null {
@@ -249,20 +272,36 @@ export function isBranchInspectionReport(item: { category?: string; photosJson?:
   return Boolean(item.photosJson && parseInspectionPayload(item.photosJson));
 }
 
-export function listInspectionPhotos(payload: BranchInspectionPayload): string[] {
+export function listInspectionPhotosFromAnswers(answers: InspectionAnswers): string[] {
   const out: string[] = [];
-  for (const id of BRANCH_INSPECTION_ITEM_IDS) {
-    for (const url of inspectionAnswerPhotos(payload.answers[id])) {
+  for (const ans of Object.values(answers)) {
+    for (const url of inspectionAnswerPhotos(ans)) {
       if (!out.includes(url)) out.push(url);
     }
   }
   return out;
 }
 
+export function listInspectionPhotos(payload: BranchInspectionPayload): string[] {
+  return listInspectionPhotosFromAnswers(payload.answers);
+}
+
 /** Note reports store a URL array; inspections/complaints store a structured object. */
 export function parseQcReportPhotos(raw: string): string[] {
   const inspection = parseInspectionPayload(raw);
   if (inspection) return listInspectionPhotos(inspection);
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const rec = v as { kind?: unknown; answers?: unknown };
+      if (rec.kind === 'warehouse_inspection' && rec.answers && typeof rec.answers === 'object' && !Array.isArray(rec.answers)) {
+        const answers = parseStoredInspectionAnswersLoose(rec.answers);
+        if (answers) return listInspectionPhotosFromAnswers(answers);
+      }
+    }
+  } catch {
+    /* fall through */
+  }
   try {
     const v = JSON.parse(raw) as unknown;
     if (v && typeof v === 'object' && !Array.isArray(v)) {

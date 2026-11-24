@@ -2,6 +2,11 @@ import type { PrismaClient } from '@prisma/client';
 import { normalizeUserRole } from '@/lib/permissions';
 
 export const SARA_NOTIFY_EMAIL = 'sara@drinkat.com';
+export const AHMAD_NAZZAL_NOTIFY_EMAIL = 'twety@drinkat.com';
+
+function normNotifyName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
 
 export type QcNotifyPerson = {
   userId: string;
@@ -13,13 +18,19 @@ export type QcNotifyPerson = {
   branchName: string;
 };
 
-export type QcReportNotifyTarget = 'all' | 'owner' | 'sara' | 'managers' | `manager:${string}`;
+export type QcReportNotifyTarget = 'all' | 'owner' | 'sara' | 'ahmad_nazzal' | 'managers' | `manager:${string}`;
 
 export type QcReportNotifyOption = { value: QcReportNotifyTarget; label: string };
 
 export function isSaraNotifyUser(p: { email: string; hrKpiReviewer: boolean; role: string }): boolean {
   if (normalizeUserRole(p.role) === 'owner') return false;
   return p.hrKpiReviewer || p.email.trim().toLowerCase() === SARA_NOTIFY_EMAIL;
+}
+
+export function isAhmadNazzalNotifyUser(p: { email: string; name?: string; role: string }): boolean {
+  if (normalizeUserRole(p.role) === 'owner') return false;
+  if (p.email.trim().toLowerCase() === AHMAD_NAZZAL_NOTIFY_EMAIL) return true;
+  return normNotifyName(p.name || '') === 'ahmad nazzal';
 }
 
 export function pickQcReportRecipientIds(
@@ -33,10 +44,11 @@ export function pickQcReportRecipientIds(
   };
   const owners = people.filter((p) => normalizeUserRole(p.role) === 'owner');
   const sara = people.filter((p) => isSaraNotifyUser(p));
+  const ahmad = people.filter((p) => isAhmadNazzalNotifyUser(p));
   const managers = people.filter((p) => normalizeUserRole(p.role) === 'manager');
 
   if (target === 'all') {
-    for (const p of [...owners, ...sara, ...managers]) add(p.userId);
+    for (const p of [...owners, ...sara, ...ahmad, ...managers]) add(p.userId);
     return [...ids];
   }
   if (target === 'owner') {
@@ -45,6 +57,10 @@ export function pickQcReportRecipientIds(
   }
   if (target === 'sara') {
     for (const p of sara) add(p.userId);
+    return [...ids];
+  }
+  if (target === 'ahmad_nazzal') {
+    for (const p of ahmad) add(p.userId);
     return [...ids];
   }
   if (target === 'managers') {
@@ -57,14 +73,18 @@ export function pickQcReportRecipientIds(
     if (hit) add(hit.userId);
     return [...ids];
   }
-  for (const p of [...owners, ...sara, ...managers]) add(p.userId);
+  for (const p of [...owners, ...sara, ...ahmad, ...managers]) add(p.userId);
   return [...ids];
 }
 
 export async function listQcNotifyPeople(prisma: PrismaClient): Promise<QcNotifyPerson[]> {
   const users = await prisma.user.findMany({
     where: {
-      OR: [{ role: { in: ['owner', 'manager'] } }, { hrKpiReviewer: true }],
+      OR: [
+        { role: { in: ['owner', 'manager'] } },
+        { hrKpiReviewer: true },
+        { email: { in: [SARA_NOTIFY_EMAIL, AHMAD_NAZZAL_NOTIFY_EMAIL] } },
+      ],
     },
     select: {
       id: true,
@@ -90,6 +110,7 @@ export async function listQcNotifyPeople(prisma: PrismaClient): Promise<QcNotify
 export function qcReportNotifyOptions(people: QcNotifyPerson[]): QcReportNotifyOption[] {
   const options: QcReportNotifyOption[] = [{ value: 'all', label: 'all' }];
   if (people.some((p) => isSaraNotifyUser(p))) options.push({ value: 'sara', label: 'sara' });
+  if (people.some((p) => isAhmadNazzalNotifyUser(p))) options.push({ value: 'ahmad_nazzal', label: 'ahmad nazzal' });
   if (people.some((p) => normalizeUserRole(p.role) === 'owner')) options.push({ value: 'owner', label: 'owner' });
   if (people.some((p) => normalizeUserRole(p.role) === 'manager')) {
     options.push({ value: 'managers', label: 'managers' });
@@ -149,7 +170,7 @@ export function pickBranchInspectionRecipientIds(
   };
   for (const p of people) {
     const role = normalizeUserRole(p.role);
-    if (role === 'owner' || isSaraNotifyUser(p)) add(p.userId);
+    if (role === 'owner' || isSaraNotifyUser(p) || isAhmadNazzalNotifyUser(p)) add(p.userId);
     if (role === 'manager' && p.branchId === branchId) add(p.userId);
   }
   return [...ids];

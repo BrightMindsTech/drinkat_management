@@ -23,6 +23,7 @@ import {
   kpiPeriodInstantBounds,
 } from '../src/lib/kpi-compute';
 import { canAdoptSopSource, canApproveSopSource, isSyntheticSopSourceRef } from '../src/lib/drinkat-sop-drafts';
+import { kpiDisplayedTotal, kpiMedalForIndex, sortKpiRowsDesc } from '../src/lib/kpi-rank';
 
 assert.equal(officialKpiAllowed(0), false);
 assert.equal(officialKpiAllowed(2), true);
@@ -140,6 +141,29 @@ const panel = fs.readFileSync(path.join(root, 'src/components/qc-ops/KpiPanel.ts
 assert.match(panel, /Daily/);
 assert.match(panel, /Weekly/);
 assert.match(panel, /Monthly/);
+assert.match(panel, /sortKpiRowsDesc/);
+assert.match(panel, /KpiCrown/);
+assert.match(panel, /kpiCrownGold/);
+assert.equal(kpiDisplayedTotal({ total: 80, individualScorePublished: true }), 80);
+assert.equal(kpiDisplayedTotal({ total: 80, displayTotal: 40, individualScorePublished: false }), 40);
+assert.equal(kpiMedalForIndex(0, 90), 'gold');
+assert.equal(kpiMedalForIndex(1, 80), 'silver');
+assert.equal(kpiMedalForIndex(2, 70), 'bronze');
+assert.equal(kpiMedalForIndex(3, 60), null);
+assert.equal(kpiMedalForIndex(0, null), null);
+assert.deepEqual(
+  sortKpiRowsDesc(
+    [
+      { name: 'B', total: 70 },
+      { name: 'A', total: 90 },
+      { name: 'C', total: null },
+      { name: 'D', total: 90 },
+    ],
+    (r) => r.total,
+    (r) => r.name
+  ).map((r) => r.name),
+  ['A', 'D', 'B', 'C']
+);
 
 const sessionSrc = fs.readFileSync(path.join(root, 'src/lib/session.ts'), 'utf8');
 assert.match(sessionSrc, /requireKpiRosterViewer/);

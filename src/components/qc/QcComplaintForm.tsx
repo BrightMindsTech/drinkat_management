@@ -15,6 +15,7 @@ import {
   type ComplaintSlot,
 } from '@/lib/qc-complaints';
 import { QcNotifyPicker, defaultNotifyTargets, notifyOptionLabel, type QcNotifyOption } from '@/components/qc/QcNotifyPicker';
+import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 
 type Branch = { id: string; name: string };
 
@@ -154,8 +155,7 @@ export function QcComplaintForm({
             <span className="text-[11px] font-bold uppercase tracking-wide text-app-muted">{t.qcOps.qcComplaintPicture}</span>
             {slot.photoUrl ? (
               <div className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={slot.photoUrl} alt="" className="h-24 w-full rounded-xl object-cover" />
+                <OpenUploadPhoto src={slot.photoUrl} className="h-24 w-full rounded-xl object-cover" />
                 <button
                   type="button"
                   className="absolute -end-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-sm text-white"

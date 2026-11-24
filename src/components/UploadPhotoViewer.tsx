@@ -7,10 +7,12 @@ import {
   useEffect,
   useMemo,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from 'react';
 import { AppModal } from '@/components/AppModal';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { loadCredentialedImage } from '@/lib/credentialed-image';
 
 type ViewerState = { src: string; gallery: string[] };
 
@@ -30,16 +32,63 @@ export function useUploadPhotoViewer() {
           'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center;padding:16px'
         );
         const img = document.createElement('img');
-        img.src = src;
         img.alt = '';
         img.setAttribute('style', 'max-width:100%;max-height:90vh;object-fit:contain');
         wrap.appendChild(img);
+        void loadCredentialedImage(src).then((url) => {
+          if (url) img.src = url;
+        });
         wrap.addEventListener('click', () => wrap.remove());
         document.body.appendChild(wrap);
       },
     };
   }
   return ctx;
+}
+
+function useCredentialedSrc(src: string | null | undefined): string | null {
+  const [out, setOut] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setOut(null);
+    void loadCredentialedImage(src).then((url) => {
+      if (!cancelled) setOut(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+  return out;
+}
+
+export function CredentialedUploadImg({
+  src,
+  alt = '',
+  className,
+  onClick,
+}: {
+  src: string;
+  alt?: string;
+  className?: string;
+  onClick?: (e: MouseEvent<HTMLImageElement>) => void;
+}) {
+  const shown = useCredentialedSrc(src);
+  if (!shown) {
+    return <span className={`inline-block bg-gray-200 dark:bg-ios-dark-fill ${className ?? ''}`} aria-hidden />;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={shown}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+      onClick={onClick}
+      onContextMenu={(e) => e.preventDefault()}
+    />
+  );
 }
 
 export function UploadPhotoViewerProvider({ children }: { children: ReactNode }) {
@@ -96,13 +145,10 @@ export function UploadPhotoViewerProvider({ children }: { children: ReactNode })
               </button>
             </div>
             <div className="flex min-h-0 flex-1 items-center justify-center p-4" onClick={close}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <CredentialedUploadImg
                 src={view.src}
-                alt=""
                 className="max-h-[min(85vh,100%)] max-w-full object-contain"
                 onClick={(e) => e.stopPropagation()}
-                onContextMenu={(e) => e.preventDefault()}
               />
             </div>
           </>
@@ -130,16 +176,7 @@ export function OpenUploadPhoto({
       onClick={() => openPhoto(src, gallery)}
       className="block overflow-hidden rounded-lg focus:outline-none focus:ring-2 focus:ring-ios-blue"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt}
-        className={className}
-        loading="lazy"
-        decoding="async"
-        draggable={false}
-        onContextMenu={(e) => e.preventDefault()}
-      />
+      <CredentialedUploadImg src={src} alt={alt} className={className} />
     </button>
   );
 }

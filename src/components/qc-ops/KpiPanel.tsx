@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { kpiDisplayedTotal, kpiMedalForIndex, sortKpiRowsDesc, type KpiRankMedal } from '@/lib/kpi-rank';
 
 type KpiRange = 'day' | 'week' | 'month';
 
@@ -73,10 +74,21 @@ export function KpiPanel({ roster }: { roster?: boolean }) {
   }, []);
 
   const scores = useMemo(() => {
-    if (data && 'scores' in data) return data.scores;
-    if (data && 'components' in data) return [data];
-    return [];
+    const raw =
+      data && 'scores' in data ? data.scores : data && 'components' in data ? [data] : [];
+    return sortKpiRowsDesc(raw, kpiDisplayedTotal, (s) => s.name ?? '');
   }, [data]);
+
+  const medals = useMemo(() => {
+    const map = new Map<string, KpiRankMedal>();
+    if (!roster) return map;
+    scores.forEach((s, i) => {
+      const medal = kpiMedalForIndex(i, kpiDisplayedTotal(s));
+      if (!medal) return;
+      map.set(s.employeeId ?? s.name ?? `row-${i}`, medal);
+    });
+    return map;
+  }, [roster, scores]);
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -140,10 +152,11 @@ export function KpiPanel({ roster }: { roster?: boolean }) {
       {hrMsg ? <p className="text-sm text-app-muted">{hrMsg}</p> : null}
 
       <ul className="divide-y divide-gray-100 overflow-hidden rounded-3xl border border-gray-200 bg-white dark:divide-ios-dark-separator dark:border-ios-dark-separator dark:bg-ios-dark-elevated">
-        {visible.map((s) => {
-          const id = s.employeeId ?? s.name ?? 'me';
+        {visible.map((s, i) => {
+          const id = s.employeeId ?? s.name ?? `row-${i}`;
           const open = openId === id;
-          const shown = s.individualScorePublished === false ? s.displayTotal ?? null : s.total;
+          const shown = kpiDisplayedTotal(s);
+          const medal = medals.get(id) ?? null;
           return (
             <li key={id}>
               <button
@@ -152,7 +165,10 @@ export function KpiPanel({ roster }: { roster?: boolean }) {
                 className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-start touch-manipulation"
               >
                 <div className="min-w-0">
-                  <p className="truncate font-semibold text-app-primary">{s.name ?? '—'}</p>
+                  <p className="flex min-w-0 items-center gap-1.5 font-semibold text-app-primary">
+                    {medal ? <KpiCrown medal={medal} label={crownLabel(medal, t)} /> : null}
+                    <span className="truncate">{s.name ?? '—'}</span>
+                  </p>
                   <p className="truncate text-xs text-app-muted">
                     {[s.branchName, s.role?.replaceAll('_', ' ')].filter(Boolean).join(' · ')}
                   </p>
@@ -195,6 +211,29 @@ export function KpiPanel({ roster }: { roster?: boolean }) {
         <p className="text-center text-sm text-app-muted">{locale === 'ar' ? 'لا توجد نتائج.' : 'No matching people.'}</p>
       ) : null}
     </div>
+  );
+}
+
+function crownLabel(
+  medal: KpiRankMedal,
+  t: { qcOps: { kpiCrownGold: string; kpiCrownSilver: string; kpiCrownBronze: string } }
+): string {
+  if (medal === 'gold') return t.qcOps.kpiCrownGold;
+  if (medal === 'silver') return t.qcOps.kpiCrownSilver;
+  return t.qcOps.kpiCrownBronze;
+}
+
+function KpiCrown({ medal, label }: { medal: KpiRankMedal; label: string }) {
+  const fill = medal === 'gold' ? '#EAB308' : medal === 'silver' ? '#C0C4CC' : '#CD7F32';
+  return (
+    <span className="inline-flex shrink-0" title={label} aria-label={label}>
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+        <path
+          fill={fill}
+          d="M5 18h14l1.2-8.2-4.4 2.6L12 6.5 8.2 12.4 3.8 9.8 5 18Zm-1 1.8h16V21H4v-1.2Z"
+        />
+      </svg>
+    </span>
   );
 }
 

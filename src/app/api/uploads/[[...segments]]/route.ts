@@ -9,7 +9,8 @@ import { authOptions } from '@/lib/auth';
 import { withApiErrors } from '@/lib/api-route-error';
 import { actorCanReadUpload } from '@/lib/upload-access';
 import { normalizeUserRole } from '@/lib/permissions';
-import { verifyUploadSignature } from '@/lib/upload-signed-url';
+import { verifyUploadSignatureFromSearch } from '@/lib/upload-signed-url';
+import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 
 const PRIVATE_CACHE = 'private, max-age=86400, immutable';
 
@@ -58,7 +59,7 @@ export const GET = withApiErrors(async function GET(
   }
 
   const url = new URL(req.url);
-  if (verifyUploadSignature(key, url.searchParams.get('exp'), url.searchParams.get('sig'))) {
+  if (verifyUploadSignatureFromSearch(key, url.searchParams)) {
     return serveObject(key);
   }
 
@@ -66,7 +67,7 @@ export const GET = withApiErrors(async function GET(
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const role = normalizeUserRole(session.user.role);
-  if (role === 'owner' || role === 'qc') {
+  if (role === 'owner' || role === 'qc' || (await userHasQcReviewerScope(prisma, session))) {
     return serveObject(key);
   }
 

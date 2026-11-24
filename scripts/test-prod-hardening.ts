@@ -21,7 +21,12 @@ import {
   isApprovedEmployeeError,
 } from '../src/lib/kpi-evidence';
 import { uploadKeyFromPath } from '../src/lib/ai-images';
-import { signStoredUploadPath, verifyUploadSignature, canonicalUploadPath } from '../src/lib/upload-signed-url';
+import {
+  signStoredUploadPath,
+  verifyUploadSignature,
+  verifyUploadSignatureFromSearch,
+  canonicalUploadPath,
+} from '../src/lib/upload-signed-url';
 
 assert.equal(canVerifyIssue('manager'), false);
 assert.equal(canVerifyIssue('qc'), true);
@@ -206,12 +211,17 @@ assert(!viewerSrc.includes('location.assign'));
 
 const signed = signStoredUploadPath('/api/uploads/abc.jpg');
 assert.equal(canonicalUploadPath(signed), '/api/uploads/abc.jpg');
+assert(signed.includes('?u='));
+assert(!signed.includes('&sig='));
 const signedUrl = new URL(signed, 'https://example.com');
-assert.equal(
-  verifyUploadSignature('abc.jpg', signedUrl.searchParams.get('exp'), signedUrl.searchParams.get('sig')),
-  true
-);
+assert.equal(verifyUploadSignatureFromSearch('abc.jpg', signedUrl.searchParams), true);
 assert.equal(verifyUploadSignature('abc.jpg', String(Math.floor(Date.now() / 1000) + 60), 'nope'), false);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/upload-signed-url.ts'), 'utf8'), /uploadHmacSecret/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/upload-signed-url.ts'), 'utf8'), /from '@\/lib\/auth'/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/credentialed-image.ts'), 'utf8'), /credentials: 'include'/);
+assert.match(viewerSrc, /loadCredentialedImage/);
+assert.match(uploadGet, /verifyUploadSignatureFromSearch/);
+assert.match(uploadGet, /userHasQcReviewerScope/);
 
 const submit = fs.readFileSync(path.join(root, 'src/app/api/inspections/tasks/[id]/submit/route.ts'), 'utf8');
 assert(submit.includes('updateMany'));

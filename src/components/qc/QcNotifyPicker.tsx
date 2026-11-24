@@ -15,6 +15,7 @@ export function notifyOptionLabel(
   t: {
     qcOps: {
       qcReportsNotifySara: string;
+      qcReportsNotifyAhmad: string;
       qcReportsNotifyOwner: string;
       qcReportsNotifyManagers: string;
       qcReportsNotifyManager: string;
@@ -22,6 +23,7 @@ export function notifyOptionLabel(
   }
 ): string {
   if (opt.value === 'sara') return t.qcOps.qcReportsNotifySara;
+  if (opt.value === 'ahmad_nazzal') return t.qcOps.qcReportsNotifyAhmad;
   if (opt.value === 'owner') return t.qcOps.qcReportsNotifyOwner;
   if (opt.value === 'managers') return t.qcOps.qcReportsNotifyManagers;
   if (opt.value.startsWith('manager:')) {

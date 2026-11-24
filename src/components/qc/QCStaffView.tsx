@@ -5,7 +5,7 @@ import type { ChecklistAssignment, Checklist, ChecklistItem, QcSubmission, Submi
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppClockTimeLabel, formatAppDate, formatAppDateTime } from '@/lib/format-datetime';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
-import { OpenUploadPhotoText } from '@/components/UploadPhotoViewer';
+import { CredentialedUploadImg, OpenUploadPhotoText } from '@/components/UploadPhotoViewer';
 
 type AssignmentWithChecklist = ChecklistAssignment & {
   checklist: Checklist & { items: ChecklistItem[] };
@@ -195,7 +195,7 @@ export function QCStaffView({
                             onClick={() => setLightbox({ url, assignmentId: a.id })}
                             className="block rounded border border-gray-200 dark:border-ios-dark-separator overflow-hidden focus:outline-none focus:ring-2 focus:ring-ios-blue"
                           >
-                            <img src={url} alt="" className="h-16 w-16 object-cover" />
+                            <CredentialedUploadImg src={url} className="h-16 w-16 object-cover" />
                           </button>
                           <button
                             type="button"
@@ -290,7 +290,7 @@ export function QCStaffView({
             onClick={() => setLightbox(null)}
           >
             <div className="max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
-              <img src={lightbox.url} alt="" className="max-h-[min(85vh,100%)] max-w-full object-contain" />
+              <CredentialedUploadImg src={lightbox.url} className="max-h-[min(85vh,100%)] max-w-full object-contain" />
             </div>
           </div>
         </div>

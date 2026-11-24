@@ -75,6 +75,42 @@ export function isSaturdayOnlyPhotoCode(typeCode: string): boolean {
   return (PHOTO_SATURDAY_ONLY_CODES as readonly string[]).includes(typeCode);
 }
 
+export function isKitchenPhotoStationCode(typeCode: string): boolean {
+  return (PHOTO_KITCHEN_STATION_CODES as readonly string[]).includes(typeCode);
+}
+
+export const PHOTO_BOARD_SECTION_ORDER = ['kitchen', 'branch', 'machines'] as const;
+export type PhotoBoardSectionId = (typeof PHOTO_BOARD_SECTION_ORDER)[number];
+
+const PHOTO_BOARD_MACHINE_CODES = [
+  'coffee_machine_calibration',
+  'slush_machine_cleaning',
+  'espresso_machine_cleaning',
+  'espresso_shot_weight',
+  'portafilter_coffee_dose',
+  'espresso_temperature',
+  'water_quality_tds',
+] as const;
+
+const PHOTO_BOARD_KITCHEN_EXTRA_CODES = [
+  'fryer_cleanliness',
+  'grill_cleanliness',
+  'preparation_refrigerator',
+  'food_handover_area',
+  'trays_serving_equipment',
+] as const;
+
+export function photoBoardSection(typeCode: string): PhotoBoardSectionId {
+  if (
+    isKitchenPhotoStationCode(typeCode) ||
+    (PHOTO_BOARD_KITCHEN_EXTRA_CODES as readonly string[]).includes(typeCode)
+  ) {
+    return 'kitchen';
+  }
+  if ((PHOTO_BOARD_MACHINE_CODES as readonly string[]).includes(typeCode)) return 'machines';
+  return 'branch';
+}
+
 export function isCloudKitchenBranchName(name: string | null | undefined): boolean {
   return (name ?? '').toLowerCase().includes('cloud kitchen');
 }

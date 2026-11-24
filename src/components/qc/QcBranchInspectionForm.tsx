@@ -12,7 +12,14 @@ import {
   INSPECTION_PHOTOS_PER_ITEM_MAX,
   type InspectionResult,
 } from '@/lib/qc-branch-inspection';
+import {
+  WAREHOUSE_INSPECTION_ITEM_IDS,
+  WAREHOUSE_INSPECTION_KIND,
+  WAREHOUSE_INSPECTION_SECTIONS,
+  warehouseInspectionBranches,
+} from '@/lib/qc-warehouse-inspection';
 import { QcNotifyPicker, defaultNotifyTargets, type QcNotifyOption } from '@/components/qc/QcNotifyPicker';
+import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 
 type Branch = { id: string; name: string };
 type Draft = { result: InspectionResult | null; photoUrls: string[]; photoNotes: Record<string, string> };
@@ -21,11 +28,20 @@ function emptyDraft(): Draft {
   return { result: null, photoUrls: [], photoNotes: {} };
 }
 
-function emptyDrafts(): Record<string, Draft> {
+function emptyDrafts(itemIds: readonly string[]): Record<string, Draft> {
   const out: Record<string, Draft> = {};
-  for (const id of BRANCH_INSPECTION_ITEM_IDS) out[id] = emptyDraft();
+  for (const id of itemIds) out[id] = emptyDraft();
   return out;
 }
+
+type InspectionFormProps = {
+  branches: Branch[];
+  notifyOptions: QcNotifyOption[];
+  initialBranchId: string;
+  onCancel: () => void;
+  onSubmitted: () => Promise<void> | void;
+  variant?: 'branch' | 'warehouse';
+};
 
 export function QcBranchInspectionForm({
   branches,
@@ -33,17 +49,22 @@ export function QcBranchInspectionForm({
   initialBranchId,
   onCancel,
   onSubmitted,
-}: {
-  branches: Branch[];
-  notifyOptions: QcNotifyOption[];
-  initialBranchId: string;
-  onCancel: () => void;
-  onSubmitted: () => Promise<void> | void;
-}) {
+  variant = 'branch',
+}: InspectionFormProps) {
   const { t, locale } = useLanguage();
-  const [branchId, setBranchId] = useState(initialBranchId || branches[0]?.id || '');
+  const warehouseOnly = variant === 'warehouse';
+  const itemIds = warehouseOnly ? WAREHOUSE_INSPECTION_ITEM_IDS : BRANCH_INSPECTION_ITEM_IDS;
+  const sections = warehouseOnly ? WAREHOUSE_INSPECTION_SECTIONS : BRANCH_INSPECTION_SECTIONS;
+  const kind = warehouseOnly ? WAREHOUSE_INSPECTION_KIND : BRANCH_INSPECTION_KIND;
+  const branchChoices = warehouseOnly ? warehouseInspectionBranches(branches) : branches;
+  const [branchId, setBranchId] = useState(
+    () =>
+      (branchChoices.some((b) => b.id === initialBranchId) ? initialBranchId : '') ||
+      branchChoices[0]?.id ||
+      ''
+  );
   const [notifyTo, setNotifyTo] = useState<string[]>(() => defaultNotifyTargets(notifyOptions));
-  const [drafts, setDrafts] = useState<Record<string, Draft>>(emptyDrafts);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>(() => emptyDrafts(itemIds));
   const [notes, setNotes] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -54,7 +75,7 @@ export function QcBranchInspectionForm({
     setNotifyTo((cur) => (cur.length === 1 && cur[0] === 'all' ? next : cur));
   }, [notifyOptions]);
 
-  const answered = BRANCH_INSPECTION_ITEM_IDS.every((id) => drafts[id]?.result);
+  const answered = itemIds.every((id) => drafts[id]?.result);
   const uploading = busy !== null && busy !== 'submit';
 
   function setResult(id: string, result: InspectionResult) {
@@ -115,7 +136,7 @@ export function QcBranchInspectionForm({
         string,
         { result: InspectionResult; photoUrl: string | null; photoUrls: string[]; photoNotes: Record<string, string> }
       > = {};
-      for (const id of BRANCH_INSPECTION_ITEM_IDS) {
+      for (const id of itemIds) {
         const row = drafts[id];
         if (!row?.result) {
           setErr(t.qcOps.qcInspectNeedAll);
@@ -138,7 +159,7 @@ export function QcBranchInspectionForm({
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          kind: BRANCH_INSPECTION_KIND,
+          kind,
           branchId,
           notes: notes.trim(),
           answers,
@@ -162,8 +183,12 @@ export function QcBranchInspectionForm({
     <div className="space-y-4 pb-8">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-app-primary">{t.qcOps.qcInspectNew}</h2>
-          <p className="mt-1 text-sm leading-relaxed text-app-muted">{t.qcOps.qcInspectHint}</p>
+          <h2 className="text-xl font-bold tracking-tight text-app-primary">
+            {warehouseOnly ? t.qcOps.qcWarehouseInspectNew : t.qcOps.qcInspectNew}
+          </h2>
+          <p className="mt-1 text-sm leading-relaxed text-app-muted">
+            {warehouseOnly ? t.qcOps.qcWarehouseInspectHint : t.qcOps.qcInspectHint}
+          </p>
         </div>
         <button
           type="button"
@@ -178,21 +203,32 @@ export function QcBranchInspectionForm({
 
       {err ? <p className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-medium text-red-600">{err}</p> : null}
 
-      <label className="block space-y-1">
-        <span className="text-sm font-medium text-app-muted">{t.qcOps.qcReportsBranch}</span>
-        <select
-          aria-label={t.qcOps.qcReportsBranch}
-          className="min-h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
-          value={branchId}
-          onChange={(e) => setBranchId(e.target.value)}
-        >
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      {warehouseOnly && branchChoices.length === 0 ? (
+        <p className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-medium text-red-600">
+          {t.qcOps.qcWarehouseInspectNoBranch}
+        </p>
+      ) : warehouseOnly && branchChoices.length === 1 ? (
+        <p className="text-sm font-medium text-app-primary">
+          <span className="text-app-muted">{t.qcOps.qcReportsBranch}: </span>
+          {branchChoices[0].name}
+        </p>
+      ) : (
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-app-muted">{t.qcOps.qcReportsBranch}</span>
+          <select
+            aria-label={t.qcOps.qcReportsBranch}
+            className="min-h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
+            value={branchId}
+            onChange={(e) => setBranchId(e.target.value)}
+          >
+            {branchChoices.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <p className="text-xs text-app-muted">
         {t.qcOps.qcInspectWhen}: {nowLabel}
       </p>
@@ -203,7 +239,7 @@ export function QcBranchInspectionForm({
         disabled={busy !== null}
       />
 
-      {BRANCH_INSPECTION_SECTIONS.map((section) => (
+      {sections.map((section) => (
         <section key={section.id} className="overflow-hidden rounded-3xl border border-gray-200 dark:border-ios-dark-separator">
           <header className="bg-teal-700 px-4 py-2.5 text-white dark:bg-teal-800">
             <p className="text-sm font-bold">
@@ -264,8 +300,7 @@ export function QcBranchInspectionForm({
                       {draft.photoUrls.map((url) => (
                         <div key={url} className="flex items-start gap-2">
                           <div className="relative shrink-0">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={url} alt="" className="h-16 w-16 rounded-xl object-cover" />
+                            <OpenUploadPhoto src={url} gallery={draft.photoUrls} className="h-16 w-16 rounded-xl object-cover" />
                             <button
                               type="button"
                               className="absolute -end-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-sm text-white"
@@ -328,7 +363,7 @@ export function QcBranchInspectionForm({
           className="min-h-28 w-full rounded-2xl border border-gray-200 bg-white p-4 text-base dark:border-ios-dark-separator dark:bg-ios-dark-fill"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder={t.qcOps.qcInspectNotesPh}
+          placeholder={warehouseOnly ? t.qcOps.qcWarehouseInspectNotesPh : t.qcOps.qcInspectNotesPh}
           maxLength={4000}
         />
       </label>
@@ -343,4 +378,8 @@ export function QcBranchInspectionForm({
       </button>
     </div>
   );
+}
+
+export function QcWarehouseInspectionForm(props: Omit<InspectionFormProps, 'variant'>) {
+  return <QcBranchInspectionForm {...props} variant="warehouse" />;
 }

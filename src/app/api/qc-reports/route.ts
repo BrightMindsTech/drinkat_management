@@ -20,6 +20,14 @@ import {
   validateInspectionAnswers,
 } from '@/lib/qc-branch-inspection';
 import {
+  WAREHOUSE_INSPECTION_KIND,
+  countWarehouseInspectionResults,
+  encodeWarehouseInspectionPayload,
+  isWarehouseInspectionBranchName,
+  validateWarehouseInspectionAnswers,
+  warehouseInspectionComments,
+} from '@/lib/qc-warehouse-inspection';
+import {
   COMPLAINT_ADDITIONAL_MAX,
   COMPLAINT_SLOT_NOTE_MAX,
   COMPLAINT_SLOTS_MAX,
@@ -60,7 +68,7 @@ const complaintSchema = z.object({
 });
 
 const inspectionSchema = z.object({
-  kind: z.literal('branch_inspection'),
+  kind: z.enum(['branch_inspection', 'warehouse_inspection']),
   branchId: z.string(),
   notes: z.string().max(4000).optional().default(''),
   notifyTo: notifyToSchema,
@@ -116,7 +124,7 @@ export const POST = withApiErrors(async function POST(req: NextRequest) {
     return Response.json({ error: 'Only QC or Owner can submit field reports' }, { status: 403 });
   }
   const body = (await req.json()) as { kind?: unknown };
-  if (body?.kind === BRANCH_INSPECTION_KIND) {
+  if (body?.kind === BRANCH_INSPECTION_KIND || body?.kind === WAREHOUSE_INSPECTION_KIND) {
     return postInspection(session.user.id, body);
   }
   if (body?.kind === CUSTOMER_COMPLAINT_KIND) {
@@ -172,26 +180,42 @@ async function postNote(userId: string, body: unknown) {
 async function postInspection(userId: string, body: unknown) {
   const parsed = inspectionSchema.safeParse(body);
   if (!parsed.success) return Response.json({ error: 'Answer every checklist item' }, { status: 400 });
-  const checked = validateInspectionAnswers(parsed.data.answers);
+  const warehouse = parsed.data.kind === WAREHOUSE_INSPECTION_KIND;
+  const checked = warehouse
+    ? validateWarehouseInspectionAnswers(parsed.data.answers)
+    : validateInspectionAnswers(parsed.data.answers);
   if (!checked.ok) return Response.json({ error: checked.error }, { status: 400 });
   const branch = await prisma.branch.findUnique({ where: { id: parsed.data.branchId } });
   if (!branch) return Response.json({ error: 'Branch not found' }, { status: 404 });
-  const { pass, fail } = countInspectionResults(checked.answers);
+  if (warehouse && !isWarehouseInspectionBranchName(branch.name)) {
+    return Response.json({ error: 'This inspection is only for Central kitchen – Warehouse' }, { status: 400 });
+  }
+  const { pass, fail } = warehouse
+    ? countWarehouseInspectionResults(checked.answers)
+    : countInspectionResults(checked.answers);
   const notes = parsed.data.notes ?? '';
   const item = await prisma.qcFieldReport.create({
     data: {
       createdById: userId,
       branchId: parsed.data.branchId,
-      category: BRANCH_INSPECTION_KIND,
+      category: warehouse ? WAREHOUSE_INSPECTION_KIND : BRANCH_INSPECTION_KIND,
       severity: inspectionSeverity(fail),
-      comments: inspectionComments(pass, fail, notes),
-      photosJson: JSON.stringify(encodeInspectionPayload(checked.answers, notes)),
+      comments: warehouse
+        ? warehouseInspectionComments(pass, fail, notes)
+        : inspectionComments(pass, fail, notes),
+      photosJson: JSON.stringify(
+        warehouse
+          ? encodeWarehouseInspectionPayload(checked.answers, notes)
+          : encodeInspectionPayload(checked.answers, notes)
+      ),
     },
   });
 
   await runSubmitSideEffects('qc-inspection-notify', async () => {
     const ids = await resolveQcReportRecipients(prisma, userId, parsed.data.notifyTo ?? 'all');
-    const pushTitle = `Branch inspection · ${branch.name}`;
+    const pushTitle = warehouse
+      ? `Central kitchen – Warehouse · ${branch.name}`
+      : `Branch inspection · ${branch.name}`;
     const pushBody = `${fail} fail · ${pass} pass${notes.trim() ? ` · ${notes.trim().slice(0, 80)}` : ''}`;
     if (!ids.length) return;
     await notifyUsers(prisma, ids, {

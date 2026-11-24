@@ -10,6 +10,12 @@ import {
   PHOTO_UPLOAD_MAX_BYTES,
   applyPhotoSlotChange,
 } from '@/lib/photo-multi';
+import {
+  PHOTO_BOARD_SECTION_ORDER,
+  isKitchenPhotoStationCode,
+  photoBoardSection,
+  type PhotoBoardSectionId,
+} from '@/lib/photo-official-windows';
 import { parseCriteriaJson } from '@/lib/photo-score';
 import { formatPhotoCountdown, nextPhotoWave } from '@/lib/photo-upcoming';
 import { openRearCameraCapture } from '@/lib/open-camera-file';
@@ -22,6 +28,8 @@ type Task = {
   dueAt: string;
   windowStartAt?: string;
   slotKey: string;
+  unavailable?: boolean;
+  submittedByName?: string | null;
   type: {
     code: string;
     titleEn: string;
@@ -47,6 +55,10 @@ function isLockedTask(row: Task, nowMs: number): boolean {
   if (row.kind === 'upcoming') return true;
   if (!row.windowStartAt) return false;
   return new Date(row.windowStartAt).getTime() > nowMs;
+}
+
+function isClaimedUnavailable(row: Task): boolean {
+  return Boolean(row.unavailable);
 }
 
 type Draft = { preview: string; file: File };
@@ -125,7 +137,12 @@ export function PhotoTaskBoard() {
     }
     setHighlightId(focusTaskId);
     const clear = window.setTimeout(() => setHighlightId(null), 3000);
-    const willOpen = Boolean(hit && hit.status !== 'completed' && !isLockedTask(hit, Date.now()));
+    const willOpen = Boolean(
+      hit &&
+        hit.status !== 'completed' &&
+        !isClaimedUnavailable(hit) &&
+        !isLockedTask(hit, Date.now())
+    );
     requestAnimationFrame(() => {
       if (willOpen) return;
       document.getElementById(`photo-task-${focusTaskId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -152,7 +169,10 @@ export function PhotoTaskBoard() {
   const lockedWave = useMemo(
     () =>
       nextPhotoWave([
-        ...items.filter((row) => !isWindowClosed(row, nowTick) && isLockedTask(row, nowTick)),
+        ...items.filter(
+          (row) =>
+            !isClaimedUnavailable(row) && !isWindowClosed(row, nowTick) && isLockedTask(row, nowTick)
+        ),
         ...upcoming,
       ]),
     [items, upcoming, nowTick]
@@ -164,6 +184,7 @@ export function PhotoTaskBoard() {
     () =>
       items.filter(
         (item) =>
+          !isClaimedUnavailable(item) &&
           item.status !== 'completed' &&
           item.status !== 'excused' &&
           !isWindowClosed(item, nowTick) &&
@@ -172,6 +193,37 @@ export function PhotoTaskBoard() {
       ),
     [items, lockedIds, nowTick]
   );
+
+  const claimedTasks = useMemo(
+    () => items.filter((item) => isClaimedUnavailable(item) && !isWindowClosed(item, nowTick)),
+    [items, nowTick]
+  );
+
+  const boardTasks = useMemo(
+    () =>
+      [...dueTasks, ...claimedTasks].sort(
+        (a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()
+      ),
+    [dueTasks, claimedTasks]
+  );
+
+  const kitchenLeft = useMemo(
+    () => dueTasks.filter((row) => photoBoardSection(row.type.code) === 'kitchen').length,
+    [dueTasks]
+  );
+
+  const groupedBoard = useMemo(() => {
+    const bySection = new Map<PhotoBoardSectionId, Task[]>();
+    for (const id of PHOTO_BOARD_SECTION_ORDER) bySection.set(id, []);
+    for (const row of boardTasks) {
+      const section = photoBoardSection(row.type.code);
+      bySection.get(section)!.push(row);
+    }
+    return PHOTO_BOARD_SECTION_ORDER.filter((id) => (bySection.get(id)?.length ?? 0) > 0).map((id) => ({
+      id,
+      tasks: bySection.get(id)!,
+    }));
+  }, [boardTasks]);
 
   const nextOpenAt = lockedWave[0]?.windowStartAt ? new Date(lockedWave[0].windowStartAt).getTime() : 0;
   const remainingMs = nextOpenAt > 0 ? nextOpenAt - nowTick : 0;
@@ -195,7 +247,7 @@ export function PhotoTaskBoard() {
   }
 
   function openTask(task: Task) {
-    if (isLockedTask(task, Date.now())) return;
+    if (isClaimedUnavailable(task) || isLockedTask(task, Date.now())) return;
     closedTaskRef.current = null;
     if (submittingRef.current) {
       cancelInFlight();
@@ -430,6 +482,11 @@ export function PhotoTaskBoard() {
           className={`space-y-4${highlightId === active.id ? ' photo-task-highlight' : ''}`}
         >
           <div>
+            {isKitchenPhotoStationCode(active.type.code) ? (
+              <p className="text-xs font-semibold uppercase tracking-wide text-app-muted">
+                {t.photoCheck.kitchenTag}
+              </p>
+            ) : null}
             <h2 className="text-2xl font-bold tracking-tight text-app-primary">{title}</h2>
             <p className="mt-1 text-sm text-app-muted">{slot}</p>
           </div>
@@ -551,48 +608,6 @@ export function PhotoTaskBoard() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-app-primary">{t.photoCheck.todayTitle}</h2>
-        {dueTasks.length ? (
-          <p className="mt-1 text-sm text-app-muted">{t.photoCheck.staffHowTo}</p>
-        ) : null}
-      </div>
-      {error ? (
-        <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 dark:border-red-500/40 dark:bg-red-950/50 dark:text-red-200">
-          {error}
-        </p>
-      ) : null}
-      {result ? (
-        <p className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900 dark:border-emerald-400/50 dark:bg-emerald-500/20 dark:text-emerald-100">
-          {t.photoCheck.sentToQc}
-        </p>
-      ) : null}
-
-      {dueTasks.length ? (
-        <ul className="space-y-3">
-          {dueTasks.map((row) => {
-            const title = locale === 'ar' ? row.type.titleAr : row.type.titleEn;
-            const label = locale === 'ar' ? row.schedule.slotLabelAr : row.schedule.slotLabelEn;
-            return (
-              <li key={row.id} id={`photo-task-${row.id}`}>
-                <button
-                  type="button"
-                  className={`min-h-20 w-full rounded-3xl bg-ios-blue px-5 py-4 text-start text-white touch-manipulation active:opacity-90${
-                    highlightId === row.id ? ' photo-task-highlight' : ''
-                  }`}
-                  onClick={() => openTask(row)}
-                >
-                  <p className="text-lg font-bold leading-snug">{title}</p>
-                  <p className="mt-1 text-sm font-medium text-white/85">
-                    {label} · {t.photoCheck.openTask}
-                  </p>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-
       {lockedWave.length ? (
         <section className="rounded-3xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 dark:border-ios-dark-separator dark:bg-ios-dark-elevated/60">
           <p className="text-sm font-semibold text-app-secondary">{t.photoCheck.nextWindowTitle}</p>
@@ -608,9 +623,122 @@ export function PhotoTaskBoard() {
         </section>
       ) : null}
 
-      {dueTasks.length === 0 && lockedWave.length === 0 ? (
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight text-app-primary">{t.photoCheck.todayTitle}</h2>
+        {boardTasks.length ? (
+          <p className="mt-1 text-sm text-app-muted">{t.photoCheck.staffHowTo}</p>
+        ) : null}
+      </div>
+      {dueTasks.length ? (
+        <div className="sticky top-0 z-20 rounded-2xl border border-gray-200 bg-white/95 px-4 py-2.5 shadow-sm backdrop-blur-sm dark:border-ios-dark-separator dark:bg-ios-dark-elevated/95">
+          <p className="text-sm font-semibold text-app-primary">
+            {interpolate(t.photoCheck.remainingBar, { left: dueTasks.length, kitchen: kitchenLeft })}
+          </p>
+        </div>
+      ) : null}
+      {error ? (
+        <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 dark:border-red-500/40 dark:bg-red-950/50 dark:text-red-200">
+          {error}
+        </p>
+      ) : null}
+      {result ? (
+        <p className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900 dark:border-emerald-400/50 dark:bg-emerald-500/20 dark:text-emerald-100">
+          {t.photoCheck.sentToQc}
+        </p>
+      ) : null}
+
+      {groupedBoard.length ? (
+        <div className="space-y-4">
+          {groupedBoard.map((group) => (
+            <section key={group.id}>
+              <h3 className="sticky top-12 z-10 mb-2 rounded-xl bg-white/90 px-2 py-1.5 text-sm font-bold uppercase tracking-wide text-app-secondary backdrop-blur-sm dark:bg-[#1C1C1E]/90">
+                {sectionTitle(group.id, t)}
+              </h3>
+              <ul className="grid grid-cols-2 gap-2">
+                {group.tasks.map((row) => {
+                  const title = locale === 'ar' ? row.type.titleAr : row.type.titleEn;
+                  const label = locale === 'ar' ? row.schedule.slotLabelAr : row.schedule.slotLabelEn;
+                  const claimed = isClaimedUnavailable(row);
+                  return (
+                    <li key={row.id} id={`photo-task-${row.id}`}>
+                      {claimed ? (
+                        <div
+                          className={`relative overflow-hidden rounded-2xl bg-ios-blue${
+                            highlightId === row.id ? ' photo-task-highlight' : ''
+                          }`}
+                        >
+                          <div className="flex min-h-16 items-start gap-2 px-3 py-3 text-start text-white">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold leading-snug">{title}</p>
+                              <p className="mt-0.5 text-[11px] font-medium text-white/85">{label}</p>
+                            </div>
+                            <PhotoCameraIcon />
+                          </div>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 px-2 text-center text-white">
+                            <p className="text-xs font-bold leading-tight">{t.photoCheck.alreadySubmitted}</p>
+                            {row.submittedByName ? (
+                              <p className="mt-0.5 text-[11px] font-medium text-white/90">
+                                {interpolate(t.photoCheck.submittedBy, { name: row.submittedByName })}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`flex min-h-16 w-full items-start gap-2 rounded-2xl bg-ios-blue px-3 py-3 text-start text-white touch-manipulation active:opacity-90${
+                            highlightId === row.id ? ' photo-task-highlight' : ''
+                          }`}
+                          onClick={() => openTask(row)}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold leading-snug">{title}</p>
+                            <p className="mt-0.5 text-[11px] font-medium text-white/85">{label}</p>
+                          </div>
+                          <PhotoCameraIcon />
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
+      ) : null}
+
+      {boardTasks.length === 0 && lockedWave.length === 0 ? (
         <p className="text-base text-app-muted">{t.photoCheck.noTasksToday}</p>
       ) : null}
     </div>
   );
 }
+
+function sectionTitle(
+  id: PhotoBoardSectionId,
+  t: { photoCheck: { sectionKitchen: string; sectionBranch: string; sectionMachines: string } }
+): string {
+  if (id === 'kitchen') return t.photoCheck.sectionKitchen;
+  if (id === 'machines') return t.photoCheck.sectionMachines;
+  return t.photoCheck.sectionBranch;
+}
+
+function PhotoCameraIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="mt-0.5 h-5 w-5 shrink-0 text-white"
+      aria-hidden
+    >
+      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+      <circle cx="12" cy="13" r="3" />
+    </svg>
+  );
+}
+
