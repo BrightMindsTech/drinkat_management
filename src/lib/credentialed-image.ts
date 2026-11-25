@@ -1,4 +1,4 @@
-import { canonicalUploadPath } from '@/lib/upload-signed-url';
+import { canonicalUploadPath } from '@/lib/upload-path';
 
 const blobByKey = new Map<string, string>();
 const inflight = new Map<string, Promise<string | null>>();
@@ -11,6 +11,15 @@ function isLocalPreview(src: string): boolean {
   return src.startsWith('blob:') || src.startsWith('data:');
 }
 
+async function tryFetchImage(src: string, cache: RequestCache): Promise<string | null> {
+  const res = await fetch(src, { credentials: 'include', cache });
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  const type = (blob.type || '').toLowerCase();
+  if (type && !type.startsWith('image/') && type !== 'application/octet-stream') return null;
+  return URL.createObjectURL(blob);
+}
+
 async function fetchAsObjectUrl(src: string): Promise<string | null> {
   const key = cacheKey(src);
   const hit = blobByKey.get(key);
@@ -19,12 +28,10 @@ async function fetchAsObjectUrl(src: string): Promise<string | null> {
   if (pending) return pending;
   const run = (async () => {
     try {
-      const res = await fetch(src, { credentials: 'include', cache: 'force-cache' });
-      if (!res.ok) return null;
-      const blob = await res.blob();
-      const type = (blob.type || '').toLowerCase();
-      if (type && !type.startsWith('image/') && type !== 'application/octet-stream') return null;
-      const url = URL.createObjectURL(blob);
+      // Never HTTP-cache 401 JSON — Safari/WKWebView will reuse it and photos stay blank.
+      let url = await tryFetchImage(src, 'no-store');
+      if (!url) url = await tryFetchImage(src, 'reload');
+      if (!url) return null;
       blobByKey.set(key, url);
       return url;
     } catch {

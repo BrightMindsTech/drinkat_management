@@ -1,3 +1,5 @@
+import { canonicalUploadPath } from '@/lib/upload-path';
+
 export const CUSTOMER_COMPLAINT_KIND = 'customer_complaint';
 export const CUSTOMER_COMPLAINT_VERSION = 2;
 export const COMPLAINT_SLOT_NOTE_MAX = 2000;
@@ -31,9 +33,10 @@ function trimField(v: unknown, max: number): string {
     .slice(0, max);
 }
 
-function normalizeSlot(raw: unknown): ComplaintSlot {
+function normalizeSlot(raw: unknown, keepSignature: boolean): ComplaintSlot {
   const rec = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-  const photo = trimField(rec.photoUrl, 2000).split('#')[0]?.split('?')[0] ?? '';
+  const full = trimField(rec.photoUrl, 2000).split('#')[0] ?? '';
+  const photo = keepSignature ? full : canonicalUploadPath(full);
   return {
     note: trimField(rec.note, COMPLAINT_SLOT_NOTE_MAX),
     photoUrl: photo.length > 3 ? photo : null,
@@ -44,9 +47,9 @@ function slotHasContent(slot: ComplaintSlot): boolean {
   return Boolean(slot.note || slot.photoUrl);
 }
 
-function normalizeSlots(raw: unknown): ComplaintSlot[] {
+function normalizeSlots(raw: unknown, keepSignature: boolean): ComplaintSlot[] {
   const arr = Array.isArray(raw) ? raw : [];
-  const slots = arr.slice(0, COMPLAINT_SLOTS_MAX).map(normalizeSlot);
+  const slots = arr.slice(0, COMPLAINT_SLOTS_MAX).map((row) => normalizeSlot(row, keepSignature));
   while (slots.length && !slotHasContent(slots[slots.length - 1]!)) slots.pop();
   return slots;
 }
@@ -98,12 +101,14 @@ export function encodeComplaintPayload(input: {
   photoUrls?: unknown;
   photoNotes?: Record<string, string>;
 }): CustomerComplaintPayload {
-  let talabat = normalizeSlots(input.talabat);
-  const careem = normalizeSlots(input.careem);
+  let talabat = normalizeSlots(input.talabat, false);
+  const careem = normalizeSlots(input.careem, false);
   const additionalNotes = trimField(input.additionalNotes ?? input.description, COMPLAINT_ADDITIONAL_MAX);
 
   const legacyPhotos = Array.isArray(input.photoUrls)
-    ? input.photoUrls.map((item) => String(item ?? '').trim()).filter((s) => s.length > 3)
+    ? input.photoUrls
+        .map((item) => canonicalUploadPath(String(item ?? '').trim()) || String(item ?? '').trim())
+        .filter((s) => s.length > 3)
     : [];
   if (legacyPhotos.length && !talabat.some((s) => s.photoUrl) && !careem.some((s) => s.photoUrl)) {
     const needed = Math.min(COMPLAINT_SLOTS_MAX, Math.max(talabat.length, legacyPhotos.length));
@@ -131,6 +136,14 @@ export function encodeComplaintPayload(input: {
   };
 }
 
+function overlaySignedPhotos(stored: ComplaintSlot[], signed: ComplaintSlot[]): ComplaintSlot[] {
+  return stored.map((slot, i) => {
+    const src = signed[i]?.photoUrl;
+    if (src && src.includes('?u=')) return { ...slot, photoUrl: src };
+    return slot;
+  });
+}
+
 export function parseComplaintPayload(raw: string | null | undefined): CustomerComplaintPayload | null {
   if (!raw) return null;
   try {
@@ -139,7 +152,20 @@ export function parseComplaintPayload(raw: string | null | undefined): CustomerC
     const rec = v as Record<string, unknown>;
     if (rec.kind !== CUSTOMER_COMPLAINT_KIND) return null;
     const payload = encodeComplaintPayload(rec);
-    return complaintHasContent(payload) ? payload : null;
+    if (!complaintHasContent(payload)) return null;
+    let talabat = overlaySignedPhotos(payload.talabat, normalizeSlots(rec.talabat, true));
+    const careem = overlaySignedPhotos(payload.careem, normalizeSlots(rec.careem, true));
+    if (Array.isArray(rec.photoUrls)) {
+      const signedLegacy = rec.photoUrls
+        .map((item) => String(item ?? '').trim().split('#')[0] ?? '')
+        .filter((s) => s.includes('?u='));
+      if (signedLegacy.length) {
+        talabat = talabat.map((slot, i) =>
+          signedLegacy[i] ? { ...slot, photoUrl: signedLegacy[i]! } : slot
+        );
+      }
+    }
+    return { ...payload, talabat, careem };
   } catch {
     return null;
   }

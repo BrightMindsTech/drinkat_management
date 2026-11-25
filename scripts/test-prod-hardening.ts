@@ -219,6 +219,11 @@ assert.equal(verifyUploadSignature('abc.jpg', String(Math.floor(Date.now() / 100
 assert.match(fs.readFileSync(path.join(root, 'src/lib/upload-signed-url.ts'), 'utf8'), /uploadHmacSecret/);
 assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/upload-signed-url.ts'), 'utf8'), /from '@\/lib\/auth'/);
 assert.match(fs.readFileSync(path.join(root, 'src/lib/credentialed-image.ts'), 'utf8'), /credentials: 'include'/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/credentialed-image.ts'), 'utf8'), /tryFetchImage\(src, 'no-store'\)/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/credentialed-image.ts'), 'utf8'), /from '@\/lib\/upload-path'/);
+assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/lib/credentialed-image.ts'), 'utf8'), /from '@\/lib\/upload-signed-url'/);
+assert.match(uploadGet, /Cache-Control': NO_STORE/);
+assert.match(fs.readFileSync(path.join(root, 'src/lib/qc-branch-inspection.ts'), 'utf8'), /preferSignedUploadUrl/);
 assert.match(viewerSrc, /loadCredentialedImage/);
 assert.match(uploadGet, /verifyUploadSignatureFromSearch/);
 assert.match(uploadGet, /userHasQcReviewerScope/);

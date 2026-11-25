@@ -75,10 +75,13 @@ import {
   BRANCH_INSPECTION_SECTIONS,
   countInspectionResults,
   encodeInspectionPayload,
+  inspectionPhotoNote,
   parseInspectionPayload,
   parseQcReportPhotos,
   validateInspectionAnswers,
 } from '../src/lib/qc-branch-inspection';
+import { canonicalUploadPath } from '../src/lib/upload-path';
+import { signUploadUrlsInJsonString } from '../src/lib/upload-signed-url';
 import {
   WAREHOUSE_INSPECTION_ITEM_IDS,
   WAREHOUSE_INSPECTION_KIND,
@@ -1054,6 +1057,32 @@ if (checked.ok) {
     assert.equal(round?.answers.a1?.photoNotes['/uploads/x.jpg'], 'hood dirty');
   }
 }
+{
+  const signed = '/api/uploads/x.jpg?u=1770000000.sig';
+  const rawAnswers = Object.fromEntries(
+    BRANCH_INSPECTION_ITEM_IDS.map((id) => [
+      id,
+      id === 'a1'
+        ? {
+            result: 'fail',
+            photoUrl: signed,
+            photoUrls: [signed],
+            photoNotes: { '/api/uploads/x.jpg': 'hood dirty' },
+          }
+        : { result: 'pass', photoUrl: null, photoUrls: [] },
+    ])
+  );
+  const parsed = parseInspectionPayload(
+    JSON.stringify({ kind: BRANCH_INSPECTION_KIND, v: 1, answers: rawAnswers, notes: '' })
+  );
+  assert.equal(parsed?.answers.a1?.photoUrls[0], signed);
+  assert.equal(inspectionPhotoNote(parsed?.answers.a1, signed), 'hood dirty');
+  const stored = encodeInspectionPayload(parsed!.answers, '');
+  assert.deepEqual(stored.answers.a1?.photoUrls, ['/api/uploads/x.jpg']);
+  const viewed = parseInspectionPayload(signUploadUrlsInJsonString(JSON.stringify(stored)));
+  assert.ok(viewed?.answers.a1?.photoUrls[0]?.includes('?u='));
+  assert.equal(canonicalUploadPath(viewed!.answers.a1!.photoUrls[0]!), '/api/uploads/x.jpg');
+}
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcBranchInspectionForm.tsx'), 'utf8'), /qcInspectPhotoReason/);
 assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcFieldReportsPanel.tsx'), 'utf8'), /inspectionPhotoNote/);
 assert.deepEqual(parseQcReportPhotos(JSON.stringify(['/a.jpg', '/b.jpg'])), ['/a.jpg', '/b.jpg']);
@@ -1185,6 +1214,16 @@ assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.
   );
   assert.equal(legacy?.additionalNotes, 'old note');
   assert.equal(legacy?.talabat[0]?.photoUrl, '/uploads/c.jpg');
+  const signedComplaint = parseComplaintPayload(
+    JSON.stringify({
+      kind: CUSTOMER_COMPLAINT_KIND,
+      v: 2,
+      talabat: [{ note: 'late', photoUrl: '/api/uploads/t.jpg?u=1.sig' }],
+      careem: [],
+      additionalNotes: 'x',
+    })
+  );
+  assert.ok(signedComplaint?.talabat[0]?.photoUrl?.includes('?u='));
   const many = encodeComplaintPayload({
     talabat: [
       { note: 'one' },

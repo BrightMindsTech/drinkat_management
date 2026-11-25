@@ -174,7 +174,9 @@ async function postNote(userId: string, body: unknown) {
       },
     });
   });
-  return Response.json({ item });
+  return Response.json({
+    item: { ...item, photosJson: signUploadUrlsInJsonString(item.photosJson) },
+  });
 }
 
 async function postInspection(userId: string, body: unknown) {
@@ -238,7 +240,9 @@ async function postInspection(userId: string, body: unknown) {
       },
     });
   });
-  return Response.json({ item });
+  return Response.json({
+    item: { ...item, photosJson: signUploadUrlsInJsonString(item.photosJson) },
+  });
 }
 
 async function postComplaint(userId: string, body: unknown) {
@@ -284,5 +288,7 @@ async function postComplaint(userId: string, body: unknown) {
       },
     });
   });
-  return Response.json({ item });
+  return Response.json({
+    item: { ...item, photosJson: signUploadUrlsInJsonString(item.photosJson) },
+  });
 }

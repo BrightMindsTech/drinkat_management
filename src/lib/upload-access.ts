@@ -103,7 +103,7 @@ export async function actorCanReadUpload(
     select: { id: true },
   });
   if (fieldReport) {
-    if (role === 'manager') return true;
+    if (role === 'manager' || role === 'assistant_manager') return true;
     const flags = await prisma.user.findUnique({
       where: { id: opts.userId },
       select: { qcReportsInbox: true, hrKpiReviewer: true },

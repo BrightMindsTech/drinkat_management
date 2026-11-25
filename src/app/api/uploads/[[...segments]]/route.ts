@@ -13,6 +13,14 @@ import { verifyUploadSignatureFromSearch } from '@/lib/upload-signed-url';
 import { userHasQcReviewerScope } from '@/lib/qc-reviewer';
 
 const PRIVATE_CACHE = 'private, max-age=86400, immutable';
+const NO_STORE = 'private, no-store';
+
+function denyUpload(status: number, message: string): Response {
+  return Response.json(
+    { error: message },
+    { status, headers: { 'Cache-Control': NO_STORE } }
+  );
+}
 
 async function serveObject(key: string): Promise<Response> {
   try {
@@ -64,7 +72,7 @@ export const GET = withApiErrors(async function GET(
   }
 
   const session = await getServerSession(authOptions);
-  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!session) return denyUpload(401, 'Unauthorized');
 
   const role = normalizeUserRole(session.user.role);
   if (role === 'owner' || role === 'qc' || (await userHasQcReviewerScope(prisma, session))) {
@@ -81,7 +89,7 @@ export const GET = withApiErrors(async function GET(
     role,
     employee: user?.employee ? { id: user.employee.id, branchId: user.employee.branchId } : null,
   });
-  if (!allowed) return Response.json({ error: 'Forbidden' }, { status: 403 });
+  if (!allowed) return denyUpload(403, 'Forbidden');
 
   return serveObject(key);
 });

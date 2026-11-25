@@ -1,5 +1,8 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { uploadKeyFromPath } from '@/lib/ai-images';
+import { canonicalUploadPath } from '@/lib/upload-path';
+
+export { canonicalUploadPath } from '@/lib/upload-path';
 
 /** Keep HMAC off `auth.ts` so image GETs do not boot Prisma. */
 function uploadHmacSecret(): string {
@@ -18,10 +21,6 @@ function safeEqual(a: string, b: string): boolean {
   const right = Buffer.from(b);
   if (left.length !== right.length) return false;
   return timingSafeEqual(left, right);
-}
-
-export function canonicalUploadPath(filePath: string): string {
-  return String(filePath ?? '').trim().split('#')[0]?.split('?')[0] ?? '';
 }
 
 export function signStoredUploadPath(filePath: string, ttlSec = UPLOAD_SIGN_TTL_SEC): string {

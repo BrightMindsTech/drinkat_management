@@ -1,4 +1,5 @@
 import {
+  canonicalizeInspectionAnswers,
   countInspectionResultsFor,
   parseStoredInspectionAnswersFor,
   validateInspectionAnswersFor,
@@ -112,7 +113,7 @@ export function encodeWarehouseInspectionPayload(
   return {
     kind: WAREHOUSE_INSPECTION_KIND,
     v: WAREHOUSE_INSPECTION_VERSION,
-    answers,
+    answers: canonicalizeInspectionAnswers(answers),
     notes: notes.trim(),
   };
 }

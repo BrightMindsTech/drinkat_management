@@ -1,3 +1,5 @@
+import { canonicalUploadPath, preferSignedUploadUrl } from '@/lib/upload-path';
+
 export const BRANCH_INSPECTION_KIND = 'branch_inspection';
 export const BRANCH_INSPECTION_VERSION = 1;
 /** High enough for a real visit; still bounds upload/API size. */
@@ -104,17 +106,21 @@ function isPhotoUrl(v: unknown): v is string {
 }
 
 export function normalizeInspectionPhotoUrls(row: { photoUrl?: unknown; photoUrls?: unknown } | null | undefined): string[] {
-  const out: string[] = [];
+  const byKey = new Map<string, string>();
+  const order: string[] = [];
   const add = (v: unknown) => {
     if (!isPhotoUrl(v)) return;
-    const url = v.trim().split('#')[0]?.split('?')[0] ?? v.trim();
-    if (!out.includes(url)) out.push(url);
+    const raw = v.trim().split('#')[0] ?? v.trim();
+    const key = canonicalUploadPath(raw) || raw;
+    if (!key) return;
+    if (!byKey.has(key)) order.push(key);
+    byKey.set(key, preferSignedUploadUrl(byKey.get(key), raw));
   };
   if (Array.isArray(row?.photoUrls)) {
     for (const item of row.photoUrls) add(item);
   }
   add(row?.photoUrl);
-  return out.slice(0, INSPECTION_PHOTOS_PER_ITEM_MAX);
+  return order.map((key) => byKey.get(key)!).slice(0, INSPECTION_PHOTOS_PER_ITEM_MAX);
 }
 
 export function inspectionAnswerPhotos(answer: InspectionAnswer | null | undefined): string[] {
@@ -126,22 +132,30 @@ export function normalizeInspectionPhotoNotes(
   row: { photoNotes?: unknown } | null | undefined,
   photoUrls: string[]
 ): Record<string, string> {
-  const allowed = new Set(photoUrls);
+  const urlByKey = new Map(photoUrls.map((url) => [canonicalUploadPath(url) || url, url]));
   const out: Record<string, string> = {};
   const raw = row?.photoNotes;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
   for (const [url, note] of Object.entries(raw as Record<string, unknown>)) {
-    if (!allowed.has(url)) continue;
+    const match = urlByKey.get(canonicalUploadPath(url) || url);
+    if (!match) continue;
     if (typeof note !== 'string') continue;
     const trimmed = note.trim().slice(0, INSPECTION_PHOTO_NOTE_MAX);
-    if (trimmed) out[url] = trimmed;
+    if (trimmed) out[match] = trimmed;
   }
   return out;
 }
 
 export function inspectionPhotoNote(answer: InspectionAnswer | null | undefined, url: string): string {
-  const note = answer?.photoNotes?.[url];
-  return typeof note === 'string' ? note : '';
+  const notes = answer?.photoNotes;
+  if (!notes) return '';
+  const exact = notes[url];
+  if (typeof exact === 'string') return exact;
+  const want = canonicalUploadPath(url) || url;
+  for (const [k, note] of Object.entries(notes)) {
+    if ((canonicalUploadPath(k) || k) === want && typeof note === 'string') return note;
+  }
+  return '';
 }
 
 export type BranchInspectionPayload = {
@@ -217,8 +231,26 @@ export function inspectionComments(pass: number, fail: number, notes: string): s
   return extra ? `${head}\n${extra}` : head;
 }
 
+export function canonicalizeInspectionAnswers(answers: InspectionAnswers): InspectionAnswers {
+  const out: InspectionAnswers = {};
+  for (const [id, row] of Object.entries(answers)) {
+    const photoUrls = normalizeInspectionPhotoUrls({
+      photoUrls: row.photoUrls.map((u) => canonicalUploadPath(u) || u),
+      photoUrl: row.photoUrl ? canonicalUploadPath(row.photoUrl) : null,
+    });
+    const photoNotes = normalizeInspectionPhotoNotes({ photoNotes: row.photoNotes }, photoUrls);
+    out[id] = { result: row.result, photoUrl: photoUrls[0] ?? null, photoUrls, photoNotes };
+  }
+  return out;
+}
+
 export function encodeInspectionPayload(answers: InspectionAnswers, notes: string): BranchInspectionPayload {
-  return { kind: BRANCH_INSPECTION_KIND, v: BRANCH_INSPECTION_VERSION, answers, notes: notes.trim() };
+  return {
+    kind: BRANCH_INSPECTION_KIND,
+    v: BRANCH_INSPECTION_VERSION,
+    answers: canonicalizeInspectionAnswers(answers),
+    notes: notes.trim(),
+  };
 }
 
 export function parseStoredInspectionAnswersFor(itemIds: readonly string[], raw: unknown): InspectionAnswers | null {
