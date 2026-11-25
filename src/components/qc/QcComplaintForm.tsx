@@ -14,6 +14,7 @@ import {
   encodeComplaintPayload,
   type ComplaintSlot,
 } from '@/lib/qc-complaints';
+import type { QcTemplateChannel } from '@/lib/qc-form-templates';
 import { QcNotifyPicker, defaultNotifyTargets, notifyOptionLabel, type QcNotifyOption } from '@/components/qc/QcNotifyPicker';
 import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 
@@ -30,6 +31,7 @@ export function QcComplaintForm({
   reporterName,
   onCancel,
   onSubmitted,
+  channelsOverride,
 }: {
   branches: Branch[];
   notifyOptions: QcNotifyOption[];
@@ -37,12 +39,17 @@ export function QcComplaintForm({
   reporterName?: string;
   onCancel: () => void;
   onSubmitted: () => Promise<void> | void;
+  channelsOverride?: QcTemplateChannel[];
 }) {
   const { t, locale } = useLanguage();
+  const channels = channelsOverride?.length ? channelsOverride : [...COMPLAINT_CHANNELS];
   const [branchId, setBranchId] = useState(initialBranchId || branches[0]?.id || '');
   const [notifyTo, setNotifyTo] = useState<string[]>(() => defaultNotifyTargets(notifyOptions));
-  const [talabat, setTalabat] = useState<ComplaintSlot[]>(() => emptySlots(COMPLAINT_CHANNELS[0].startSlots));
-  const [careem, setCareem] = useState<ComplaintSlot[]>(() => emptySlots(COMPLAINT_CHANNELS[1].startSlots));
+  const [slotsById, setSlotsById] = useState<Record<string, ComplaintSlot[]>>(() => {
+    const out: Record<string, ComplaintSlot[]> = {};
+    for (const ch of channels) out[ch.id] = emptySlots(ch.startSlots);
+    return out;
+  });
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -53,7 +60,34 @@ export function QcComplaintForm({
     setNotifyTo((cur) => (cur.length === 1 && cur[0] === 'all' ? next : cur));
   }, [notifyOptions]);
 
-  const ready = complaintHasContent(encodeComplaintPayload({ talabat, careem, additionalNotes }));
+  const channelKey = channels.map((c) => c.id).join(',');
+  useEffect(() => {
+    setSlotsById((cur) => {
+      const next = { ...cur };
+      for (const ch of channels) {
+        if (!next[ch.id]) next[ch.id] = emptySlots(ch.startSlots);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- channels listed via channelKey
+  }, [channelKey]);
+
+  const extraChannels = channels
+    .filter((ch) => ch.id !== 'talabat' && ch.id !== 'careem')
+    .map((ch) => ({
+      id: ch.id,
+      titleEn: ch.titleEn,
+      titleAr: ch.titleAr,
+      slots: slotsById[ch.id] ?? emptySlots(ch.startSlots),
+    }));
+  const ready = complaintHasContent(
+    encodeComplaintPayload({
+      talabat: slotsById.talabat ?? [],
+      careem: slotsById.careem ?? [],
+      extraChannels,
+      additionalNotes,
+    })
+  );
   const sentTo = notifyTo
     .map((value) => {
       const opt = notifyOptions.find((o) => o.value === value);
@@ -61,17 +95,24 @@ export function QcComplaintForm({
     })
     .join(', ');
 
-  function setSlot(channel: 'talabat' | 'careem', index: number, patch: Partial<ComplaintSlot>) {
-    const setter = channel === 'talabat' ? setTalabat : setCareem;
-    setter((cur) => cur.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  function setSlot(channel: string, index: number, patch: Partial<ComplaintSlot>) {
+    setSlotsById((cur) => {
+      const rows = cur[channel] ?? [];
+      return { ...cur, [channel]: rows.map((row, i) => (i === index ? { ...row, ...patch } : row)) };
+    });
   }
 
-  function addSlot(channel: 'talabat' | 'careem') {
-    const setter = channel === 'talabat' ? setTalabat : setCareem;
-    setter((cur) => (cur.length >= COMPLAINT_SLOTS_MAX ? cur : [...cur, { note: '', photoUrl: null }]));
+  function addSlot(channel: string) {
+    setSlotsById((cur) => {
+      const rows = cur[channel] ?? [];
+      return {
+        ...cur,
+        [channel]: rows.length >= COMPLAINT_SLOTS_MAX ? rows : [...rows, { note: '', photoUrl: null }],
+      };
+    });
   }
 
-  async function attachPhoto(channel: 'talabat' | 'careem', index: number, files: File[]) {
+  async function attachPhoto(channel: string, index: number, files: File[]) {
     const file = files[0];
     if (!file || busy) return;
     setBusy(`${channel}-${index}`);
@@ -114,8 +155,9 @@ export function QcComplaintForm({
           kind: CUSTOMER_COMPLAINT_KIND,
           branchId,
           notifyTo,
-          talabat,
-          careem,
+          talabat: slotsById.talabat ?? [],
+          careem: slotsById.careem ?? [],
+          extraChannels,
           additionalNotes,
         }),
       });
@@ -132,7 +174,7 @@ export function QcComplaintForm({
     }
   }
 
-  function renderSlots(channel: 'talabat' | 'careem', rows: ComplaintSlot[]) {
+  function renderSlots(channel: string, rows: ComplaintSlot[]) {
     return rows.map((slot, i) => {
       const busyKey = `${channel}-${i}`;
       return (
@@ -259,13 +301,13 @@ export function QcComplaintForm({
         </div>
       </div>
 
-      {COMPLAINT_CHANNELS.map((channel) => {
-        const rows = channel.id === 'talabat' ? talabat : careem;
+      {channels.map((channel, idx) => {
+        const rows = slotsById[channel.id] ?? emptySlots(channel.startSlots);
         return (
           <section key={channel.id} className="overflow-hidden rounded-2xl border border-gray-200 dark:border-ios-dark-separator">
             <header className="bg-teal-500 px-4 py-2.5 text-white">
               <p className="text-sm font-bold uppercase tracking-wide">
-                {channel.id === 'talabat' ? '1' : '2'}. {locale === 'ar' ? channel.titleAr : channel.titleEn}
+                {idx + 1}. {locale === 'ar' ? channel.titleAr : channel.titleEn}
               </p>
             </header>
             {renderSlots(channel.id, rows)}

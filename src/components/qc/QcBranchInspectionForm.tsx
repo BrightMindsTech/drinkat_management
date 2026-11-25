@@ -5,7 +5,6 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { formatAppDateTime } from '@/lib/format-datetime';
 import { openNativeImageSourcePick } from '@/lib/open-camera-file';
 import {
-  BRANCH_INSPECTION_ITEM_IDS,
   BRANCH_INSPECTION_KIND,
   BRANCH_INSPECTION_SECTIONS,
   INSPECTION_PHOTO_NOTE_MAX,
@@ -13,11 +12,11 @@ import {
   type InspectionResult,
 } from '@/lib/qc-branch-inspection';
 import {
-  WAREHOUSE_INSPECTION_ITEM_IDS,
   WAREHOUSE_INSPECTION_KIND,
   WAREHOUSE_INSPECTION_SECTIONS,
   warehouseInspectionBranches,
 } from '@/lib/qc-warehouse-inspection';
+import type { QcTemplateSection } from '@/lib/qc-form-templates';
 import { QcNotifyPicker, defaultNotifyTargets, type QcNotifyOption } from '@/components/qc/QcNotifyPicker';
 import { OpenUploadPhoto } from '@/components/UploadPhotoViewer';
 
@@ -41,6 +40,7 @@ type InspectionFormProps = {
   onCancel: () => void;
   onSubmitted: () => Promise<void> | void;
   variant?: 'branch' | 'warehouse';
+  sectionsOverride?: QcTemplateSection[];
 };
 
 export function QcBranchInspectionForm({
@@ -50,11 +50,18 @@ export function QcBranchInspectionForm({
   onCancel,
   onSubmitted,
   variant = 'branch',
+  sectionsOverride,
 }: InspectionFormProps) {
   const { t, locale } = useLanguage();
   const warehouseOnly = variant === 'warehouse';
-  const itemIds = warehouseOnly ? WAREHOUSE_INSPECTION_ITEM_IDS : BRANCH_INSPECTION_ITEM_IDS;
-  const sections = warehouseOnly ? WAREHOUSE_INSPECTION_SECTIONS : BRANCH_INSPECTION_SECTIONS;
+  const sections =
+    sectionsOverride?.length
+      ? sectionsOverride
+      : warehouseOnly
+        ? WAREHOUSE_INSPECTION_SECTIONS
+        : BRANCH_INSPECTION_SECTIONS;
+  const itemIds = sections.flatMap((s) => s.items.map((i) => i.id));
+  const itemIdsKey = itemIds.join(',');
   const kind = warehouseOnly ? WAREHOUSE_INSPECTION_KIND : BRANCH_INSPECTION_KIND;
   const branchChoices = warehouseOnly ? warehouseInspectionBranches(branches) : branches;
   const [branchId, setBranchId] = useState(
@@ -74,6 +81,18 @@ export function QcBranchInspectionForm({
     const next = defaultNotifyTargets(notifyOptions);
     setNotifyTo((cur) => (cur.length === 1 && cur[0] === 'all' ? next : cur));
   }, [notifyOptions]);
+
+  useEffect(() => {
+    const ids = itemIdsKey.split(',').filter(Boolean);
+    setDrafts((cur) => {
+      const next = emptyDrafts(ids.length ? ids : itemIds);
+      for (const id of Object.keys(next)) {
+        if (cur[id]) next[id] = cur[id]!;
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- itemIds listed via itemIdsKey
+  }, [itemIdsKey]);
 
   const answered = itemIds.every((id) => drafts[id]?.result);
   const uploading = busy !== null && busy !== 'submit';

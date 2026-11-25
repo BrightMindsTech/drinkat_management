@@ -132,6 +132,14 @@ export async function requirePhotoArchiveViewer() {
   return session;
 }
 
+/** Owner or QC login role. Permanent QC form template edits. Not payroll. */
+export async function requireQcFormTemplateEditor() {
+  const session = await requireSession();
+  const r = normalizeUserRole(session.user.role);
+  if (r === 'owner' || r === 'qc') return session;
+  deny(403, 'Forbidden');
+}
+
 /** Owner, manager, or a user flagged qcReportsInbox. Does not unlock payroll. */
 export async function requireQcReportsInbox() {
   const session = await requireSession();

@@ -346,6 +346,7 @@ export const API_ROUTE_POLICIES: Record<string, RouteAccess> = {
   'photo-ops/admins': 'owner',
   'photo-ops/schedules': 'session',
   'qc-reports': 'session',
+  'qc-reports/templates': 'session',
   notes: 'session',
   'hr-notes': 'session',
   'trusted-device': 'session',

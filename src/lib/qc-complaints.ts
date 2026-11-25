@@ -18,11 +18,19 @@ export type ComplaintSlot = {
   photoUrl: string | null;
 };
 
+export type ComplaintExtraChannel = {
+  id: string;
+  titleEn: string;
+  titleAr: string;
+  slots: ComplaintSlot[];
+};
+
 export type CustomerComplaintPayload = {
   kind: typeof CUSTOMER_COMPLAINT_KIND;
   v: number;
   talabat: ComplaintSlot[];
   careem: ComplaintSlot[];
+  extraChannels: ComplaintExtraChannel[];
   additionalNotes: string;
   description: string;
 };
@@ -54,22 +62,55 @@ function normalizeSlots(raw: unknown, keepSignature: boolean): ComplaintSlot[] {
   return slots;
 }
 
+function extraSlots(payload: CustomerComplaintPayload): ComplaintSlot[] {
+  return (payload.extraChannels ?? []).flatMap((ch) => ch.slots);
+}
+
 export function listComplaintPhotos(payload: CustomerComplaintPayload): string[] {
   const out: string[] = [];
-  for (const slot of [...payload.talabat, ...payload.careem]) {
+  for (const slot of [...payload.talabat, ...payload.careem, ...extraSlots(payload)]) {
     if (slot.photoUrl && !out.includes(slot.photoUrl)) out.push(slot.photoUrl);
   }
   return out;
 }
 
-export function complaintFilledSlots(payload: CustomerComplaintPayload): { channel: ComplaintChannelId; n: number; slot: ComplaintSlot }[] {
-  const out: { channel: ComplaintChannelId; n: number; slot: ComplaintSlot }[] = [];
+export function complaintFilledSlots(payload: CustomerComplaintPayload): { channel: string; n: number; slot: ComplaintSlot }[] {
+  const out: { channel: string; n: number; slot: ComplaintSlot }[] = [];
   payload.talabat.forEach((slot, i) => {
     if (slotHasContent(slot)) out.push({ channel: 'talabat', n: i + 1, slot });
   });
   payload.careem.forEach((slot, i) => {
     if (slotHasContent(slot)) out.push({ channel: 'careem', n: i + 1, slot });
   });
+  for (const ch of payload.extraChannels ?? []) {
+    ch.slots.forEach((slot, i) => {
+      if (slotHasContent(slot)) out.push({ channel: ch.id, n: i + 1, slot });
+    });
+  }
+  return out;
+}
+
+export function complaintDisplayBlocks(payload: CustomerComplaintPayload): {
+  id: string;
+  titleEn: string;
+  titleAr: string;
+  slots: ComplaintSlot[];
+}[] {
+  const builtin = new Map(COMPLAINT_CHANNELS.map((c) => [c.id, c]));
+  const out: { id: string; titleEn: string; titleAr: string; slots: ComplaintSlot[] }[] = [];
+  if (payload.talabat.some(slotHasContent)) {
+    const meta = builtin.get('talabat')!;
+    out.push({ id: 'talabat', titleEn: meta.titleEn, titleAr: meta.titleAr, slots: payload.talabat });
+  }
+  if (payload.careem.some(slotHasContent)) {
+    const meta = builtin.get('careem')!;
+    out.push({ id: 'careem', titleEn: meta.titleEn, titleAr: meta.titleAr, slots: payload.careem });
+  }
+  for (const ch of payload.extraChannels ?? []) {
+    if (ch.slots.some(slotHasContent)) {
+      out.push({ id: ch.id, titleEn: ch.titleEn || ch.id, titleAr: ch.titleAr || ch.id, slots: ch.slots });
+    }
+  }
   return out;
 }
 
@@ -87,9 +128,32 @@ export function complaintSeverity(_payload: CustomerComplaintPayload): 'medium' 
   return 'medium';
 }
 
+function normalizeExtraChannels(raw: unknown, keepSignature: boolean): ComplaintExtraChannel[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ComplaintExtraChannel[] = [];
+  const seen = new Set<string>();
+  for (const row of raw.slice(0, 12)) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const rec = row as Record<string, unknown>;
+    const id = String(rec.id ?? '')
+      .trim()
+      .slice(0, 32);
+    if (!id || seen.has(id) || id === 'talabat' || id === 'careem') continue;
+    seen.add(id);
+    out.push({
+      id,
+      titleEn: trimField(rec.titleEn, 80) || id,
+      titleAr: trimField(rec.titleAr, 80) || id,
+      slots: normalizeSlots(rec.slots, keepSignature),
+    });
+  }
+  return out;
+}
+
 export function encodeComplaintPayload(input: {
   talabat?: unknown;
   careem?: unknown;
+  extraChannels?: unknown;
   additionalNotes?: string;
   description?: string;
   complainantName?: string;
@@ -103,6 +167,7 @@ export function encodeComplaintPayload(input: {
 }): CustomerComplaintPayload {
   let talabat = normalizeSlots(input.talabat, false);
   const careem = normalizeSlots(input.careem, false);
+  const extraChannels = normalizeExtraChannels(input.extraChannels, false);
   const additionalNotes = trimField(input.additionalNotes ?? input.description, COMPLAINT_ADDITIONAL_MAX);
 
   const legacyPhotos = Array.isArray(input.photoUrls)
@@ -123,6 +188,7 @@ export function encodeComplaintPayload(input: {
     v: CUSTOMER_COMPLAINT_VERSION,
     talabat,
     careem,
+    extraChannels,
     additionalNotes,
     description: '',
   });
@@ -131,6 +197,7 @@ export function encodeComplaintPayload(input: {
     v: CUSTOMER_COMPLAINT_VERSION,
     talabat,
     careem,
+    extraChannels,
     additionalNotes,
     description,
   };
@@ -165,7 +232,12 @@ export function parseComplaintPayload(raw: string | null | undefined): CustomerC
         );
       }
     }
-    return { ...payload, talabat, careem };
+    const extraChannels = normalizeExtraChannels(rec.extraChannels, true).map((ch, i) => {
+      const stored = payload.extraChannels[i];
+      if (!stored) return ch;
+      return { ...stored, ...ch, slots: overlaySignedPhotos(stored.slots, ch.slots) };
+    });
+    return { ...payload, talabat, careem, extraChannels: extraChannels.length ? extraChannels : payload.extraChannels };
   } catch {
     return null;
   }

@@ -337,10 +337,17 @@ export function parseQcReportPhotos(raw: string): string[] {
   try {
     const v = JSON.parse(raw) as unknown;
     if (v && typeof v === 'object' && !Array.isArray(v)) {
-      const rec = v as { kind?: unknown; photoUrls?: unknown; talabat?: unknown; careem?: unknown };
+      const rec = v as { kind?: unknown; photoUrls?: unknown; talabat?: unknown; careem?: unknown; extraChannels?: unknown };
       if (rec.kind === 'customer_complaint') {
         const fromSlots: string[] = [];
-        for (const row of [...(Array.isArray(rec.talabat) ? rec.talabat : []), ...(Array.isArray(rec.careem) ? rec.careem : [])]) {
+        const extraSlots = Array.isArray(rec.extraChannels)
+          ? rec.extraChannels.flatMap((ch) =>
+              ch && typeof ch === 'object' && Array.isArray((ch as { slots?: unknown }).slots)
+                ? ((ch as { slots: unknown[] }).slots as unknown[])
+                : []
+            )
+          : [];
+        for (const row of [...(Array.isArray(rec.talabat) ? rec.talabat : []), ...(Array.isArray(rec.careem) ? rec.careem : []), ...extraSlots]) {
           if (!row || typeof row !== 'object') continue;
           const url = String((row as { photoUrl?: unknown }).photoUrl ?? '').trim();
           if (url.length > 3 && !fromSlots.includes(url)) fromSlots.push(url);

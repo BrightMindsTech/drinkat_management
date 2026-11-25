@@ -25,11 +25,15 @@ import {
   parseWarehouseInspectionPayload,
 } from '@/lib/qc-warehouse-inspection';
 import {
-  COMPLAINT_CHANNELS,
-  complaintFilledSlots,
+  complaintDisplayBlocks,
   isCustomerComplaintReport,
   parseComplaintPayload,
 } from '@/lib/qc-complaints';
+import { QcTemplateEditor, type QcLiveTemplates } from '@/components/qc/QcTemplateEditor';
+import {
+  inspectionSectionsForDisplay,
+  type InspectionFormTemplate,
+} from '@/lib/qc-form-templates';
 
 type Report = {
   id: string;
@@ -66,6 +70,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [notifyTo, setNotifyTo] = useState<string[]>(['all']);
   const [notifyOptions, setNotifyOptions] = useState<QcNotifyOption[]>([{ value: 'all', label: 'all' }]);
+  const [templates, setTemplates] = useState<QcLiveTemplates | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch('/api/qc-reports', { credentials: 'include', cache: 'no-store' });
@@ -73,6 +78,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
       items?: Report[];
       branches?: Branch[];
       notifyOptions?: QcNotifyOption[];
+      templates?: QcLiveTemplates;
       error?: string;
     };
     if (!res.ok) {
@@ -88,6 +94,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
       setNotifyOptions(json.notifyOptions);
       setNotifyTo((cur) => (cur.length === 1 && cur[0] === 'all' ? defaultNotifyTargets(json.notifyOptions!) : cur));
     }
+    if (json.templates) setTemplates(json.templates);
     setLoading(false);
   }, [t.qcOps.qcReportsFailed]);
 
@@ -194,6 +201,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
         <QcComplaintForm
           branches={branches}
           notifyOptions={notifyOptions}
+          channelsOverride={templates?.customer_complaint.channels}
           initialBranchId={branchId}
           onCancel={() => {
             setCompose(null);
@@ -215,6 +223,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
         <QcBranchInspectionForm
           branches={branches}
           notifyOptions={notifyOptions}
+          sectionsOverride={templates?.branch_inspection.sections}
           initialBranchId={branchId}
           onCancel={() => {
             setCompose(null);
@@ -236,6 +245,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
         <QcWarehouseInspectionForm
           branches={branches}
           notifyOptions={notifyOptions}
+          sectionsOverride={templates?.warehouse_inspection.sections}
           initialBranchId={branchId}
           onCancel={() => {
             setCompose(null);
@@ -300,6 +310,7 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
           >
             {t.qcOps.qcComplaintNew}
           </button>
+          <QcTemplateEditor templates={templates} onTemplates={setTemplates} />
         </div>
       ) : null}
 
@@ -465,7 +476,16 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
         {visible.map((item) => {
           const warehouse = parseWarehouseInspectionPayload(item.photosJson);
           const inspection = warehouse ?? parseInspectionPayload(item.photosJson);
-          const inspectionSections = warehouse ? WAREHOUSE_INSPECTION_SECTIONS : BRANCH_INSPECTION_SECTIONS;
+          const liveTpl: InspectionFormTemplate | undefined = warehouse
+            ? templates?.warehouse_inspection
+            : templates?.branch_inspection;
+          const inspectionSections = inspection
+            ? liveTpl
+              ? inspectionSectionsForDisplay(liveTpl, inspection.answers)
+              : warehouse
+                ? WAREHOUSE_INSPECTION_SECTIONS
+                : BRANCH_INSPECTION_SECTIONS
+            : [];
           const complaint = parseComplaintPayload(item.photosJson);
           const photosList = parseQcReportPhotos(item.photosJson);
           const author = item.createdBy.employee?.name ?? item.createdBy.email;
@@ -526,34 +546,32 @@ export function QcFieldReportsPanel({ canCreate }: { canCreate: boolean }) {
               </button>
               {open && complaint ? (
                 <div className="space-y-3 px-4 pb-4 text-sm text-app-primary">
-                  {COMPLAINT_CHANNELS.map((channel) => {
-                    const filled = complaintFilledSlots(complaint).filter((row) => row.channel === channel.id);
-                    if (!filled.length) return null;
-                    return (
+                  {complaintDisplayBlocks(complaint).map((channel) => (
                       <div key={channel.id}>
                         <p className="text-xs font-bold uppercase tracking-wide text-teal-700">
                           {locale === 'ar' ? channel.titleAr : channel.titleEn}
                         </p>
                         <ul className="mt-1 space-y-2">
-                          {filled.map((row) => (
-                            <li key={`${channel.id}-${row.n}`} className="flex items-start gap-2">
+                          {channel.slots.map((slot, i) =>
+                            slot.note || slot.photoUrl ? (
+                            <li key={`${channel.id}-${i}`} className="flex items-start gap-2">
                               <span className="flex-1 whitespace-pre-wrap">
-                                {interpolate(t.qcOps.qcComplaintNote, { n: row.n })}
-                                {row.slot.note ? `: ${row.slot.note}` : ''}
+                                {interpolate(t.qcOps.qcComplaintNote, { n: i + 1 })}
+                                {slot.note ? `: ${slot.note}` : ''}
                               </span>
-                              {row.slot.photoUrl ? (
+                              {slot.photoUrl ? (
                                 <OpenUploadPhoto
-                                  src={row.slot.photoUrl}
+                                  src={slot.photoUrl}
                                   gallery={photosList}
                                   className="h-16 w-16 rounded-lg object-cover"
                                 />
                               ) : null}
                             </li>
-                          ))}
+                            ) : null
+                          )}
                         </ul>
                       </div>
-                    );
-                  })}
+                  ))}
                   {complaint.additionalNotes ? (
                     <p>
                       <span className="font-medium text-app-muted">{t.qcOps.qcComplaintAdditional}: </span>

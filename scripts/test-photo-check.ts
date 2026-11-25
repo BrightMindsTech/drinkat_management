@@ -101,6 +101,15 @@ import {
   isCustomerComplaintReport,
   parseComplaintPayload,
 } from '../src/lib/qc-complaints';
+import {
+  addComplaintChannel,
+  addInspectionItem,
+  defaultQcFormTemplate,
+  deleteComplaintChannel,
+  deleteInspectionItem,
+  inspectionItemIds,
+  parseQcFormTemplate,
+} from '../src/lib/qc-form-templates';
 import { employeeEligibleForDefaultPhotoOps } from '../src/lib/photo-eligibility';
 import { formatPhotoCountdown, listUpcomingPhotoWindows, nextPhotoWave } from '../src/lib/photo-upcoming';
 import {
@@ -764,6 +773,8 @@ assert.match(fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8'), /Ahm
 assert.doesNotMatch(reports, /employee: \{ branchId: parsed.data.branchId \}/);
 const reportsUi = fs.readFileSync(path.join(root, 'src/components/qc/QcFieldReportsPanel.tsx'), 'utf8');
 assert.match(reportsUi, /section-qc-reports/);
+assert.match(reportsUi, /QcTemplateEditor/);
+assert.match(fs.readFileSync(path.join(root, 'src/app/api/qc-reports/templates/route.ts'), 'utf8'), /requireQcFormTemplateEditor/);
 assert.match(reportsUi, /formatAppDateTime/);
 assert.match(reportsUi, /qcReportsNew/);
 assert.match(reportsUi, /AppModal/);
@@ -1203,6 +1214,7 @@ assert.match(fs.readFileSync(path.join(root, 'src/components/qc/QcComplaintForm.
   assert.equal(encoded.talabat.length, 1);
   assert.equal(encoded.careem.length, 1);
   assert.equal(encoded.additionalNotes, 'follow up');
+  assert.deepEqual(encoded.extraChannels, []);
   assert.equal(complaintHasContent(encoded), true);
   assert.match(complaintComments(encoded), /late order/);
   const round = parseComplaintPayload(JSON.stringify(encoded));
@@ -1250,5 +1262,48 @@ assert.equal(
   }),
   '/dashboard/qc-reports?report=cmp_1'
 );
+
+{
+  const base = defaultQcFormTemplate(BRANCH_INSPECTION_KIND);
+  if (base.kind !== BRANCH_INSPECTION_KIND) throw new Error('kind');
+  const before = inspectionItemIds(base).length;
+  const added = addInspectionItem(base, { sectionId: 'D', titleEn: 'Ice well', titleAr: 'بئر الثلج' });
+  assert.equal(added.ok, true);
+  if (added.ok) {
+    assert.equal(inspectionItemIds(added.template).length, before + 1);
+    assert.equal(added.template.sections.find((s) => s.id === 'D')?.items.some((i) => i.titleEn === 'Ice well'), true);
+    const iceId = added.template.sections.find((s) => s.id === 'D')?.items.find((i) => i.titleEn === 'Ice well')?.id;
+    assert.ok(iceId);
+    const stored = parseQcFormTemplate(BRANCH_INSPECTION_KIND, JSON.parse(JSON.stringify(added.template)));
+    if (stored.kind !== BRANCH_INSPECTION_KIND) throw new Error('kind');
+    assert.equal(inspectionItemIds(stored).length, before + 1);
+    const gone = deleteInspectionItem(stored, iceId!);
+    assert.equal(gone.ok, true);
+    if (gone.ok) {
+      assert.equal(inspectionItemIds(gone.template).length, before);
+      assert.equal(gone.template.retiredItems[0]?.titleEn, 'Ice well');
+    }
+  }
+  assert.equal(addInspectionItem(base, { sectionId: 'D', titleEn: '', titleAr: 'س' }).ok, false);
+  const one = parseQcFormTemplate(BRANCH_INSPECTION_KIND, { kind: BRANCH_INSPECTION_KIND, sections: [{ id: 'A', titleEn: 'A', titleAr: 'أ', items: [{ id: 'a1', n: 1, titleEn: 'Only', titleAr: 'فقط' }] }] });
+  if (one.kind === BRANCH_INSPECTION_KIND) {
+    assert.equal(deleteInspectionItem(one, 'a1').ok, false);
+  }
+  const garbage = parseQcFormTemplate(BRANCH_INSPECTION_KIND, { nope: true });
+  if (garbage.kind === BRANCH_INSPECTION_KIND) {
+    assert.equal(inspectionItemIds(garbage).length, before);
+  }
+  const complaints = defaultQcFormTemplate(CUSTOMER_COMPLAINT_KIND);
+  if (complaints.kind === CUSTOMER_COMPLAINT_KIND) {
+    const plus = addComplaintChannel(complaints, { titleEn: 'Walk-in', titleAr: 'حضور' });
+    assert.equal(plus.ok, true);
+    if (plus.ok) {
+      assert.equal(plus.template.channels.length, 3);
+      const cut = deleteComplaintChannel(plus.template, 'careem');
+      assert.equal(cut.ok, true);
+      if (cut.ok) assert.equal(cut.template.channels.some((c) => c.id === 'careem'), false);
+    }
+  }
+}
 
 console.log('photo-check: ok');

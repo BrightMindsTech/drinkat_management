@@ -66,6 +66,7 @@ const AUTH_PRIMITIVES = [
   'requirePhotoQcReviewer',
   'requirePhotoArchiveViewer',
   'requireQcReportsInbox',
+  'requireQcFormTemplateEditor',
   'getServerSession',
   'qcChatForbiddenResponse',
   'hrOperationsFrozenResponse',

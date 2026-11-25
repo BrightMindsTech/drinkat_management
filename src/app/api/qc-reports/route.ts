@@ -18,6 +18,8 @@ import {
   inspectionComments,
   inspectionSeverity,
   validateInspectionAnswers,
+  validateInspectionAnswersFor,
+  countInspectionResultsFor,
 } from '@/lib/qc-branch-inspection';
 import {
   WAREHOUSE_INSPECTION_KIND,
@@ -39,6 +41,12 @@ import {
 } from '@/lib/qc-complaints';
 import { signUploadUrlsInJsonString } from '@/lib/upload-signed-url';
 import { runSubmitSideEffects } from '@/lib/submit-side-effects';
+import {
+  asInspectionTemplate,
+  inspectionItemIds,
+  loadAllQcFormTemplates,
+  loadQcFormTemplate,
+} from '@/lib/qc-form-templates';
 import { z } from 'zod';
 
 const notifyToSchema = z.union([z.string().min(1).max(80), z.array(z.string().min(1).max(80)).min(1).max(40)]).optional();
@@ -63,6 +71,18 @@ const complaintSchema = z.object({
   branchId: z.string(),
   talabat: z.array(complaintSlotSchema).max(COMPLAINT_SLOTS_MAX).optional().default([]),
   careem: z.array(complaintSlotSchema).max(COMPLAINT_SLOTS_MAX).optional().default([]),
+  extraChannels: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(32),
+        titleEn: z.string().max(80).optional().default(''),
+        titleAr: z.string().max(80).optional().default(''),
+        slots: z.array(complaintSlotSchema).max(COMPLAINT_SLOTS_MAX).optional().default([]),
+      })
+    )
+    .max(12)
+    .optional()
+    .default([]),
   additionalNotes: z.string().max(COMPLAINT_ADDITIONAL_MAX).optional().default(''),
   notifyTo: notifyToSchema,
 });
@@ -107,6 +127,7 @@ export const GET = withApiErrors(async function GET() {
   });
   const branches = await prisma.branch.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
   const notifyPeople = await listQcNotifyPeople(prisma);
+  const templates = await loadAllQcFormTemplates(prisma);
   return Response.json({
     items: items.map((item) => ({
       ...item,
@@ -114,6 +135,7 @@ export const GET = withApiErrors(async function GET() {
     })),
     branches,
     notifyOptions: qcReportNotifyOptions(notifyPeople),
+    templates,
   });
 });
 
@@ -183,18 +205,24 @@ async function postInspection(userId: string, body: unknown) {
   const parsed = inspectionSchema.safeParse(body);
   if (!parsed.success) return Response.json({ error: 'Answer every checklist item' }, { status: 400 });
   const warehouse = parsed.data.kind === WAREHOUSE_INSPECTION_KIND;
-  const checked = warehouse
-    ? validateWarehouseInspectionAnswers(parsed.data.answers)
-    : validateInspectionAnswers(parsed.data.answers);
+  const live = asInspectionTemplate(await loadQcFormTemplate(prisma, parsed.data.kind));
+  const liveIds = live ? inspectionItemIds(live) : [];
+  const checked = liveIds.length
+    ? validateInspectionAnswersFor(liveIds, parsed.data.answers)
+    : warehouse
+      ? validateWarehouseInspectionAnswers(parsed.data.answers)
+      : validateInspectionAnswers(parsed.data.answers);
   if (!checked.ok) return Response.json({ error: checked.error }, { status: 400 });
   const branch = await prisma.branch.findUnique({ where: { id: parsed.data.branchId } });
   if (!branch) return Response.json({ error: 'Branch not found' }, { status: 404 });
   if (warehouse && !isWarehouseInspectionBranchName(branch.name)) {
     return Response.json({ error: 'This inspection is only for Central kitchen – Warehouse' }, { status: 400 });
   }
-  const { pass, fail } = warehouse
-    ? countWarehouseInspectionResults(checked.answers)
-    : countInspectionResults(checked.answers);
+  const { pass, fail } = liveIds.length
+    ? countInspectionResultsFor(liveIds, checked.answers)
+    : warehouse
+      ? countWarehouseInspectionResults(checked.answers)
+      : countInspectionResults(checked.answers);
   const notes = parsed.data.notes ?? '';
   const item = await prisma.qcFieldReport.create({
     data: {
@@ -250,7 +278,12 @@ async function postComplaint(userId: string, body: unknown) {
   if (!parsed.success) return Response.json({ error: 'Describe the complaint' }, { status: 400 });
   const branch = await prisma.branch.findUnique({ where: { id: parsed.data.branchId } });
   if (!branch) return Response.json({ error: 'Branch not found' }, { status: 404 });
-  const payload = encodeComplaintPayload(parsed.data);
+  const payload = encodeComplaintPayload({
+    talabat: parsed.data.talabat,
+    careem: parsed.data.careem,
+    extraChannels: parsed.data.extraChannels,
+    additionalNotes: parsed.data.additionalNotes,
+  });
   if (!complaintHasContent(payload)) return Response.json({ error: 'Add at least one complaint note or photo' }, { status: 400 });
   const item = await prisma.qcFieldReport.create({
     data: {
